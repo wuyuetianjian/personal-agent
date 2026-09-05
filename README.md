@@ -17,11 +17,37 @@ It includes Go contracts and safety skeletons for the Browser Tool, Browser Sess
 - `internal/agent`: Leader/Sub-Agent contracts.
 - `internal/browser`: Go contracts, policy checks, redaction, evidence builders, and tests.
 
-### Run
+### P0 Usage
+
+The completed P0 tool is a foundation smoke runner. Use it to verify that configuration loading, SQLite migrations, and task persistence work locally.
+
+Run a no-op task:
 
 ```sh
 go run ./cmd/personal-agent run --config configs/config.example.yaml --task "smoke test"
 ```
+
+Run with your own task text:
+
+```sh
+go run ./cmd/personal-agent run --config configs/config.example.yaml --task "summarize my local notes"
+```
+
+Expected output:
+
+```text
+task_id=task_<generated_id> status=completed answer="No-op task completed."
+```
+
+What happens:
+
+- The CLI loads and validates `configs/config.example.yaml`.
+- SQLite opens at `./data/personal-agent.db`.
+- Embedded migrations under `internal/storage/migrations` are applied.
+- One row is inserted into the `tasks` table.
+- The task is marked `completed` with a no-op answer.
+
+Current P0 limitation: the command does not yet call models, run RAG, use memory, automate the browser, verify claims, or execute Sub-Agents. Those capabilities are planned for later phases.
 
 ### Validation
 
@@ -56,11 +82,37 @@ go test ./...
 - `internal/agent`：Leader/Sub-Agent 契约。
 - `internal/browser`：Go 契约、策略校验、脱敏、evidence builder 和测试。
 
-### 运行
+### P0 使用方式
+
+当前已完成的 P0 工具是基础 smoke runner，用于验证本地配置加载、SQLite 迁移和 task 持久化是否正常。
+
+运行 no-op 任务：
 
 ```sh
 go run ./cmd/personal-agent run --config configs/config.example.yaml --task "smoke test"
 ```
+
+使用自己的任务文本：
+
+```sh
+go run ./cmd/personal-agent run --config configs/config.example.yaml --task "帮我整理本地资料"
+```
+
+预期输出：
+
+```text
+task_id=task_<generated_id> status=completed answer="No-op task completed."
+```
+
+执行过程：
+
+- CLI 加载并校验 `configs/config.example.yaml`。
+- SQLite 打开位置为 `./data/personal-agent.db`。
+- 执行 `internal/storage/migrations` 中的内置迁移。
+- 向 `tasks` 表写入一条记录。
+- 将该任务标记为 `completed`，并写入 no-op answer。
+
+当前 P0 限制：该命令还不会调用模型、运行 RAG、使用 memory、自动化浏览器、验证 claims 或执行 Sub-Agent。这些能力会在后续阶段实现。
 
 ### 验证
 
