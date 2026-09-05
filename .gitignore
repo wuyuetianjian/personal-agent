@@ -3,7 +3,9 @@
 # Local agent/editor state
 .agents/
 .codex/
-.cursor/
+.cursor/*
+!.cursor/skills/
+!.cursor/skills/**
 .continue/
 .claude/
 CLAUDE.md
@@ -13,6 +15,7 @@ tmp/
 temp/
 *.log
 /data/
+/bin/
 
 # Project documentation generated from handoff packs
 /docs/

@@ -28,6 +28,68 @@ func TestRunNoopTask(t *testing.T) {
 	}
 }
 
+func TestRunLongTaskCommands(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	dbPath := filepath.Join(dir, "agent.db")
+	writeConfig(t, configPath, dbPath)
+
+	var runOut bytes.Buffer
+	err := Run(context.Background(), []string{"run", "--config", configPath, "--task", "long work", "--long"}, &runOut)
+	if err != nil {
+		t.Fatalf("Run(long) error = %v", err)
+	}
+	taskID := ExtractTaskID(runOut.String())
+	if taskID == "" {
+		t.Fatalf("task id missing from output %q", runOut.String())
+	}
+
+	var listOut bytes.Buffer
+	if err := Run(context.Background(), []string{"task", "list", "--config", configPath}, &listOut); err != nil {
+		t.Fatalf("task list error = %v", err)
+	}
+	if !strings.Contains(listOut.String(), taskID) || !strings.Contains(listOut.String(), "running") {
+		t.Fatalf("task list output = %q", listOut.String())
+	}
+
+	var showOut bytes.Buffer
+	if err := Run(context.Background(), []string{"task", "show", "--config", configPath, "--id", taskID}, &showOut); err != nil {
+		t.Fatalf("task show error = %v", err)
+	}
+	if !strings.Contains(showOut.String(), "status=running") {
+		t.Fatalf("task show output = %q", showOut.String())
+	}
+
+	var cancelOut bytes.Buffer
+	if err := Run(context.Background(), []string{"task", "cancel", "--config", configPath, "--id", taskID}, &cancelOut); err != nil {
+		t.Fatalf("task cancel error = %v", err)
+	}
+	if !strings.Contains(cancelOut.String(), "status=cancelled") {
+		t.Fatalf("task cancel output = %q", cancelOut.String())
+	}
+}
+
+func TestChatStoresMemory(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	dbPath := filepath.Join(dir, "agent.db")
+	writeConfig(t, configPath, dbPath)
+
+	var out bytes.Buffer
+	input := strings.NewReader("hello\n/memory\n/exit\n")
+	err := RunWithIO(context.Background(), []string{"chat", "--config", configPath}, IO{Stdin: input, Stdout: &out})
+	if err != nil {
+		t.Fatalf("chat error = %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "Recorded message in local memory.") {
+		t.Fatalf("chat output missing response: %q", got)
+	}
+	if !strings.Contains(got, "user_message") || !strings.Contains(got, "hello") {
+		t.Fatalf("chat memory output = %q", got)
+	}
+}
+
 func TestRunRequiresTask(t *testing.T) {
 	var out bytes.Buffer
 	err := Run(context.Background(), []string{"run", "--config", "config.yaml"}, &out)
