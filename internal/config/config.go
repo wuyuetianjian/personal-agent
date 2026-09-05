@@ -1,0 +1,112 @@
+package config
+
+import "time"
+
+type Config struct {
+	App         AppConfig         `yaml:"app"`
+	Server      ServerConfig      `yaml:"server"`
+	Storage     StorageConfig     `yaml:"storage"`
+	Privacy     PrivacyConfig     `yaml:"privacy"`
+	Models      ModelsConfig      `yaml:"models"`
+	Agent       AgentConfig       `yaml:"agent"`
+	Browser     BrowserConfig     `yaml:"browser"`
+	Permissions PermissionsConfig `yaml:"permissions"`
+}
+
+type AppConfig struct {
+	Name        string `yaml:"name"`
+	Environment string `yaml:"environment"`
+	DataDir     string `yaml:"data_dir"`
+}
+
+type ServerConfig struct {
+	Enabled        bool     `yaml:"enabled"`
+	ListenAddr     string   `yaml:"listen_addr"`
+	RequestTimeout Duration `yaml:"request_timeout"`
+}
+
+type StorageConfig struct {
+	Driver   string         `yaml:"driver"`
+	SQLite   SQLiteConfig   `yaml:"sqlite"`
+	Postgres PostgresConfig `yaml:"postgres"`
+}
+
+type SQLiteConfig struct {
+	Path string `yaml:"path"`
+}
+
+type PostgresConfig struct {
+	DSNEnv string `yaml:"dsn_env"`
+}
+
+type PrivacyConfig struct {
+	HMACSecretEnv             string `yaml:"hmac_secret_env"`
+	FailClosedForPublicModels bool   `yaml:"fail_closed_for_public_models"`
+}
+
+type ModelsConfig struct {
+	DefaultProvider string                    `yaml:"default_provider"`
+	Providers       map[string]ProviderConfig `yaml:"providers"`
+	Registry        []ModelConfig             `yaml:"registry"`
+}
+
+type ProviderConfig struct {
+	Enabled               *bool  `yaml:"enabled"`
+	Type                  string `yaml:"type"`
+	BaseURL               string `yaml:"base_url"`
+	BaseURLEnv            string `yaml:"base_url_env"`
+	APIKeyEnv             string `yaml:"api_key_env"`
+	TrustLevel            string `yaml:"trust_level"`
+	RequirePrivacyGateway bool   `yaml:"require_privacy_gateway"`
+}
+
+func (c ProviderConfig) IsEnabled() bool {
+	return c.Enabled == nil || *c.Enabled
+}
+
+type ModelConfig struct {
+	ID            string        `yaml:"id"`
+	Provider      string        `yaml:"provider"`
+	Model         string        `yaml:"model"`
+	TrustLevel    string        `yaml:"trust_level"`
+	ContextWindow int           `yaml:"context_window"`
+	Capabilities  []string      `yaml:"capabilities"`
+	Pricing       PricingConfig `yaml:"pricing"`
+}
+
+type PricingConfig struct {
+	InputPer1M  float64 `yaml:"input_per_1m"`
+	OutputPer1M float64 `yaml:"output_per_1m"`
+}
+
+type AgentConfig struct {
+	Leader LeaderConfig `yaml:"leader"`
+}
+
+type LeaderConfig struct {
+	ModelID            string  `yaml:"model_id"`
+	Temperature        float64 `yaml:"temperature"`
+	MaxOutputTokens    int     `yaml:"max_output_tokens"`
+	TrustLevelRequired string  `yaml:"trust_level_required"`
+}
+
+type BrowserConfig struct {
+	Enabled      bool                `yaml:"enabled"`
+	Runtime      string              `yaml:"runtime"`
+	ProfileReuse BrowserProfileReuse `yaml:"profile_reuse"`
+}
+
+type BrowserProfileReuse struct {
+	Enabled        bool     `yaml:"enabled"`
+	ProfileDirEnv  string   `yaml:"profile_dir_env"`
+	AllowedDomains []string `yaml:"allowed_domains"`
+	SessionTTL     Duration `yaml:"session_ttl"`
+}
+
+type PermissionsConfig struct {
+	Default string `yaml:"default"`
+}
+
+type Duration struct {
+	time.Duration
+}

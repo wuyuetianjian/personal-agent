@@ -1,0 +1,66 @@
+app:
+  name: personal-agent
+  environment: local
+  data_dir: ./data
+
+server:
+  enabled: true
+  listen_addr: 127.0.0.1:8787
+  request_timeout: 120s
+
+storage:
+  driver: sqlite
+  sqlite:
+    path: ./data/personal-agent.db
+  postgres:
+    dsn_env: PERSONAL_AGENT_POSTGRES_DSN
+
+privacy:
+  hmac_secret_env: PERSONAL_AGENT_PRIVACY_HMAC_SECRET
+  fail_closed_for_public_models: true
+
+models:
+  default_provider: local-ollama
+  providers:
+    local-ollama:
+      type: openai_compatible
+      base_url: http://127.0.0.1:11434/v1
+      api_key_env: OLLAMA_API_KEY
+      trust_level: local_private
+    public-openai-compatible:
+      enabled: false
+      type: openai_compatible
+      base_url_env: PUBLIC_OPENAI_COMPATIBLE_BASE_URL
+      api_key_env: PUBLIC_OPENAI_COMPATIBLE_API_KEY
+      trust_level: public_remote
+      require_privacy_gateway: true
+  registry:
+    - id: local-planner
+      provider: local-ollama
+      model: qwen2.5:14b
+      trust_level: local_private
+      context_window: 32768
+      capabilities: [chat, tool_calling, json_schema]
+      pricing:
+        input_per_1m: 0
+        output_per_1m: 0
+
+agent:
+  leader:
+    model_id: local-planner
+    temperature: 0.2
+    max_output_tokens: 4096
+    trust_level_required: local_private
+
+browser:
+  enabled: true
+  runtime: chromedp
+  profile_reuse:
+    enabled: false
+    profile_dir_env: PERSONAL_AGENT_BROWSER_PROFILE_DIR
+    allowed_domains: []
+    session_ttl: 8h
+
+permissions:
+  default: deny
+

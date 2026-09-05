@@ -12,6 +12,7 @@ CLAUDE.md
 tmp/
 temp/
 *.log
+/data/
 
 # Project documentation generated from handoff packs
 /docs/

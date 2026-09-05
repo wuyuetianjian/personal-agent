@@ -4,20 +4,24 @@
 
 AI agent for local user workflows.
 
-This repository is a planning and contract package for adding governed Browser Automation to a local-first parallel Agent system.
+This repository is a Go implementation of a local-first parallel personal agent. The current implementation is the P0 foundation: configuration loading, SQLite migrations, core agent/browser contracts, and a no-op CLI task runner.
 
-It includes Go contracts and safety skeletons for the Browser Tool, Browser Session Manager, Permission Layer integration, Privacy Gateway filtering, and Evidence Bus records. It does not include a concrete browser driver, Playwright/CDP adapter, cookie reader, browser profile reader, password reader, or remote model caller.
+It includes Go contracts and safety skeletons for the Browser Tool, Browser Session Manager, Permission Layer integration, Privacy Gateway filtering, and Evidence Bus records. It does not yet include a concrete browser driver, Playwright/CDP adapter, cookie reader, browser profile reader, password reader, or remote model caller.
 
 ### Contents
 
-- `docs/DESIGN.md`: Architecture and design overview.
-- `docs/docs/browser_automation_requirements.md`: Browser Automation requirements.
-- `docs/docs/security_model.md`: Browser security and privacy model.
-- `docs/docs/implementation_plan.md`: Future implementation phases.
-- `docs/docs/client_handoff.md`: Client implementation checklist.
-- `docs/docs/package_completion.md`: Completion scope and validation notes.
-- `docs/configs/browser.yaml`: Planning-level browser configuration structure.
+- `cmd/personal-agent`: CLI entrypoint.
+- `configs/config.example.yaml`: Local-first example configuration.
+- `internal/config`: YAML loader and validator.
+- `internal/storage`: SQLite storage and migrations.
+- `internal/agent`: Leader/Sub-Agent contracts.
 - `internal/browser`: Go contracts, policy checks, redaction, evidence builders, and tests.
+
+### Run
+
+```sh
+go run ./cmd/personal-agent run --config configs/config.example.yaml --task "smoke test"
+```
 
 ### Validation
 
@@ -39,20 +43,24 @@ go test ./...
 
 面向本地用户工作流的 AI Agent。
 
-本仓库是一个规划与契约包，用于为“本地优先 + 并行 Agent”系统增加受治理的 Browser Automation 浏览器自动化能力。
+本仓库是一个 Go 版本本地优先并行个人 Agent。当前实现为 P0 基础层：配置加载、SQLite 迁移、核心 agent/browser 契约，以及 no-op CLI task runner。
 
-仓库包含 Browser Tool、Browser Session Manager、Permission Layer 接入、Privacy Gateway 脱敏和 Evidence Bus 记录的 Go 契约与安全骨架。仓库不包含具体浏览器驱动、Playwright/CDP 适配器、cookie 读取器、浏览器 profile 读取器、密码读取器或远程模型调用器。
+仓库包含 Browser Tool、Browser Session Manager、Permission Layer 接入、Privacy Gateway 脱敏和 Evidence Bus 记录的 Go 契约与安全骨架。仓库暂不包含具体浏览器驱动、Playwright/CDP 适配器、cookie 读取器、浏览器 profile 读取器、密码读取器或远程模型调用器。
 
 ### 内容
 
-- `docs/DESIGN.md`：架构与设计概览。
-- `docs/docs/browser_automation_requirements.md`：浏览器自动化需求。
-- `docs/docs/security_model.md`：浏览器安全与隐私模型。
-- `docs/docs/implementation_plan.md`：后续实施阶段。
-- `docs/docs/client_handoff.md`：client 实现交接清单。
-- `docs/docs/package_completion.md`：完成范围与验证说明。
-- `docs/configs/browser.yaml`：规划级浏览器配置结构。
+- `cmd/personal-agent`：CLI 入口。
+- `configs/config.example.yaml`：本地优先示例配置。
+- `internal/config`：YAML 加载和校验。
+- `internal/storage`：SQLite 存储与迁移。
+- `internal/agent`：Leader/Sub-Agent 契约。
 - `internal/browser`：Go 契约、策略校验、脱敏、evidence builder 和测试。
+
+### 运行
+
+```sh
+go run ./cmd/personal-agent run --config configs/config.example.yaml --task "smoke test"
+```
 
 ### 验证
 
