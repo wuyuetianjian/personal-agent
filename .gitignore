@@ -13,6 +13,9 @@ tmp/
 temp/
 *.log
 
+# Project documentation generated from handoff packs
+/docs/
+
 # Browser automation local-only material
 browser-profiles/
 profiles/
