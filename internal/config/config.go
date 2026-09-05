@@ -80,10 +80,11 @@ type PricingConfig struct {
 }
 
 type AgentConfig struct {
-	Leader LeaderConfig `yaml:"leader"`
+	Leader    RoleModelConfig            `yaml:"leader"`
+	SubAgents map[string]RoleModelConfig `yaml:"subagents"`
 }
 
-type LeaderConfig struct {
+type RoleModelConfig struct {
 	ModelID            string  `yaml:"model_id"`
 	Temperature        float64 `yaml:"temperature"`
 	MaxOutputTokens    int     `yaml:"max_output_tokens"`

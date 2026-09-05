@@ -41,7 +41,7 @@ func TestValidateRequiresHMACForEnabledPublicProvider(t *testing.T) {
 				},
 			},
 		},
-		Agent: AgentConfig{Leader: LeaderConfig{ModelID: "model"}},
+		Agent: AgentConfig{Leader: RoleModelConfig{ModelID: "model"}},
 	}
 
 	if err := cfg.Validate(); !errors.Is(err, ErrMissingPrivacyHMACEnv) {

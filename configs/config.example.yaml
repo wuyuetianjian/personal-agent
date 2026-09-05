@@ -51,6 +51,17 @@ agent:
     temperature: 0.2
     max_output_tokens: 4096
     trust_level_required: local_private
+  subagents:
+    research:
+      model_id: local-planner
+      temperature: 0.1
+      max_output_tokens: 2048
+      trust_level_required: local_private
+    verification:
+      model_id: local-planner
+      temperature: 0
+      max_output_tokens: 1024
+      trust_level_required: local_private
 
 browser:
   enabled: true
@@ -63,4 +74,3 @@ browser:
 
 permissions:
   default: deny
-
