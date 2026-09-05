@@ -1,0 +1,20 @@
+.DS_Store
+
+# Local agent/editor state
+.agents/
+.codex/
+.cursor/
+.continue/
+.claude/
+CLAUDE.md
+
+# Runtime and temporary output
+tmp/
+temp/
+*.log
+
+# Browser automation local-only material
+browser-profiles/
+profiles/
+cookies/
+sessions/
