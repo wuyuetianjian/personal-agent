@@ -1,6 +1,8 @@
-# Local-First Parallel Agent Browser Automation Planning Pack
+# personal-agent
 
 ## English
+
+AI agent for local user workflows.
 
 This repository is a planning and contract package for adding governed Browser Automation to a local-first parallel Agent system.
 
@@ -34,6 +36,8 @@ go test ./...
 - Evidence Bus records must be redacted before storage.
 
 ## 中文
+
+面向本地用户工作流的 AI Agent。
 
 本仓库是一个规划与契约包，用于为“本地优先 + 并行 Agent”系统增加受治理的 Browser Automation 浏览器自动化能力。
 
