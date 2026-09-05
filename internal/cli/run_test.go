@@ -90,6 +90,41 @@ func TestChatStoresMemory(t *testing.T) {
 	}
 }
 
+func TestChatHelp(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	dbPath := filepath.Join(dir, "agent.db")
+	writeConfig(t, configPath, dbPath)
+
+	var out bytes.Buffer
+	input := strings.NewReader("/help\n/exit\n")
+	err := RunWithIO(context.Background(), []string{"chat", "--config", configPath}, IO{Stdin: input, Stdout: &out})
+	if err != nil {
+		t.Fatalf("chat help error = %v", err)
+	}
+	got := out.String()
+	for _, command := range []string{"/help", "/memory", "/exit", "/quit"} {
+		if !strings.Contains(got, command) {
+			t.Fatalf("chat help output missing %s: %q", command, got)
+		}
+	}
+}
+
+func TestSlashCommandCompleter(t *testing.T) {
+	options, _ := slashCommandCompleter().Do([]rune("/"), 1)
+	got := make([]string, 0, len(options))
+	for _, option := range options {
+		got = append(got, string(option))
+	}
+	joined := strings.Join(got, " ")
+	for _, command := range []string{"/help", "/memory", "/exit", "/quit"} {
+		suffix := strings.TrimPrefix(command, "/")
+		if !strings.Contains(joined, suffix) {
+			t.Fatalf("completion options %q missing %s", joined, suffix)
+		}
+	}
+}
+
 func TestRunRequiresTask(t *testing.T) {
 	var out bytes.Buffer
 	err := Run(context.Background(), []string{"run", "--config", "config.yaml"}, &out)

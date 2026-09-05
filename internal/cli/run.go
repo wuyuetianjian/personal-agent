@@ -1,10 +1,10 @@
 package cli
 
 import (
-	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -13,6 +13,7 @@ import (
 	"agent/internal/config"
 	"agent/internal/memory"
 	"agent/internal/storage"
+	"github.com/chzyer/readline"
 )
 
 type IO struct {
@@ -125,20 +126,35 @@ func chat(ctx context.Context, args []string, ioStreams IO) error {
 		return err
 	}
 
-	fmt.Fprintln(ioStreams.Stdout, "pachat interactive mode. Type /memory, /exit, or /quit.")
-	scanner := bufio.NewScanner(ioStreams.Stdin)
+	fmt.Fprintln(ioStreams.Stdout, "pachat interactive mode. Type /help, /memory, /exit, or /quit. Press Tab after / for command completion.")
+	reader, err := newChatLineReader(ioStreams)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
 	for {
-		fmt.Fprint(ioStreams.Stdout, "> ")
-		if !scanner.Scan() {
+		line, err := reader.ReadLine()
+		if errors.Is(err, io.EOF) {
 			break
 		}
-		line := strings.TrimSpace(scanner.Text())
+		if errors.Is(err, readline.ErrInterrupt) {
+			fmt.Fprintln(ioStreams.Stdout, "bye")
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		line = strings.TrimSpace(line)
 		switch line {
 		case "":
 			continue
 		case "/exit", "/quit":
 			fmt.Fprintln(ioStreams.Stdout, "bye")
 			return nil
+		case "/help":
+			printChatHelp(ioStreams.Stdout)
+			continue
 		case "/memory":
 			if err := printMemory(ctx, mem, ioStreams.Stdout); err != nil {
 				return err
@@ -154,7 +170,7 @@ func chat(ctx context.Context, args []string, ioStreams IO) error {
 		}
 		fmt.Fprintln(ioStreams.Stdout, response)
 	}
-	return scanner.Err()
+	return nil
 }
 
 func taskCommand(ctx context.Context, args []string, stdout io.Writer) error {

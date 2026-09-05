@@ -59,6 +59,8 @@ Interactive memory:
 bin/pachat chat --config configs/config.example.yaml
 ```
 
+Chat supports slash command completion with Tab for `/help`, `/memory`, `/exit`, and `/quit`.
+
 Long-task state:
 
 ```sh

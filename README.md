@@ -54,13 +54,13 @@ What happens:
 - One row is inserted into the `tasks` table.
 - The task is marked `completed` with a no-op answer.
 
-Interactive local memory:
+Interactive local memory with slash-command completion:
 
 ```sh
 bin/pachat chat --config configs/config.example.yaml
 ```
 
-Inside chat, type a message to store it in local episodic memory. Use `/memory` to view recent memory, and `/exit` or `/quit` to leave.
+Inside chat, type a message to store it in local episodic memory. Type `/` and press `Tab` to complete built-in commands. Use `/help` to list commands, `/memory` to view recent memory, and `/exit` or `/quit` to leave.
 
 Long-task state:
 
@@ -145,13 +145,13 @@ task_id=task_<generated_id> status=completed answer="No-op task completed."
 - 向 `tasks` 表写入一条记录。
 - 将该任务标记为 `completed`，并写入 no-op answer。
 
-交互式本地记忆：
+带 slash 命令补全的交互式本地记忆：
 
 ```sh
 bin/pachat chat --config configs/config.example.yaml
 ```
 
-进入 chat 后，输入普通消息会写入本地 episodic memory。使用 `/memory` 查看近期记忆，使用 `/exit` 或 `/quit` 退出。
+进入 chat 后，输入普通消息会写入本地 episodic memory。输入 `/` 后按 `Tab` 可以补全内置命令。使用 `/help` 查看命令列表，使用 `/memory` 查看近期记忆，使用 `/exit` 或 `/quit` 退出。
 
 长任务状态：
 
