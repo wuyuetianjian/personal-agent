@@ -35,3 +35,16 @@
 - `make smoke` 通过或明确记录环境型失败。
 - README 同步更新中文和英文能力边界。
 - 每个实现段落用 git 单独提交。
+
+## 完成记录
+
+本轮已补齐以下 P14 前基础闭环：
+
+- Runtime task 主链通过持久化 workflow 和 scheduler 执行，默认 DAG 覆盖 memory、RAG、verification、synthesis。
+- Workflow node 依赖和 DAG 版本已持久化，恢复时保留依赖关系。
+- API long task 使用可取消后台 runner，cancel endpoint 会触发 context cancellation。
+- Trigger/Event 提供 CLI/API create、list、show、enable、disable、run-now、history 和 push event ingestion。
+- Proactive daemon 提供 tick、run-now、startup recovery、condition evaluator 和 dead-letter 基础。
+- Approval inbox、notification inbox、dashboard/SSE、model discovery、filesystem watcher 基础入口已接入 SQLite 和 CLI/API。
+- Bounded model planner、public escalation fail-closed 接口、hybrid RAG 降级路径、capability runtime metrics、skill eval activation gate、draft skill candidate generator 和 bounded goal planner 已补齐库层闭环。
+- 示例配置已改为 external coding backend 默认禁用且 direct writes 默认禁用。
