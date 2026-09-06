@@ -90,7 +90,7 @@ func TestChatStoresMemory(t *testing.T) {
 		t.Fatalf("chat error = %v", err)
 	}
 	got := out.String()
-	if !strings.Contains(got, "Recorded message in local memory.") {
+	if !strings.Contains(got, "Local-first answer for: hello") && !strings.Contains(got, "No local evidence was found for: hello") {
 		t.Fatalf("chat output missing response: %q", got)
 	}
 	if !strings.Contains(got, "user_message") || !strings.Contains(got, "hello") {

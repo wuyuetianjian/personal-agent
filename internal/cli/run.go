@@ -323,13 +323,17 @@ func chat(ctx context.Context, args []string, ioStreams IO) error {
 	if *configPath == "" {
 		return usageError("chat requires --config")
 	}
-	_, db, err := openConfiguredDB(ctx, *configPath)
+	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	rt, err := runtime.Build(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer rt.Close()
 
-	mem := memory.NewStore(db.SQL)
+	mem := memory.NewStore(rt.Storage.SQL)
 	sessionID, err := newID("chat")
 	if err != nil {
 		return err
@@ -373,7 +377,25 @@ func chat(ctx context.Context, args []string, ioStreams IO) error {
 		if err := appendMessage(ctx, mem, sessionID, "user_message", line); err != nil {
 			return err
 		}
-		response := "Recorded message in local memory."
+		taskID, err := newID("task")
+		if err != nil {
+			return err
+		}
+		if err := rt.Storage.CreateTask(ctx, storage.Task{
+			ID:            taskID,
+			Title:         summarizeTitle(line),
+			Input:         line,
+			Status:        "running",
+			LeaderModelID: cfg.Agent.Leader.ModelID,
+			PrivacyClass:  "local_private",
+		}); err != nil {
+			return err
+		}
+		result, err := rt.Run(ctx, runtime.RunRequest{TaskID: taskID, Input: line, PrivacyClass: "local_private", LeaderModelID: cfg.Agent.Leader.ModelID})
+		if err != nil {
+			return err
+		}
+		response := result.Answer
 		if err := appendMessage(ctx, mem, sessionID, "assistant_message", response); err != nil {
 			return err
 		}
