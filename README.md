@@ -4,9 +4,9 @@
 
 AI agent for local user workflows.
 
-This repository is a Go implementation of a local-first parallel personal agent. The current implementation includes the P0 foundation and P1 model/privacy foundation: `pachat` CLI packaging, configuration loading, SQLite migrations, core agent/browser contracts, interactive local memory, long-task state tracking, model registry/policy contracts, OpenAI-compatible provider boundaries, and a fail-closed Privacy Gateway for public remote model calls.
+This repository is a Go implementation of a local-first parallel personal agent. The current implementation includes the P0 foundation, P1 model/privacy foundation, and P2 RAG/memory foundation: `pachat` CLI packaging, configuration loading, SQLite migrations, core agent/browser contracts, interactive local memory, long-task state tracking, model registry/policy contracts, OpenAI-compatible provider boundaries, a fail-closed Privacy Gateway for public remote model calls, local BM25 retrieval, RRF result fusion, Qdrant boundary code, context compression, and working/episodic/semantic memory stores.
 
-It includes Go contracts and safety skeletons for the Browser Tool, Browser Session Manager, Permission Layer integration, Privacy Gateway filtering, Evidence Bus records, model selection, and provider enforcement. It does not yet include a concrete browser driver, Playwright/CDP adapter, cookie reader, browser profile reader, password reader, production model caller wiring, RAG runtime, or Sub-Agent scheduler.
+It includes Go contracts and safety skeletons for the Browser Tool, Browser Session Manager, Permission Layer integration, Privacy Gateway filtering, Evidence Bus records, model selection, provider enforcement, and local retrieval/memory indexing. It does not yet include a concrete browser driver, Playwright/CDP adapter, cookie reader, browser profile reader, password reader, production model caller wiring, CLI-connected RAG execution, or Sub-Agent scheduler.
 
 ### Contents
 
@@ -14,7 +14,8 @@ It includes Go contracts and safety skeletons for the Browser Tool, Browser Sess
 - `configs/config.example.yaml`: Local-first example configuration.
 - `internal/config`: YAML loader and validator.
 - `internal/storage`: SQLite storage and migrations.
-- `internal/memory`: Local episodic memory store.
+- `internal/memory`: Working, episodic, and semantic memory stores.
+- `internal/rag`: Document/chunk storage, chunking, BM25 retrieval, RRF fusion, Qdrant wrapper, reranker boundary, and context compression.
 - `internal/agent`: Leader/Sub-Agent contracts.
 - `internal/browser`: Go contracts, policy checks, redaction, evidence builders, and tests.
 - `internal/model`: Model trust levels, capabilities, registry, policy selection, provider interfaces, and OpenAI-compatible HTTP boundary.
@@ -73,7 +74,7 @@ bin/pachat task show --config configs/config.example.yaml --id <task_id>
 bin/pachat task cancel --config configs/config.example.yaml --id <task_id>
 ```
 
-Current CLI limitation: the command does not yet call models, run RAG, automate the browser, verify claims, or execute Sub-Agents. P1 adds model and privacy library boundaries only; runtime model execution is planned for later phases.
+Current CLI limitation: the command does not yet call models, run RAG as part of task execution, automate the browser, verify claims, or execute Sub-Agents. P1 and P2 add library boundaries only; runtime model execution and orchestration are planned for later phases.
 
 ### P1 Model And Privacy Foundation
 
@@ -87,6 +88,21 @@ P1 adds library-level model and privacy controls:
 - OpenAI-compatible chat and embedding HTTP boundary with injectable transport.
 - Privacy Gateway with stable HMAC-SHA256 pseudonymization, redaction, blocking, and audit metadata.
 - Public remote provider calls fail closed when the Privacy Gateway is missing or blocks the payload.
+
+### P2 RAG And Memory Foundation
+
+P2 adds library-level retrieval and memory controls:
+
+- Deterministic document chunking with content hashes.
+- SQLite-backed document and chunk persistence using the existing local schema.
+- Local BM25 retrieval over stored chunks.
+- Reciprocal Rank Fusion for combining ranked retrieval lists with deterministic tie-breaking.
+- Qdrant HTTP wrapper with caller-supplied base URL, collection, API key, and HTTP client.
+- Reranker interface boundary for later model-backed reranking.
+- Context compression that preserves evidence IDs, source URIs, titles, metadata, scores, and privacy class.
+- Working memory with expiration cleanup.
+- Episodic memory retained for chronological local events.
+- Semantic memory with optional indexing into RAG for durable facts and preferences.
 
 ### Validation
 
@@ -110,9 +126,9 @@ make smoke
 
 面向本地用户工作流的 AI Agent。
 
-本仓库是一个 Go 版本本地优先并行个人 Agent。当前实现包含 P0 基础层和 P1 模型/隐私基础层：`pachat` CLI 打包、配置加载、SQLite 迁移、核心 agent/browser 契约、交互式本地记忆、长任务状态跟踪、模型注册/策略契约、OpenAI-compatible provider 边界，以及面向 public remote 模型调用的 fail-closed Privacy Gateway。
+本仓库是一个 Go 版本本地优先并行个人 Agent。当前实现包含 P0 基础层、P1 模型/隐私基础层和 P2 RAG/记忆基础层：`pachat` CLI 打包、配置加载、SQLite 迁移、核心 agent/browser 契约、交互式本地记忆、长任务状态跟踪、模型注册/策略契约、OpenAI-compatible provider 边界、面向 public remote 模型调用的 fail-closed Privacy Gateway、本地 BM25 检索、RRF 结果融合、Qdrant 边界、上下文压缩，以及 working/episodic/semantic memory store。
 
-仓库包含 Browser Tool、Browser Session Manager、Permission Layer 接入、Privacy Gateway 脱敏、Evidence Bus 记录、模型选择和 provider enforcement 的 Go 契约与安全骨架。仓库暂不包含具体浏览器驱动、Playwright/CDP 适配器、cookie 读取器、浏览器 profile 读取器、密码读取器、生产模型调用接线、RAG runtime 或 Sub-Agent scheduler。
+仓库包含 Browser Tool、Browser Session Manager、Permission Layer 接入、Privacy Gateway 脱敏、Evidence Bus 记录、模型选择、provider enforcement 和本地检索/记忆索引的 Go 契约与安全骨架。仓库暂不包含具体浏览器驱动、Playwright/CDP 适配器、cookie 读取器、浏览器 profile 读取器、密码读取器、生产模型调用接线、接入 CLI 任务执行的 RAG runtime 或 Sub-Agent scheduler。
 
 ### 内容
 
@@ -120,7 +136,8 @@ make smoke
 - `configs/config.example.yaml`：本地优先示例配置。
 - `internal/config`：YAML 加载和校验。
 - `internal/storage`：SQLite 存储与迁移。
-- `internal/memory`：本地 episodic memory 存储。
+- `internal/memory`：working、episodic 和 semantic memory 存储。
+- `internal/rag`：document/chunk 存储、chunking、BM25 检索、RRF 融合、Qdrant wrapper、reranker 边界和上下文压缩。
 - `internal/agent`：Leader/Sub-Agent 契约。
 - `internal/browser`：Go 契约、策略校验、脱敏、evidence builder 和测试。
 - `internal/model`：模型 trust level、capability、registry、policy selection、provider interface 和 OpenAI-compatible HTTP 边界。
@@ -179,7 +196,7 @@ bin/pachat task show --config configs/config.example.yaml --id <task_id>
 bin/pachat task cancel --config configs/config.example.yaml --id <task_id>
 ```
 
-当前 CLI 限制：该命令还不会调用模型、运行 RAG、自动化浏览器、验证 claims 或执行 Sub-Agent。P1 只新增模型和隐私库层边界；运行时模型执行会在后续阶段实现。
+当前 CLI 限制：该命令还不会调用模型、在任务执行中运行 RAG、自动化浏览器、验证 claims 或执行 Sub-Agent。P1 和 P2 只新增库层边界；运行时模型执行和编排会在后续阶段实现。
 
 ### P1 模型与隐私基础
 
@@ -193,6 +210,21 @@ P1 新增库层模型和隐私控制：
 - OpenAI-compatible chat 和 embedding HTTP 边界，支持注入 transport 进行无网络测试。
 - Privacy Gateway 支持稳定 HMAC-SHA256 pseudonymization、redaction、blocking 和 audit metadata。
 - public remote provider 在 Privacy Gateway 缺失或 payload 被阻断时 fail closed。
+
+### P2 RAG 与记忆基础
+
+P2 新增库层检索和记忆控制：
+
+- 使用 content hash 的确定性 document chunking。
+- 基于现有本地 schema 的 SQLite document/chunk 持久化。
+- 针对已存储 chunk 的本地 BM25 检索。
+- 使用 Reciprocal Rank Fusion 合并多路检索结果，并提供确定性 tie-breaking。
+- Qdrant HTTP wrapper，base URL、collection、API key 和 HTTP client 均由调用方提供。
+- Reranker interface，为后续模型 rerank 接线预留边界。
+- 上下文压缩会保留 evidence ID、source URI、title、metadata、score 和 privacy class。
+- 支持过期清理的 working memory。
+- 保留用于按时间记录本地事件的 episodic memory。
+- Semantic memory 支持把长期事实和偏好可选索引到 RAG。
 
 ### 验证
 
