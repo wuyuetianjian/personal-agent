@@ -4,9 +4,9 @@
 
 AI agent for local user workflows.
 
-This repository is a Go implementation of a local-first parallel personal agent. The current implementation includes the P0 foundation, P1 model/privacy foundation, and P2 RAG/memory foundation: `pachat` CLI packaging, configuration loading, SQLite migrations, core agent/browser contracts, interactive local memory, long-task state tracking, model registry/policy contracts, OpenAI-compatible provider boundaries, a fail-closed Privacy Gateway for public remote model calls, local BM25 retrieval, RRF result fusion, Qdrant boundary code, context compression, and working/episodic/semantic memory stores.
+This repository is a Go implementation of a local-first parallel personal agent. The current implementation includes the P0 foundation, P1 model/privacy foundation, P2 RAG/memory foundation, and P3 orchestration/Sub-Agent foundation: `pachat` CLI packaging, configuration loading, SQLite migrations, core agent/browser contracts, interactive local memory, long-task state tracking, model registry/policy contracts, OpenAI-compatible provider boundaries, a fail-closed Privacy Gateway for public remote model calls, local BM25 retrieval, RRF result fusion, Qdrant boundary code, context compression, working/episodic/semantic memory stores, cancellable DAG orchestration, dependency-aware parallel scheduling, Sub-Agent retry handling, early stop, and ordered node lifecycle evidence events.
 
-It includes Go contracts and safety skeletons for the Browser Tool, Browser Session Manager, Permission Layer integration, Privacy Gateway filtering, Evidence Bus records, model selection, provider enforcement, and local retrieval/memory indexing. It does not yet include a concrete browser driver, Playwright/CDP adapter, cookie reader, browser profile reader, password reader, production model caller wiring, CLI-connected RAG execution, or Sub-Agent scheduler.
+It includes Go contracts and safety skeletons for the Browser Tool, Browser Session Manager, Permission Layer integration, Privacy Gateway filtering, Evidence Bus records, model selection, provider enforcement, local retrieval/memory indexing, and orchestration. It does not yet include a concrete browser driver, Playwright/CDP adapter, cookie reader, browser profile reader, password reader, production model caller wiring, CLI-connected RAG execution, or CLI-connected Sub-Agent task execution.
 
 ### Contents
 
@@ -16,7 +16,8 @@ It includes Go contracts and safety skeletons for the Browser Tool, Browser Sess
 - `internal/storage`: SQLite storage and migrations.
 - `internal/memory`: Working, episodic, and semantic memory stores.
 - `internal/rag`: Document/chunk storage, chunking, BM25 retrieval, RRF fusion, Qdrant wrapper, reranker boundary, and context compression.
-- `internal/agent`: Leader/Sub-Agent contracts.
+- `internal/agent`: Leader/Sub-Agent contracts, structured results, claims, evidence IDs, usage, and error categories.
+- `internal/orchestrator`: DAG validation, ready-node calculation, parallel scheduling, retry handling, cancellation propagation, early stop, and lifecycle evidence events.
 - `internal/browser`: Go contracts, policy checks, redaction, evidence builders, and tests.
 - `internal/model`: Model trust levels, capabilities, registry, policy selection, provider interfaces, and OpenAI-compatible HTTP boundary.
 - `internal/privacy`: HMAC-SHA256 pseudonymization, secret redaction, credential dump blocking, and audit metadata.
@@ -74,7 +75,7 @@ bin/pachat task show --config configs/config.example.yaml --id <task_id>
 bin/pachat task cancel --config configs/config.example.yaml --id <task_id>
 ```
 
-Current CLI limitation: the command does not yet call models, run RAG as part of task execution, automate the browser, verify claims, or execute Sub-Agents. P1 and P2 add library boundaries only; runtime model execution and orchestration are planned for later phases.
+Current CLI limitation: the command does not yet call models, run RAG as part of task execution, automate the browser, verify claims, or execute Sub-Agents. P1-P3 add library boundaries only; runtime wiring is planned for later phases.
 
 ### P1 Model And Privacy Foundation
 
@@ -104,6 +105,19 @@ P2 adds library-level retrieval and memory controls:
 - Episodic memory retained for chronological local events.
 - Semantic memory with optional indexing into RAG for durable facts and preferences.
 
+### P3 Orchestration And Parallel Sub-Agents
+
+P3 adds library-level orchestration controls:
+
+- Task DAG validation for duplicate node IDs, missing dependencies, self-dependencies, and cycles.
+- Dependency-aware ready-node calculation.
+- Parallel scheduling through role-specific Sub-Agent contracts.
+- Retry handling for retryable failures using each node's max-attempt policy.
+- Caller-provided early stop policy.
+- Context cancellation propagation to running Sub-Agents.
+- Structured node results with claims, evidence IDs, usage, and typed error categories.
+- Ordered Evidence Bus lifecycle events for ready, started, retrying, completed, failed, cancelled, and early stop records.
+
 ### Validation
 
 Run:
@@ -126,9 +140,9 @@ make smoke
 
 面向本地用户工作流的 AI Agent。
 
-本仓库是一个 Go 版本本地优先并行个人 Agent。当前实现包含 P0 基础层、P1 模型/隐私基础层和 P2 RAG/记忆基础层：`pachat` CLI 打包、配置加载、SQLite 迁移、核心 agent/browser 契约、交互式本地记忆、长任务状态跟踪、模型注册/策略契约、OpenAI-compatible provider 边界、面向 public remote 模型调用的 fail-closed Privacy Gateway、本地 BM25 检索、RRF 结果融合、Qdrant 边界、上下文压缩，以及 working/episodic/semantic memory store。
+本仓库是一个 Go 版本本地优先并行个人 Agent。当前实现包含 P0 基础层、P1 模型/隐私基础层、P2 RAG/记忆基础层和 P3 编排/Sub-Agent 基础层：`pachat` CLI 打包、配置加载、SQLite 迁移、核心 agent/browser 契约、交互式本地记忆、长任务状态跟踪、模型注册/策略契约、OpenAI-compatible provider 边界、面向 public remote 模型调用的 fail-closed Privacy Gateway、本地 BM25 检索、RRF 结果融合、Qdrant 边界、上下文压缩、working/episodic/semantic memory store、可取消 DAG 编排、依赖感知并行调度、Sub-Agent retry、early stop，以及有序节点生命周期 evidence event。
 
-仓库包含 Browser Tool、Browser Session Manager、Permission Layer 接入、Privacy Gateway 脱敏、Evidence Bus 记录、模型选择、provider enforcement 和本地检索/记忆索引的 Go 契约与安全骨架。仓库暂不包含具体浏览器驱动、Playwright/CDP 适配器、cookie 读取器、浏览器 profile 读取器、密码读取器、生产模型调用接线、接入 CLI 任务执行的 RAG runtime 或 Sub-Agent scheduler。
+仓库包含 Browser Tool、Browser Session Manager、Permission Layer 接入、Privacy Gateway 脱敏、Evidence Bus 记录、模型选择、provider enforcement、本地检索/记忆索引和编排的 Go 契约与安全骨架。仓库暂不包含具体浏览器驱动、Playwright/CDP 适配器、cookie 读取器、浏览器 profile 读取器、密码读取器、生产模型调用接线、接入 CLI 任务执行的 RAG runtime 或接入 CLI 的 Sub-Agent 任务执行。
 
 ### 内容
 
@@ -138,7 +152,8 @@ make smoke
 - `internal/storage`：SQLite 存储与迁移。
 - `internal/memory`：working、episodic 和 semantic memory 存储。
 - `internal/rag`：document/chunk 存储、chunking、BM25 检索、RRF 融合、Qdrant wrapper、reranker 边界和上下文压缩。
-- `internal/agent`：Leader/Sub-Agent 契约。
+- `internal/agent`：Leader/Sub-Agent 契约、结构化结果、claims、evidence IDs、usage 和错误分类。
+- `internal/orchestrator`：DAG 校验、ready-node 计算、并行调度、retry、取消传播、early stop 和生命周期 evidence event。
 - `internal/browser`：Go 契约、策略校验、脱敏、evidence builder 和测试。
 - `internal/model`：模型 trust level、capability、registry、policy selection、provider interface 和 OpenAI-compatible HTTP 边界。
 - `internal/privacy`：HMAC-SHA256 pseudonymization、secret redaction、credential dump blocking 和 audit metadata。
@@ -196,7 +211,7 @@ bin/pachat task show --config configs/config.example.yaml --id <task_id>
 bin/pachat task cancel --config configs/config.example.yaml --id <task_id>
 ```
 
-当前 CLI 限制：该命令还不会调用模型、在任务执行中运行 RAG、自动化浏览器、验证 claims 或执行 Sub-Agent。P1 和 P2 只新增库层边界；运行时模型执行和编排会在后续阶段实现。
+当前 CLI 限制：该命令还不会调用模型、在任务执行中运行 RAG、自动化浏览器、验证 claims 或执行 Sub-Agent。P1-P3 只新增库层边界；运行时接线会在后续阶段实现。
 
 ### P1 模型与隐私基础
 
@@ -225,6 +240,19 @@ P2 新增库层检索和记忆控制：
 - 支持过期清理的 working memory。
 - 保留用于按时间记录本地事件的 episodic memory。
 - Semantic memory 支持把长期事实和偏好可选索引到 RAG。
+
+### P3 编排与并行 Sub-Agent 基础
+
+P3 新增库层编排控制：
+
+- Task DAG 校验 duplicate node ID、missing dependency、self-dependency 和 cycle。
+- 依赖感知 ready-node 计算。
+- 通过按 role 注册的 Sub-Agent contract 做并行调度。
+- 基于每个 node 的 max-attempt policy 处理 retryable failure。
+- 支持调用方提供 early stop policy。
+- 将 context cancellation 传播给正在运行的 Sub-Agent。
+- 结构化 node result，包含 claims、evidence IDs、usage 和 typed error category。
+- 有序 Evidence Bus 生命周期事件，覆盖 ready、started、retrying、completed、failed、cancelled 和 early stop。
 
 ### 验证
 

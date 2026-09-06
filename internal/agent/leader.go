@@ -1,6 +1,9 @@
 package agent
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type LeaderAgent interface {
 	Plan(ctx context.Context, input string) ([]TaskNode, error)
@@ -8,9 +11,13 @@ type LeaderAgent interface {
 }
 
 type TaskNode struct {
+	TaskID       string
 	ID           string
 	Type         string
 	Role         Role
 	Input        string
 	Dependencies []string
+	Timeout      time.Duration
+	MaxAttempts  int
+	Metadata     map[string]string
 }

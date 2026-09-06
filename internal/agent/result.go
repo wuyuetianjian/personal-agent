@@ -8,7 +8,7 @@ type Result struct {
 	Claims        []Claim
 	EvidenceIDs   []string
 	Usage         Usage
-	ErrorCategory string
+	ErrorCategory ErrorCategory
 	ErrorMessage  string
 }
 
