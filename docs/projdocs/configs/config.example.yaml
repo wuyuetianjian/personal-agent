@@ -1,0 +1,244 @@
+app:
+  name: personal-agent
+  environment: local
+  data_dir: ./data
+
+server:
+  enabled: true
+  listen_addr: 127.0.0.1:8787
+  request_timeout: 120s
+
+storage:
+  driver: sqlite
+  sqlite:
+    path: ./data/personal-agent.db
+  postgres:
+    dsn_env: PERSONAL_AGENT_POSTGRES_DSN
+
+qdrant:
+  url: http://127.0.0.1:6333
+  api_key_env: PERSONAL_AGENT_QDRANT_API_KEY
+  collection: personal_agent_chunks
+
+privacy:
+  hmac_secret_env: PERSONAL_AGENT_PRIVACY_HMAC_SECRET
+  fail_closed_for_public_models: true
+  pseudonymize:
+    - username
+    - hostname
+    - email
+    - internal_user_id
+    - internal_org_id
+    - internal_project_id
+  redact:
+    - password
+    - token
+    - api_key
+    - session_cookie
+    - auth_header
+    - oauth_refresh_token
+    - database_url_credentials
+  block:
+    - private_key_dump
+    - credential_dump
+    - raw_cookie_jar
+    - env_file_with_secrets
+    - ssh_key_material
+    - cloud_credential_file
+    - browser_profile_credential_database
+
+models:
+  default_provider: local-ollama
+  providers:
+    local-ollama:
+      type: openai_compatible
+      base_url: http://127.0.0.1:11434/v1
+      api_key_env: OLLAMA_API_KEY
+      trust_level: local_private
+    local-vllm:
+      type: openai_compatible
+      base_url: http://127.0.0.1:8000/v1
+      api_key_env: VLLM_API_KEY
+      trust_level: local_private
+    public-openai-compatible:
+      type: openai_compatible
+      base_url_env: PUBLIC_OPENAI_COMPATIBLE_BASE_URL
+      api_key_env: PUBLIC_OPENAI_COMPATIBLE_API_KEY
+      trust_level: public_remote
+      require_privacy_gateway: true
+  registry:
+    - id: local-planner
+      provider: local-ollama
+      model: qwen2.5:14b
+      trust_level: local_private
+      context_window: 32768
+      capabilities: [chat, tool_calling, json_schema]
+      pricing:
+        input_per_1m: 0
+        output_per_1m: 0
+    - id: local-worker
+      provider: local-ollama
+      model: qwen2.5:7b
+      trust_level: local_private
+      context_window: 32768
+      capabilities: [chat, tool_calling, json_schema]
+      pricing:
+        input_per_1m: 0
+        output_per_1m: 0
+    - id: local-embedding
+      provider: local-ollama
+      model: nomic-embed-text
+      trust_level: local_private
+      context_window: 8192
+      capabilities: [embedding]
+      pricing:
+        input_per_1m: 0
+        output_per_1m: 0
+
+agent:
+  leader:
+    model_id: local-planner
+    temperature: 0.2
+    max_output_tokens: 4096
+    trust_level_required: local_private
+    budget:
+      max_input_tokens: 200000
+      max_output_tokens: 50000
+      max_cost_usd: 0
+  subagents:
+    research:
+      model_id: local-worker
+      temperature: 0.2
+      max_output_tokens: 3072
+      max_concurrency: 4
+      trust_level_required: local_private
+    browser:
+      model_id: local-worker
+      temperature: 0.1
+      max_output_tokens: 2048
+      max_concurrency: 2
+      trust_level_required: local_private
+    verification:
+      model_id: local-worker
+      temperature: 0
+      max_output_tokens: 2048
+      max_concurrency: 2
+      trust_level_required: local_private
+
+rag:
+  bm25:
+    enabled: true
+    index_dir: ./data/bm25
+  dense:
+    enabled: true
+    vector_store: qdrant
+    embedding_model_id: local-embedding
+    chunk_size_tokens: 800
+    chunk_overlap_tokens: 120
+  fusion:
+    method: rrf
+    rrf_k: 60
+  reranker:
+    enabled: false
+    model_id: ""
+    top_k: 20
+  compressor:
+    enabled: true
+    model_id: local-worker
+    max_context_tokens: 12000
+
+memory:
+  working:
+    ttl: 24h
+  episodic:
+    retention: 2160h
+  semantic:
+    enabled: true
+    auto_index: true
+
+orchestrator:
+  max_parallel_nodes: 6
+  default_node_timeout: 180s
+  retry:
+    max_attempts: 2
+    backoff: 2s
+  early_stop:
+    enabled: true
+    min_confidence: 0.82
+    min_evidence_coverage: 0.75
+
+browser:
+  enabled: true
+  runtime: chromedp
+  cdp_endpoint_env: PERSONAL_AGENT_CDP_ENDPOINT
+  profile_reuse:
+    enabled: false
+    profile_dir_env: PERSONAL_AGENT_BROWSER_PROFILE_DIR
+    allowed_domains: []
+    session_ttl: 8h
+  screenshots:
+    dir: ./data/browser/screenshots
+  coordinate_fallback:
+    enabled: true
+    max_attempts: 2
+
+permissions:
+  default: deny
+  allow:
+    - action: browser.read
+      scope: allowed_domains
+    - action: rag.read
+      scope: local
+    - action: memory.read
+      scope: local
+  require_confirmation:
+    - browser.login_submit
+    - browser.send_message
+    - browser.post_content
+    - browser.upload_file
+    - browser.payment
+    - browser.purchase
+    - browser.delete_data
+    - browser.oauth_grant
+    - browser.accept_legal_terms
+    - browser.change_account_settings
+
+verification:
+  claim_extraction: true
+  min_evidence_coverage: 0.75
+  conflict_policy: warn
+  unsupported_claim_policy: mark
+  final_confidence_threshold: 0.7
+
+cost:
+  soft_limit_ratio: 0.8
+  hard_limit_ratio: 1.0
+  persist_usage: true
+
+coding_agents:
+  default_backend: codex
+  backends:
+    codex:
+      enabled: false
+      adapter: codex
+      binary: codex
+      binary_env: PACHAT_CODEX_CLI_PATH
+      timeout: 10m
+      concurrency: 1
+      execution_location: local
+      inference_trust: public_remote
+      privacy_policy: deny_confidential
+      capabilities: [coding, code_review, code_test, code_debug]
+      allow_direct_writes: false
+    claude:
+      enabled: false
+      adapter: claude
+      binary: claude
+      binary_env: PACHAT_CLAUDE_CODE_CLI_PATH
+      timeout: 10m
+      concurrency: 1
+      execution_location: local
+      inference_trust: public_remote
+      privacy_policy: deny_confidential
+      capabilities: [coding, code_review, code_test, code_debug]
+      allow_direct_writes: false

@@ -43,5 +43,21 @@ func (c Config) Validate() error {
 	if c.Agent.Leader.ModelID == "" {
 		return errors.New("agent.leader.model_id is required")
 	}
+	if c.CodingAgents.DefaultBackend != "" {
+		if _, ok := c.CodingAgents.Backends[c.CodingAgents.DefaultBackend]; !ok {
+			return fmt.Errorf("coding_agents.default_backend %q is not defined", c.CodingAgents.DefaultBackend)
+		}
+	}
+	for id, backend := range c.CodingAgents.Backends {
+		if backend.Adapter == "" {
+			return fmt.Errorf("coding_agents.backends.%s.adapter is required", id)
+		}
+		if backend.IsEnabled() && backend.InferenceTrust == "" {
+			return fmt.Errorf("coding_agents.backends.%s.inference_trust is required", id)
+		}
+		if backend.IsEnabled() && backend.ExecutionLocation == "" {
+			return fmt.Errorf("coding_agents.backends.%s.execution_location is required", id)
+		}
+	}
 	return nil
 }

@@ -18,7 +18,8 @@
 - Claim-level verification、Evidence coverage、conflict detection、confidence policy
 - Token/Cost Accountant
 - YAML 配置、SQLite/PostgreSQL/Qdrant 数据模型、REST/API 或 CLI 最小入口
-- P0-P7 分阶段实施计划和可独立提交的 Codex 任务清单
+- P0-P8 分阶段实施计划和可独立提交的 Codex 任务清单
+- External Coding Agent：Codex/Claude Code CLI adapter、worktree isolation、safe process cancellation、repository privacy policy、coding evidence validation
 
 建议执行顺序：
 
@@ -34,7 +35,7 @@
 
 This package is an executable engineering specification for implementing a Go-based Local-first Parallel Personal Agent in the `wuyuetianjian/personal-agent` repository.
 
-The system includes separated Leader/Sub-Agent model configuration, an OpenAI-compatible model layer, local-first RAG, memory, parallel task orchestration, browser automation with session reuse, privacy enforcement, claim verification, and token/cost accounting.
+The system includes separated Leader/Sub-Agent model configuration, an OpenAI-compatible model layer, local-first RAG, memory, parallel task orchestration, browser automation with session reuse, privacy enforcement, claim verification, token/cost accounting, and governed External Coding Agent adapters for Codex/Claude-style CLI backends.
 
 Recommended execution order:
 

@@ -75,3 +75,31 @@ browser:
 
 permissions:
   default: deny
+
+coding_agents:
+  default_backend: codex
+  backends:
+    codex:
+      enabled: false
+      adapter: codex
+      binary: codex
+      binary_env: PACHAT_CODEX_CLI_PATH
+      timeout: 10m
+      concurrency: 1
+      execution_location: local
+      inference_trust: public_remote
+      privacy_policy: deny_confidential
+      capabilities: [coding, code_review, code_test, code_debug]
+      allow_direct_writes: false
+    claude:
+      enabled: false
+      adapter: claude
+      binary: claude
+      binary_env: PACHAT_CLAUDE_CODE_CLI_PATH
+      timeout: 10m
+      concurrency: 1
+      execution_location: local
+      inference_trust: public_remote
+      privacy_policy: deny_confidential
+      capabilities: [coding, code_review, code_test, code_debug]
+      allow_direct_writes: false

@@ -4,9 +4,9 @@
 
 AI agent for local user workflows.
 
-This repository is a Go implementation of a local-first parallel personal agent. The current implementation includes the P0 foundation, P1 model/privacy foundation, P2 RAG/memory foundation, P3 orchestration/Sub-Agent foundation, P4 browser runtime foundation, P5 permissions/verification/cost foundation, P6 API/E2E/hardening foundation, and the P7 Runtime MVP first vertical slice: `pachat` CLI packaging, configuration loading, SQLite migrations, core agent/browser contracts, interactive local memory, long-task state tracking, model registry/policy contracts, OpenAI-compatible provider boundaries, a fail-closed Privacy Gateway for public remote model calls, local BM25 retrieval, RRF result fusion, Qdrant boundary code, context compression, working/episodic/semantic memory stores, cancellable DAG orchestration, dependency-aware parallel scheduling, Sub-Agent retry handling, early stop, ordered node lifecycle evidence events, a governed chromedp browser runtime boundary, global permission policy evaluation, confirmation audit records, claim/evidence verification, conflict detection, registry-backed cost accounting, local REST task APIs, confirmation approve/deny APIs, full mock-based local E2E coverage, secret-leak regression fixtures, and a unified local-first Runtime used by CLI/API task execution.
+This repository is a Go implementation of a local-first parallel personal agent. The current implementation includes the P0 foundation, P1 model/privacy foundation, P2 RAG/memory foundation, P3 orchestration/Sub-Agent foundation, P4 browser runtime foundation, P5 permissions/verification/cost foundation, P6 API/E2E/hardening foundation, P7 Runtime MVP first vertical slice, and P8 External Coding Agent library foundation: `pachat` CLI packaging, configuration loading, SQLite migrations, core agent/browser contracts, interactive local memory, long-task state tracking, model registry/policy contracts, OpenAI-compatible provider boundaries, a fail-closed Privacy Gateway for public remote model calls, local BM25 retrieval, RRF result fusion, Qdrant boundary code, context compression, working/episodic/semantic memory stores, cancellable DAG orchestration, dependency-aware parallel scheduling, Sub-Agent retry handling, early stop, ordered node lifecycle evidence events, a governed chromedp browser runtime boundary, global permission policy evaluation, confirmation audit records, claim/evidence verification, conflict detection, registry-backed cost accounting, local REST task APIs, confirmation approve/deny APIs, full mock-based local E2E coverage, secret-leak regression fixtures, a unified local-first Runtime used by CLI/API task execution, and a governed External Coding Agent boundary for Codex/Claude-style CLI backends.
 
-It includes Go contracts and safety skeletons for the Browser Tool, Browser Session Manager, Permission Layer integration, Privacy Gateway filtering, Evidence Bus records, model selection, provider enforcement, local retrieval/memory indexing, orchestration, semantic browser location, accessibility reads, screenshot capture, coordinate fallback, confirmation-gated browser execution, global permission decisions, verification gates, budget enforcement, local HTTP handler wiring, and Runtime-connected local RAG/memory/verification synthesis. It does not yet include cookie reading, password reading, production model caller wiring, CLI-connected browser execution, model-backed Leader DAG planning, API background task cancellation, live model-call metering, public model escalation, or a packaged long-running HTTP server command.
+It includes Go contracts and safety skeletons for the Browser Tool, Browser Session Manager, Permission Layer integration, Privacy Gateway filtering, Evidence Bus records, model selection, provider enforcement, local retrieval/memory indexing, orchestration, semantic browser location, accessibility reads, screenshot capture, coordinate fallback, confirmation-gated browser execution, global permission decisions, verification gates, budget enforcement, local HTTP handler wiring, Runtime-connected local RAG/memory/verification synthesis, coding agent adapter selection, safe process execution, environment sanitization, Git worktree isolation, CLI adapter request mapping, coding evidence collection, and repository privacy checks. It does not yet include cookie reading, password reading, production model caller wiring, CLI-connected browser execution, model-backed Leader DAG planning, API background task cancellation, live model-call metering, public model escalation, packaged long-running HTTP server command, or automatic Runtime dispatch to real Codex/Claude CLI processes from user-facing commands.
 
 ### Contents
 
@@ -26,6 +26,7 @@ It includes Go contracts and safety skeletons for the Browser Tool, Browser Sess
 - `internal/privacy`: HMAC-SHA256 pseudonymization, secret redaction, credential dump blocking, and audit metadata.
 - `internal/api`: Local REST handler for task create/list/status/cancel/events and confirmation inspect/approve/deny.
 - `internal/runtime`: Local-first Personal Agent Runtime that connects task execution to memory, RAG, evidence, verification, and synthesis.
+- `internal/codingagent`: External Coding Agent contracts, registry, safe process executor, worktree isolation, Codex/Claude CLI adapters, environment sanitizer, and evidence validation.
 - `internal/e2e`: Mock-based local integration tests that combine API, SQLite, RAG, memory, model mocks, browser denial, verification, cost, and secret-leak regression coverage.
 
 ### P0 Usage
@@ -172,6 +173,14 @@ P7 Runtime MVP is documented in `docs/projdocs/P0_P7_EXECUTION_PLAN.md`, `docs/p
 
 P7 MVP acceptance covers the removal of the no-op task path, local-first evidence, zero public model usage when local evidence is enough, Runtime-backed CLI/API task execution, verification reports, persisted final answers, and secret-leak regression coverage. Remaining P7 increments cover model-backed Leader DAG planning, BrowserAgent execution, API background cancellation, public model escalation, and live token/cost accounting.
 
+### P8 External Coding Agents
+
+P8 is documented in `docs/projdocs/P0_P8_EXECUTION_PLAN.md`, `docs/p8_external_coding_agents.md`, and `docs/projdocs/task/P8.md`. The first library slice adds a governed External Coding Agent boundary for Codex CLI and Claude Code CLI style backends.
+
+P8 includes configurable backend enablement, independent execution location and inference trust, capability-based backend selection with fallback, safe subprocess execution with timeout/cancellation, minimal environment sanitization, Git worktree isolation, Codex/Claude adapter request mapping, repository privacy denial for confidential repositories using public remote inference, and evidence validation requiring actual diff/files/tests instead of self-reported completion.
+
+Current P8 limitation: the package is ready for Runtime integration, but `pachat run` and local REST APIs do not yet automatically dispatch coding task nodes to real Codex/Claude CLI processes.
+
 ### Validation
 
 Run:
@@ -195,9 +204,9 @@ make smoke
 
 面向本地用户工作流的 AI Agent。
 
-本仓库是一个 Go 版本本地优先并行个人 Agent。当前实现包含 P0 基础层、P1 模型/隐私基础层、P2 RAG/记忆基础层、P3 编排/Sub-Agent 基础层、P4 浏览器运行时基础层、P5 权限/验证/成本基础层、P6 API/E2E/加固基础层和 P7 Runtime MVP 第一条 vertical slice：`pachat` CLI 打包、配置加载、SQLite 迁移、核心 agent/browser 契约、交互式本地记忆、长任务状态跟踪、模型注册/策略契约、OpenAI-compatible provider 边界、面向 public remote 模型调用的 fail-closed Privacy Gateway、本地 BM25 检索、RRF 结果融合、Qdrant 边界、上下文压缩、working/episodic/semantic memory store、可取消 DAG 编排、依赖感知并行调度、Sub-Agent retry、early stop、有序节点生命周期 evidence event、受治理的 chromedp 浏览器运行时边界、全局权限策略评估、确认审计记录、claim/evidence 验证、冲突检测、基于 registry 的成本核算、本地 REST 任务 API、确认 approve/deny API、基于 mock 的完整本地 E2E 覆盖、secret-leak 回归 fixture，以及 CLI/API 任务执行使用的统一本地优先 Runtime。
+本仓库是一个 Go 版本本地优先并行个人 Agent。当前实现包含 P0 基础层、P1 模型/隐私基础层、P2 RAG/记忆基础层、P3 编排/Sub-Agent 基础层、P4 浏览器运行时基础层、P5 权限/验证/成本基础层、P6 API/E2E/加固基础层、P7 Runtime MVP 第一条 vertical slice，以及 P8 External Coding Agent 库层基础：`pachat` CLI 打包、配置加载、SQLite 迁移、核心 agent/browser 契约、交互式本地记忆、长任务状态跟踪、模型注册/策略契约、OpenAI-compatible provider 边界、面向 public remote 模型调用的 fail-closed Privacy Gateway、本地 BM25 检索、RRF 结果融合、Qdrant 边界、上下文压缩、working/episodic/semantic memory store、可取消 DAG 编排、依赖感知并行调度、Sub-Agent retry、early stop、有序节点生命周期 evidence event、受治理的 chromedp 浏览器运行时边界、全局权限策略评估、确认审计记录、claim/evidence 验证、冲突检测、基于 registry 的成本核算、本地 REST 任务 API、确认 approve/deny API、基于 mock 的完整本地 E2E 覆盖、secret-leak 回归 fixture、CLI/API 任务执行使用的统一本地优先 Runtime，以及面向 Codex/Claude 风格 CLI backend 的受治理 External Coding Agent 边界。
 
-仓库包含 Browser Tool、Browser Session Manager、Permission Layer 接入、Privacy Gateway 脱敏、Evidence Bus 记录、模型选择、provider enforcement、本地检索/记忆索引、编排、语义浏览器定位、accessibility 读取、截图、坐标兜底、带确认 gate 的浏览器执行、全局权限决策、验证 gate、预算控制、本地 HTTP handler wiring，以及接入 Runtime 的本地 RAG/Memory/Verification synthesis。仓库暂不包含 cookie 读取器、密码读取器、生产模型调用接线、接入 CLI 的浏览器执行、模型驱动的 Leader DAG planning、API 后台任务取消、实时模型调用计量、public model escalation 或打包后的常驻 HTTP server 命令。
+仓库包含 Browser Tool、Browser Session Manager、Permission Layer 接入、Privacy Gateway 脱敏、Evidence Bus 记录、模型选择、provider enforcement、本地检索/记忆索引、编排、语义浏览器定位、accessibility 读取、截图、坐标兜底、带确认 gate 的浏览器执行、全局权限决策、验证 gate、预算控制、本地 HTTP handler wiring、接入 Runtime 的本地 RAG/Memory/Verification synthesis、coding agent adapter 选择、安全进程执行、环境脱敏、Git worktree 隔离、CLI adapter request mapping、coding evidence 收集和 repository privacy 检查。仓库暂不包含 cookie 读取器、密码读取器、生产模型调用接线、接入 CLI 的浏览器执行、模型驱动的 Leader DAG planning、API 后台任务取消、实时模型调用计量、public model escalation、打包后的常驻 HTTP server 命令，或从用户命令自动调度真实 Codex/Claude CLI 进程。
 
 ### 内容
 
@@ -217,6 +226,7 @@ make smoke
 - `internal/privacy`：HMAC-SHA256 pseudonymization、secret redaction、credential dump blocking 和 audit metadata。
 - `internal/api`：本地 REST handler，支持 task create/list/status/cancel/events 和 confirmation inspect/approve/deny。
 - `internal/runtime`：本地优先 Personal Agent Runtime，连接 task execution、memory、RAG、evidence、verification 和 synthesis。
+- `internal/codingagent`：External Coding Agent 契约、registry、安全进程执行器、worktree 隔离、Codex/Claude CLI adapter、环境脱敏和 evidence 验证。
 - `internal/e2e`：基于 mock 的本地集成测试，组合 API、SQLite、RAG、memory、model mock、浏览器 denial、verification、cost 和 secret-leak 回归覆盖。
 
 ### P0 使用方式
@@ -362,6 +372,14 @@ P6 新增本地 API 和集成验证：
 P7 Runtime MVP 已记录在 `docs/projdocs/P0_P7_EXECUTION_PLAN.md`、`docs/p7_runtime_integration.md`、`docs/p7_runtime_mvp_implementation.md` 和 `docs/projdocs/task/P7.md` 中。第一条 vertical slice 已将 storage、memory、本地 RAG、evidence、verification、synthesis、CLI execution 和 API task creation 连接成真正的本地优先任务执行路径。
 
 P7 MVP 验收覆盖移除 no-op task path、local-first evidence、本地证据足够时 public model usage 为零、Runtime-backed CLI/API task execution、verification report、持久化 final answer 和 secret-leak 回归覆盖。后续 P7 增量继续覆盖模型驱动 Leader DAG planning、BrowserAgent execution、API background cancellation、public model escalation 和实时 token/cost accounting。
+
+### P8 External Coding Agents
+
+P8 已记录在 `docs/projdocs/P0_P8_EXECUTION_PLAN.md`、`docs/p8_external_coding_agents.md` 和 `docs/projdocs/task/P8.md` 中。第一条库层 slice 增加了面向 Codex CLI 与 Claude Code CLI 风格 backend 的受治理 External Coding Agent 边界。
+
+P8 包含可配置 backend enablement、独立的 execution location 与 inference trust、基于 capability 的 backend selection 与 fallback、安全 subprocess 执行及 timeout/cancellation、最小环境脱敏、Git worktree 隔离、Codex/Claude adapter request mapping、针对 confidential repository + public remote inference 的隐私拒绝，以及要求真实 diff/files/tests 而非 self-reported completion 的 evidence 验证。
+
+当前 P8 边界：包已为 Runtime integration 准备好，但 `pachat run` 和本地 REST API 尚不会自动把 coding task node 调度到真实 Codex/Claude CLI 进程。
 
 ### 验证
 
