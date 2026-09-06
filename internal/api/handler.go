@@ -13,6 +13,7 @@ import (
 	"time"
 
 	agentEvent "agent/internal/event"
+	"agent/internal/notification"
 	"agent/internal/orchestrator"
 	"agent/internal/permission"
 	"agent/internal/runtime"
@@ -28,6 +29,8 @@ type Server struct {
 	ActiveTasks   *TaskRunner
 	Triggers      trigger.Store
 	EventStore    agentEvent.Store
+	Notifications notification.Store
+	ModelRegistry []string
 	LeaderModelID string
 	Now           func() time.Time
 	Security      SecurityPolicy
@@ -58,6 +61,11 @@ func (s Server) Handler() http.Handler {
 	mux.HandleFunc("POST /tasks/{id}/cancel", s.cancelTask)
 	mux.HandleFunc("GET /tasks/{id}/events", s.listEvents)
 	mux.HandleFunc("POST /events", s.createEvent)
+	mux.HandleFunc("GET /dashboard", s.dashboard)
+	mux.HandleFunc("GET /dashboard/events", s.dashboardEvents)
+	mux.HandleFunc("GET /models/discover", s.discoverModels)
+	mux.HandleFunc("GET /notifications", s.listNotifications)
+	mux.HandleFunc("POST /notifications/{id}/read", s.markNotificationRead)
 	mux.HandleFunc("POST /triggers", s.createTrigger)
 	mux.HandleFunc("GET /triggers", s.listTriggers)
 	mux.HandleFunc("GET /triggers/{id}", s.getTrigger)
@@ -326,6 +334,60 @@ func (s Server) createEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"id": event.ID, "status": "accepted"})
+}
+
+func (s Server) dashboard(w http.ResponseWriter, r *http.Request) {
+	taskCount := 0
+	if counter, ok := s.Tasks.(interface {
+		TaskCount(context.Context) (int, error)
+	}); ok {
+		if got, err := counter.TaskCount(r.Context()); err == nil {
+			taskCount = got
+		}
+	}
+	triggerCount := 0
+	if s.Triggers.DB != nil {
+		if items, err := s.Triggers.List(r.Context()); err == nil {
+			triggerCount = len(items)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "tasks": taskCount, "triggers": triggerCount})
+}
+
+func (s Server) dashboardEvents(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("event: ready\ndata: {\"status\":\"ok\"}\n\n"))
+}
+
+func (s Server) discoverModels(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"models": append([]string(nil), s.ModelRegistry...)})
+}
+
+func (s Server) listNotifications(w http.ResponseWriter, r *http.Request) {
+	if s.Notifications.DB == nil {
+		writeError(w, http.StatusServiceUnavailable, "notification_store_unavailable")
+		return
+	}
+	items, err := s.Notifications.List(r.Context(), 50)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "notification_list_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"notifications": items})
+}
+
+func (s Server) markNotificationRead(w http.ResponseWriter, r *http.Request) {
+	if s.Notifications.DB == nil {
+		writeError(w, http.StatusServiceUnavailable, "notification_store_unavailable")
+		return
+	}
+	if err := s.Notifications.MarkRead(r.Context(), r.PathValue("id")); err != nil {
+		writeError(w, http.StatusInternalServerError, "notification_update_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"id": r.PathValue("id"), "status": "read"})
 }
 
 func (s Server) createTrigger(w http.ResponseWriter, r *http.Request) {

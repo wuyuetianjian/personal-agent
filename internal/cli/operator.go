@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -20,6 +21,7 @@ import (
 	"agent/internal/api"
 	"agent/internal/config"
 	agentEvent "agent/internal/event"
+	"agent/internal/notification"
 	"agent/internal/observability"
 	"agent/internal/permission"
 	"agent/internal/project"
@@ -643,15 +645,72 @@ func approvalCommand(ctx context.Context, args []string, stdout io.Writer) error
 	if len(args) == 0 {
 		return usageError("approval requires list, show, approve, or deny")
 	}
-	switch args[0] {
-	case "list":
-		fmt.Fprintln(stdout, "No persistent approval requests. Runtime approvals are currently in-memory only.")
-		return nil
-	case "show", "approve", "deny":
-		return errors.New("persistent approval inbox is not available in this P12 slice")
-	default:
+	if args[0] != "list" && args[0] != "show" && args[0] != "approve" && args[0] != "deny" {
 		return usageError("unknown approval subcommand " + args[0])
 	}
+	fs := flag.NewFlagSet("approval "+args[0], flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	configPath := fs.String("config", "", "config file path")
+	id := fs.String("id", "", "approval id")
+	jsonOutput := fs.Bool("json", false, "print JSON")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if *configPath == "" {
+		return usageError("approval requires --config")
+	}
+	_, db, err := openConfiguredDB(ctx, *configPath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	store := permission.SQLiteConfirmationStore{DB: db.SQL}
+	switch args[0] {
+	case "list":
+		requests, err := store.List(ctx, "pending", 50)
+		if err != nil {
+			return err
+		}
+		if *jsonOutput {
+			return writePrettyJSON(stdout, map[string]any{"approvals": requests})
+		}
+		for _, request := range requests {
+			fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\n", request.ID, request.Risk, request.Action, request.Target)
+		}
+		return nil
+	case "show":
+		if *id == "" {
+			return usageError("approval show requires --id")
+		}
+		request, ok := store.RequestByID(*id)
+		if !ok {
+			return sql.ErrNoRows
+		}
+		if *jsonOutput {
+			return writePrettyJSON(stdout, request)
+		}
+		fmt.Fprintf(stdout, "id=%s\ntask_id=%s\naction=%s\nrisk=%s\ntarget=%s\n", request.ID, request.TaskID, request.Action, request.Risk, request.Target)
+		return nil
+	case "approve":
+		if *id == "" {
+			return usageError("approval approve requires --id")
+		}
+		if err := store.Approve(ctx, *id); err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "approval_id=%s status=approved\n", *id)
+		return nil
+	case "deny":
+		if *id == "" {
+			return usageError("approval deny requires --id")
+		}
+		if err := store.Deny(ctx, *id); err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "approval_id=%s status=denied\n", *id)
+		return nil
+	}
+	return nil
 }
 
 func serveCommand(ctx context.Context, args []string, stdout io.Writer) error {
@@ -673,12 +732,16 @@ func serveCommand(ctx context.Context, args []string, stdout io.Writer) error {
 		return err
 	}
 	defer rt.Close()
-	confirmations := permission.NewInMemoryConfirmationStore()
+	confirmations := permission.SQLiteConfirmationStore{DB: rt.Storage.SQL}
 	eventSource, _ := rt.Events.(api.EventSource)
 	server := api.NewServerWithRunner(rt.Storage, eventSource, confirmations, cfg.Agent.Leader.ModelID, rt)
 	server.Security = api.NewSecurityPolicy(cfg.Security.API)
 	server.Triggers = trigger.Store{DB: rt.Storage.SQL}
 	server.EventStore = agentEvent.Store{DB: rt.Storage.SQL}
+	server.Notifications = notification.Store{DB: rt.Storage.SQL}
+	for _, model := range cfg.Models.Registry {
+		server.ModelRegistry = append(server.ModelRegistry, model.ID)
+	}
 	metrics := observability.NewRegistry()
 	mux := http.NewServeMux()
 	mux.Handle("/", metricsMiddleware(metrics, server.Handler()))

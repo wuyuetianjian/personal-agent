@@ -205,6 +205,54 @@ func TestTriggerCommands(t *testing.T) {
 	}
 }
 
+func TestP12ExtraCommands(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	dbPath := filepath.Join(dir, "agent.db")
+	writeConfig(t, configPath, dbPath)
+
+	db, err := storage.OpenSQLite(context.Background(), dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := storage.Migrate(context.Background(), db.SQL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL.ExecContext(context.Background(), `INSERT INTO notification_inbox (id, project_id, trigger_id, title, body, dedup_key, status, created_at, read_at) VALUES ('notif-cli', 'default', 'trigger-cli', 'Title', 'Body', 'dedup-cli', 'unread', CURRENT_TIMESTAMP, NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	var notificationOut bytes.Buffer
+	if err := Run(context.Background(), []string{"notification", "list", "--config", configPath}, &notificationOut); err != nil {
+		t.Fatalf("notification list error = %v", err)
+	}
+	if !strings.Contains(notificationOut.String(), "notif-cli") {
+		t.Fatalf("notification output = %q", notificationOut.String())
+	}
+	var modelOut bytes.Buffer
+	if err := Run(context.Background(), []string{"model", "discover", "--config", configPath}, &modelOut); err != nil {
+		t.Fatalf("model discover error = %v", err)
+	}
+	if !strings.Contains(modelOut.String(), "local-planner") {
+		t.Fatalf("model output = %q", modelOut.String())
+	}
+	watchDir := filepath.Join(dir, "watch")
+	if err := os.MkdirAll(watchDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(watchDir, "note.txt"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var watcherOut bytes.Buffer
+	if err := Run(context.Background(), []string{"watcher", "scan", "--config", configPath, "--path", watchDir}, &watcherOut); err != nil {
+		t.Fatalf("watcher scan error = %v", err)
+	}
+	if !strings.Contains(watcherOut.String(), "events=1") {
+		t.Fatalf("watcher output = %q", watcherOut.String())
+	}
+}
+
 func TestP12InitConfigValidateDoctorAndMaintenance(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")

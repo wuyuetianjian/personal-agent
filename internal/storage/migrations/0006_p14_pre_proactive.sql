@@ -43,3 +43,18 @@ CREATE TABLE IF NOT EXISTS goals (
   updated_at timestamp not null
 );
 CREATE INDEX IF NOT EXISTS idx_goals_project_status ON goals(project_id, status);
+
+CREATE TABLE IF NOT EXISTS confirmation_requests (
+  id text primary key,
+  task_id text not null,
+  node_id text not null,
+  action text not null,
+  target text not null,
+  risk text not null,
+  evidence_ids_json text not null,
+  proposed_effect text not null,
+  status text not null,
+  requested_at timestamp not null,
+  decided_at timestamp null
+);
+CREATE INDEX IF NOT EXISTS idx_confirmation_requests_status ON confirmation_requests(status, requested_at);

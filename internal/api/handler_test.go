@@ -13,6 +13,7 @@ import (
 
 	"agent/internal/config"
 	agentEvent "agent/internal/event"
+	"agent/internal/notification"
 	"agent/internal/orchestrator"
 	"agent/internal/permission"
 	"agent/internal/runtime"
@@ -201,6 +202,8 @@ func TestTriggerAndEventEndpoints(t *testing.T) {
 	server := NewServer(db, nil, permission.NewInMemoryConfirmationStore(), "local-planner")
 	server.Triggers = trigger.Store{DB: db.SQL}
 	server.EventStore = agentEvent.Store{DB: db.SQL}
+	server.Notifications = notification.Store{DB: db.SQL}
+	server.ModelRegistry = []string{"local-planner"}
 	handler := server.Handler()
 
 	createTrigger := httptest.NewRecorder()
@@ -228,6 +231,16 @@ func TestTriggerAndEventEndpoints(t *testing.T) {
 	handler.ServeHTTP(createEvent, httptest.NewRequest(http.MethodPost, "/events", strings.NewReader(`{"id":"ev-api","source":"test","type":"push","project_id":"default","payload":{"token":"secret"}}`)))
 	if createEvent.Code != http.StatusCreated {
 		t.Fatalf("event create status=%d body=%s", createEvent.Code, createEvent.Body.String())
+	}
+	dashboard := httptest.NewRecorder()
+	handler.ServeHTTP(dashboard, httptest.NewRequest(http.MethodGet, "/dashboard", nil))
+	if dashboard.Code != http.StatusOK || !strings.Contains(dashboard.Body.String(), `"status":"ok"`) {
+		t.Fatalf("dashboard status=%d body=%s", dashboard.Code, dashboard.Body.String())
+	}
+	models := httptest.NewRecorder()
+	handler.ServeHTTP(models, httptest.NewRequest(http.MethodGet, "/models/discover", nil))
+	if models.Code != http.StatusOK || !strings.Contains(models.Body.String(), "local-planner") {
+		t.Fatalf("models status=%d body=%s", models.Code, models.Body.String())
 	}
 }
 
