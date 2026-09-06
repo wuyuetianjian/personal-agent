@@ -1,5 +1,7 @@
 # P1 Model And Privacy Foundation
 
+Archived stage record: `docs/projdocs/task/P1.md`.
+
 ## Scope
 
 P1 adds the model and privacy library foundation required by later agent phases. It does not change the P0 CLI execution path, which remains a local no-op task runner.
