@@ -47,6 +47,8 @@ type Node struct {
 	NodeID         string
 	CapabilityID   string
 	Role           string
+	Dependencies   []string
+	DAGVersion     string
 	Status         NodeStatus
 	Attempt        int
 	IdempotencyKey string

@@ -76,6 +76,13 @@ func TestRunUsesLocalRAGWithoutPublicCalls(t *testing.T) {
 	if len(events.Events()) == 0 {
 		t.Fatal("runtime did not publish events")
 	}
+	workflows, err := rt.Workflows.List(ctx, 10)
+	if err != nil {
+		t.Fatalf("workflow List() error = %v", err)
+	}
+	if len(workflows) != 1 || workflows[0].TaskID != "task-1" || workflows[0].Status != workflow.StatusCompleted {
+		t.Fatalf("workflows = %#v, want completed workflow for task-1", workflows)
+	}
 	for _, event := range events.Events() {
 		if event.TaskID != "task-1" {
 			t.Fatalf("event task id = %q, want task-1", event.TaskID)

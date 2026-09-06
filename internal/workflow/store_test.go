@@ -50,3 +50,37 @@ func TestWorkflowPauseResumeCancel(t *testing.T) {
 		}
 	}
 }
+
+func TestWorkflowNodeDependenciesPersistForRecovery(t *testing.T) {
+	db, err := storage.OpenSQLite(context.Background(), filepath.Join(t.TempDir(), "workflow.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := storage.Migrate(context.Background(), db.SQL); err != nil {
+		t.Fatal(err)
+	}
+	s := Store{DB: db.SQL}
+	if err := s.Create(context.Background(), Run{ID: "wf-deps", TaskID: "task-deps", Status: StatusPending}, []Node{
+		{WorkflowID: "wf-deps", NodeID: "memory", CapabilityID: "memory.search"},
+		{WorkflowID: "wf-deps", NodeID: "verify", CapabilityID: "verification.verify", Dependencies: []string{"memory"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	nodes, err := s.Recover(context.Background(), "wf-deps")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 2 {
+		t.Fatalf("nodes=%#v", nodes)
+	}
+	var verify Node
+	for _, node := range nodes {
+		if node.NodeID == "verify" {
+			verify = node
+		}
+	}
+	if len(verify.Dependencies) != 1 || verify.Dependencies[0] != "memory" || verify.DAGVersion != "v1" {
+		t.Fatalf("verify node=%#v, want persisted dependency and dag version", verify)
+	}
+}

@@ -37,7 +37,14 @@ func (s Store) Create(ctx context.Context, run Run, nodes []Node) error {
 		if node.Status == "" {
 			node.Status = NodePending
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO workflow_nodes (workflow_id, node_id, capability_id, role, status, attempt, idempotency_key, side_effect, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, run.ID, node.NodeID, node.CapabilityID, node.Role, node.Status, node.Attempt, node.IdempotencyKey, node.SideEffect, node.StartedAt, node.CompletedAt)
+		if node.DAGVersion == "" {
+			node.DAGVersion = "v1"
+		}
+		deps, err := json.Marshal(node.Dependencies)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO workflow_nodes (workflow_id, node_id, capability_id, role, dependencies_json, dag_version, status, attempt, idempotency_key, side_effect, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, run.ID, node.NodeID, node.CapabilityID, node.Role, string(deps), node.DAGVersion, node.Status, node.Attempt, node.IdempotencyKey, node.SideEffect, node.StartedAt, node.CompletedAt)
 		if err != nil {
 			return err
 		}
@@ -127,7 +134,7 @@ func (s Store) SaveCheckpoint(ctx context.Context, cp Checkpoint) error {
 }
 
 func (s Store) Recover(ctx context.Context, workflowID string) ([]Node, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT workflow_id, node_id, capability_id, role, status, attempt, idempotency_key, side_effect, started_at, completed_at FROM workflow_nodes WHERE workflow_id = ? AND status NOT IN (?, ?, ?, ?) ORDER BY node_id`, workflowID, NodeCompleted, NodeFailed, NodeSkipped, NodeCancelled)
+	rows, err := s.DB.QueryContext(ctx, `SELECT workflow_id, node_id, capability_id, role, dependencies_json, dag_version, status, attempt, idempotency_key, side_effect, started_at, completed_at FROM workflow_nodes WHERE workflow_id = ? AND status NOT IN (?, ?, ?, ?) ORDER BY node_id`, workflowID, NodeCompleted, NodeFailed, NodeSkipped, NodeCancelled)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +142,11 @@ func (s Store) Recover(ctx context.Context, workflowID string) ([]Node, error) {
 	var out []Node
 	for rows.Next() {
 		var n Node
-		if err := rows.Scan(&n.WorkflowID, &n.NodeID, &n.CapabilityID, &n.Role, &n.Status, &n.Attempt, &n.IdempotencyKey, &n.SideEffect, &n.StartedAt, &n.CompletedAt); err != nil {
+		var deps string
+		if err := rows.Scan(&n.WorkflowID, &n.NodeID, &n.CapabilityID, &n.Role, &deps, &n.DAGVersion, &n.Status, &n.Attempt, &n.IdempotencyKey, &n.SideEffect, &n.StartedAt, &n.CompletedAt); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal([]byte(deps), &n.Dependencies); err != nil {
 			return nil, err
 		}
 		out = append(out, n)

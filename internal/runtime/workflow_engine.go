@@ -86,12 +86,13 @@ func (e *WorkflowEngine) RunWorkflow(ctx context.Context, workflowID string) err
 			nodeInput = run.InputJSON
 		}
 		taskNodes = append(taskNodes, agent.TaskNode{
-			TaskID:      run.TaskID,
-			ID:          node.NodeID,
-			Role:        roleForCapability(node.CapabilityID, node.Role),
-			Type:        node.CapabilityID,
-			Input:       nodeInput,
-			MaxAttempts: max(1, node.Attempt+1),
+			TaskID:       run.TaskID,
+			ID:           node.NodeID,
+			Role:         roleForCapability(node.CapabilityID, node.Role),
+			Type:         node.CapabilityID,
+			Input:        nodeInput,
+			Dependencies: append([]string(nil), node.Dependencies...),
+			MaxAttempts:  max(1, node.Attempt+1),
 			Metadata: map[string]string{
 				"workflow_id":     workflowID,
 				"capability_id":   node.CapabilityID,
@@ -165,6 +166,7 @@ func (e *WorkflowEngine) localAgents(workflowID string, input workflowInput) map
 		agent.RoleMemory:       workflowSubAgent{role: agent.RoleMemory, engine: e, workflowID: workflowID, input: input},
 		agent.RoleRetrieval:    workflowSubAgent{role: agent.RoleRetrieval, engine: e, workflowID: workflowID, input: input},
 		agent.RoleVerification: workflowSubAgent{role: agent.RoleVerification, engine: e, workflowID: workflowID, input: input},
+		agent.RoleSynthesis:    workflowSubAgent{role: agent.RoleSynthesis, engine: e, workflowID: workflowID, input: input},
 	}
 }
 
@@ -263,6 +265,13 @@ func (a workflowSubAgent) executeLocal(ctx context.Context, node agent.TaskNode)
 		}
 		ids := evidenceIDs(evidence)
 		return agent.Result{Text: "verification completed", EvidenceIDs: ids, Usage: agentUsage(node.Input, "verification completed")}, nil
+	case "synthesis.local":
+		evidence, err := a.engine.Runtime.Evidence.ListByTask(ctx, node.TaskID)
+		if err != nil {
+			return agent.Result{ErrorCategory: agent.ErrorRetryable, ErrorMessage: err.Error()}, err
+		}
+		answer, _ := synthesizeLocalAnswer(node.Input, evidence)
+		return agent.Result{Text: answer, EvidenceIDs: evidenceIDs(evidence), Usage: agentUsage(node.Input, answer)}, nil
 	default:
 		msg := "unsupported runtime workflow capability: " + node.Type
 		return agent.Result{ErrorCategory: agent.ErrorBlockedMissingInput, ErrorMessage: msg}, errors.New(msg)
@@ -289,6 +298,8 @@ func roleForCapability(capabilityID string, fallback string) agent.Role {
 		return agent.RoleRetrieval
 	case "verification.verify":
 		return agent.RoleVerification
+	case "synthesis.local":
+		return agent.RoleSynthesis
 	default:
 		return agent.Role(fallback)
 	}

@@ -2,6 +2,9 @@ package runtime
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -9,6 +12,7 @@ import (
 	"agent/internal/observability"
 	"agent/internal/orchestrator"
 	"agent/internal/verification"
+	"agent/internal/workflow"
 )
 
 func (r *Runtime) Run(ctx context.Context, req RunRequest) (*RunResult, error) {
@@ -28,6 +32,9 @@ func (r *Runtime) Run(ctx context.Context, req RunRequest) (*RunResult, error) {
 	defer func() { finish(nil) }()
 	if err := r.publish(ctx, req.TaskID, orchestrator.EventNodeStarted, "task", agent.RoleLeader, nil); err != nil {
 		return nil, err
+	}
+	if r.Workflow != nil {
+		return r.runViaWorkflow(ctx, req)
 	}
 
 	memoryEvidence, err := r.Memory.Search(ctx, req.TaskID, req.Input, 8)
@@ -94,6 +101,85 @@ func (r *Runtime) Run(ctx context.Context, req RunRequest) (*RunResult, error) {
 	result.Usage.OutputTokens = estimateTokens(answer)
 	result.Usage.RemoteTokens = 0
 	return result, nil
+}
+
+func (r *Runtime) runViaWorkflow(ctx context.Context, req RunRequest) (*RunResult, error) {
+	workflowID, err := randomID("wf")
+	if err != nil {
+		return nil, err
+	}
+	input, err := json.Marshal(workflowInput{
+		Input:           req.Input,
+		MaxInputTokens:  req.MaxTokens,
+		MaxOutputTokens: req.MaxTokens,
+		MaxCostUSD:      req.MaxCostUSD,
+	})
+	if err != nil {
+		return nil, err
+	}
+	nodes := []workflow.Node{
+		{WorkflowID: workflowID, NodeID: "memory", CapabilityID: "memory.search", Role: string(agent.RoleMemory), Status: workflow.NodePending, IdempotencyKey: workflowID + ":memory"},
+		{WorkflowID: workflowID, NodeID: "retrieval", CapabilityID: "rag.search", Role: string(agent.RoleRetrieval), Status: workflow.NodePending, IdempotencyKey: workflowID + ":retrieval"},
+		{WorkflowID: workflowID, NodeID: "verification", CapabilityID: "verification.verify", Role: string(agent.RoleVerification), Dependencies: []string{"memory", "retrieval"}, Status: workflow.NodePending, IdempotencyKey: workflowID + ":verification"},
+		{WorkflowID: workflowID, NodeID: "synthesis", CapabilityID: "synthesis.local", Role: string(agent.RoleSynthesis), Dependencies: []string{"verification"}, Status: workflow.NodePending, IdempotencyKey: workflowID + ":synthesis"},
+	}
+	if err := r.Workflows.Create(ctx, workflow.Run{
+		ID:           workflowID,
+		TaskID:       req.TaskID,
+		Status:       workflow.StatusPending,
+		InputJSON:    string(input),
+		SkillID:      "runtime.default",
+		SkillVersion: "v1",
+	}, nodes); err != nil {
+		_ = r.Storage.FailTask(ctx, req.TaskID, "workflow_create_failed", err.Error())
+		return nil, err
+	}
+	if err := r.Workflow.RunWorkflow(ctx, workflowID); err != nil {
+		_ = r.Storage.FailTask(ctx, req.TaskID, "workflow_failed", err.Error())
+		return nil, err
+	}
+	allEvidence, err := r.Evidence.ListByTask(ctx, req.TaskID)
+	if err != nil {
+		_ = r.Storage.FailTask(ctx, req.TaskID, "evidence_failed", err.Error())
+		return nil, err
+	}
+	answer, confidence := synthesizeLocalAnswer(req.Input, allEvidence)
+	claim := verification.Claim{
+		ID:          "claim_final_answer",
+		Text:        finalClaimText(req.Input, allEvidence),
+		Confidence:  confidence,
+		EvidenceIDs: evidenceIDs(allEvidence),
+	}
+	report := r.Verifier.Verify([]verification.Claim{claim}, verificationEvidence(allEvidence, claim.Text))
+	if !report.PassesPolicy && len(allEvidence) > 0 {
+		confidence = 0.7
+	}
+	if len(allEvidence) == 0 {
+		confidence = 0.35
+	}
+	if err := r.Storage.CompleteTask(ctx, req.TaskID, answer, confidence); err != nil {
+		return nil, err
+	}
+	result := &RunResult{
+		TaskID:         req.TaskID,
+		Answer:         answer,
+		Confidence:     confidence,
+		EvidenceIDs:    evidenceIDs(allEvidence),
+		Verification:   report,
+		LocalRouteType: RouteMixed,
+	}
+	result.Usage.InputTokens = estimateTokens(req.Input)
+	result.Usage.OutputTokens = estimateTokens(answer)
+	result.Usage.RemoteTokens = 0
+	return result, nil
+}
+
+func randomID(prefix string) (string, error) {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return prefix + "_" + hex.EncodeToString(b[:]), nil
 }
 
 func observabilitySpan(taskID, name, kind string) observability.TraceSpan {

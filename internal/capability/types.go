@@ -7,6 +7,7 @@ type Kind string
 const (
 	KindRetrieval    Kind = "retrieval"
 	KindMemory       Kind = "memory"
+	KindReasoning    Kind = "reasoning"
 	KindBrowser      Kind = "browser"
 	KindTool         Kind = "tool"
 	KindCodingAgent  Kind = "coding_agent"
