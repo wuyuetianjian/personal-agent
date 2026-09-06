@@ -176,9 +176,108 @@ func TestCapabilityAndWorkflowCommands(t *testing.T) {
 	}
 }
 
+func TestP12InitConfigValidateDoctorAndMaintenance(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	dbPath := filepath.Join(dir, "data", "agent.db")
+
+	var initOut bytes.Buffer
+	if err := Run(context.Background(), []string{"init", "--config", configPath, "--data-dir", filepath.Join(dir, "data"), "--db-path", dbPath}, &initOut); err != nil {
+		t.Fatalf("init error = %v", err)
+	}
+	if !strings.Contains(initOut.String(), "privacy_secret_env=PERSONAL_AGENT_PRIVACY_HMAC_SECRET") {
+		t.Fatalf("init output exposed wrong shape: %q", initOut.String())
+	}
+
+	var validateOut bytes.Buffer
+	if err := Run(context.Background(), []string{"config", "validate", "--config", configPath}, &validateOut); err != nil {
+		t.Fatalf("config validate error = %v", err)
+	}
+	if !strings.Contains(validateOut.String(), "OK") {
+		t.Fatalf("validate output = %q", validateOut.String())
+	}
+
+	var doctorOut bytes.Buffer
+	if err := Run(context.Background(), []string{"doctor", "--config", configPath}, &doctorOut); err != nil {
+		t.Fatalf("doctor error = %v", err)
+	}
+	if !strings.Contains(doctorOut.String(), "database") || !strings.Contains(doctorOut.String(), "privacy_secret") {
+		t.Fatalf("doctor output = %q", doctorOut.String())
+	}
+
+	var integrityOut bytes.Buffer
+	if err := Run(context.Background(), []string{"storage", "integrity", "--config", configPath}, &integrityOut); err != nil {
+		t.Fatalf("storage integrity error = %v", err)
+	}
+	if !strings.Contains(integrityOut.String(), "integrity=ok") {
+		t.Fatalf("integrity output = %q", integrityOut.String())
+	}
+}
+
+func TestP12KnowledgeProjectAndBackupCommands(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	dbPath := filepath.Join(dir, "agent.db")
+	writeConfig(t, configPath, dbPath)
+	sourcePath := filepath.Join(dir, "notes.txt")
+	if err := os.WriteFile(sourcePath, []byte("NFS latency was resolved by checking mount options."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var addOut bytes.Buffer
+	if err := Run(context.Background(), []string{"knowledge", "add", "--config", configPath, sourcePath}, &addOut); err != nil {
+		t.Fatalf("knowledge add error = %v", err)
+	}
+	if !strings.Contains(addOut.String(), "chunks=") {
+		t.Fatalf("knowledge add output = %q", addOut.String())
+	}
+
+	var statusOut bytes.Buffer
+	if err := Run(context.Background(), []string{"knowledge", "status", "--config", configPath}, &statusOut); err != nil {
+		t.Fatalf("knowledge status error = %v", err)
+	}
+	if !strings.Contains(statusOut.String(), "documents=1") {
+		t.Fatalf("knowledge status output = %q", statusOut.String())
+	}
+
+	var projectOut bytes.Buffer
+	if err := Run(context.Background(), []string{"project", "create", "--config", configPath, "--id", "proj-1", "--name", "Test Project"}, &projectOut); err != nil {
+		t.Fatalf("project create error = %v", err)
+	}
+	if !strings.Contains(projectOut.String(), "project_id=proj-1") {
+		t.Fatalf("project output = %q", projectOut.String())
+	}
+
+	var listOut bytes.Buffer
+	if err := Run(context.Background(), []string{"project", "list", "--config", configPath, "--json"}, &listOut); err != nil {
+		t.Fatalf("project list error = %v", err)
+	}
+	if !strings.Contains(listOut.String(), "Test Project") {
+		t.Fatalf("project list output = %q", listOut.String())
+	}
+
+	backupPath := filepath.Join(dir, "backup.zip")
+	var backupOut bytes.Buffer
+	if err := Run(context.Background(), []string{"backup", "create", "--config", configPath, "--output", backupPath}, &backupOut); err != nil {
+		t.Fatalf("backup create error = %v", err)
+	}
+	if _, err := os.Stat(backupPath); err != nil {
+		t.Fatalf("backup not created: %v", err)
+	}
+
+	var restoreOut bytes.Buffer
+	if err := Run(context.Background(), []string{"backup", "restore", "--config", configPath, "--input", backupPath}, &restoreOut); err != nil {
+		t.Fatalf("backup restore dry-run error = %v", err)
+	}
+	if !strings.Contains(restoreOut.String(), "restore=dry-run") {
+		t.Fatalf("restore output = %q", restoreOut.String())
+	}
+}
+
 func writeConfig(t *testing.T, path string, dbPath string) {
 	t.Helper()
-	content := `app:
+	content := `config_version: 1
+app:
   name: personal-agent
   environment: test
   data_dir: .

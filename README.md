@@ -4,9 +4,9 @@
 
 AI agent for local user workflows.
 
-This repository is a Go implementation of a local-first parallel personal agent. The current implementation includes the P0 foundation, P1 model/privacy foundation, P2 RAG/memory foundation, P3 orchestration/Sub-Agent foundation, P4 browser runtime foundation, P5 permissions/verification/cost foundation, P6 API/E2E/hardening foundation, P7 Runtime MVP first vertical slice, P8 External Coding Agent library foundation, P9 Capability/Skill/Workflow core slice, P10 proactive trigger/event core slice, and the first P11 Runtime Integration Closure slice: `pachat` CLI packaging, configuration loading, SQLite migrations, core agent/browser contracts, interactive local memory, long-task state tracking, model registry/policy contracts, OpenAI-compatible provider boundaries, a fail-closed Privacy Gateway for public remote model calls, local BM25 retrieval, RRF result fusion, Qdrant boundary code, context compression, working/episodic/semantic memory stores, cancellable DAG orchestration, dependency-aware parallel scheduling, Sub-Agent retry handling, early stop, ordered node lifecycle evidence events, a governed chromedp browser runtime boundary, global permission policy evaluation, confirmation audit records, claim/evidence verification, conflict detection, registry-backed cost accounting, local REST task APIs, confirmation approve/deny APIs, full mock-based local E2E coverage, secret-leak regression fixtures, a unified local-first Runtime used by CLI/API task execution, governed External Coding Agent boundaries for Codex/Claude-style CLI backends, deterministic capability and skill registries, persistent workflow checkpoints, read-only MCP metadata adaptation, persistent proactive triggers, untrusted event envelopes, and Runtime-owned workflow dispatch for local read-only capabilities.
+This repository is a Go implementation of a local-first parallel personal agent. The current implementation includes the P0 foundation, P1 model/privacy foundation, P2 RAG/memory foundation, P3 orchestration/Sub-Agent foundation, P4 browser runtime foundation, P5 permissions/verification/cost foundation, P6 API/E2E/hardening foundation, P7 Runtime MVP first vertical slice, P8 External Coding Agent library foundation, P9 Capability/Skill/Workflow core slice, P10 proactive trigger/event core slice, the first P11 Runtime Integration Closure slice, and the P12 Operator Experience core slice: `pachat` CLI packaging, configuration loading, SQLite migrations, core agent/browser contracts, interactive local memory, long-task state tracking, model registry/policy contracts, OpenAI-compatible provider boundaries, a fail-closed Privacy Gateway for public remote model calls, local BM25 retrieval, RRF result fusion, Qdrant boundary code, context compression, working/episodic/semantic memory stores, cancellable DAG orchestration, dependency-aware parallel scheduling, Sub-Agent retry handling, early stop, ordered node lifecycle evidence events, a governed chromedp browser runtime boundary, global permission policy evaluation, confirmation audit records, claim/evidence verification, conflict detection, registry-backed cost accounting, local REST task APIs, confirmation approve/deny APIs, full mock-based local E2E coverage, secret-leak regression fixtures, a unified local-first Runtime used by CLI/API task execution, governed External Coding Agent boundaries for Codex/Claude-style CLI backends, deterministic capability and skill registries, persistent workflow checkpoints, read-only MCP metadata adaptation, persistent proactive triggers, untrusted event envelopes, Runtime-owned workflow dispatch for local read-only capabilities, strict versioned config validation, local doctor diagnostics, knowledge/project operator commands, packaged local HTTP serving, backup/restore dry-run, retention cleanup, and SQLite maintenance commands.
 
-It includes Go contracts and safety skeletons for the Browser Tool, Browser Session Manager, Permission Layer integration, Privacy Gateway filtering, Evidence Bus records, model selection, provider enforcement, local retrieval/memory indexing, orchestration, semantic browser location, accessibility reads, screenshot capture, coordinate fallback, confirmation-gated browser execution, global permission decisions, verification gates, budget enforcement, local HTTP handler wiring, Runtime-connected local RAG/memory/verification synthesis, coding agent adapter selection, safe process execution, environment sanitization, Git worktree isolation, CLI adapter request mapping, coding evidence collection, repository privacy checks, trigger scheduling helpers, trigger state persistence, event deduplication, and an in-memory event bus. It does not yet include cookie reading, password reading, production model caller wiring, CLI-connected browser execution, model-backed Leader DAG planning, API background task cancellation, live model-call metering, public model escalation, packaged long-running HTTP server command, automatic Runtime dispatch to real Codex/Claude CLI processes from user-facing commands, a proactive background daemon, trigger CLI/API commands, notification delivery, long-term goal planning, or filesystem watchers.
+It includes Go contracts and safety skeletons for the Browser Tool, Browser Session Manager, Permission Layer integration, Privacy Gateway filtering, Evidence Bus records, model selection, provider enforcement, local retrieval/memory indexing, orchestration, semantic browser location, accessibility reads, screenshot capture, coordinate fallback, confirmation-gated browser execution, global permission decisions, verification gates, budget enforcement, local HTTP handler wiring, Runtime-connected local RAG/memory/verification synthesis, coding agent adapter selection, safe process execution, environment sanitization, Git worktree isolation, CLI adapter request mapping, coding evidence collection, repository privacy checks, trigger scheduling helpers, trigger state persistence, event deduplication, an in-memory event bus, and local operator tooling. It does not yet include cookie reading, password reading, production model caller wiring, CLI-connected browser execution, model-backed Leader DAG planning, API background task cancellation, live model-call metering, public model escalation, automatic Runtime dispatch to real Codex/Claude CLI processes from user-facing commands, a proactive background daemon, trigger CLI/API commands, notification delivery, long-term goal planning, a full web dashboard, SSE-backed dashboard events, persistent approval inbox storage, or filesystem watchers.
 
 ### Contents
 
@@ -93,6 +93,21 @@ bin/pachat run --config configs/config.example.yaml --task "long local task" --l
 bin/pachat task list --config configs/config.example.yaml
 bin/pachat task show --config configs/config.example.yaml --id <task_id>
 bin/pachat task cancel --config configs/config.example.yaml --id <task_id>
+```
+
+Operator commands:
+
+```sh
+bin/pachat init --config configs/config.yaml --data-dir ./data
+bin/pachat config validate --config configs/config.example.yaml
+bin/pachat doctor --config configs/config.example.yaml
+bin/pachat knowledge add --config configs/config.example.yaml ./notes.txt
+bin/pachat knowledge list --config configs/config.example.yaml --json
+bin/pachat project create --config configs/config.example.yaml --name "Local Project"
+bin/pachat workflow events --config configs/config.example.yaml --id <workflow_id>
+bin/pachat serve --config configs/config.example.yaml
+bin/pachat backup create --config configs/config.example.yaml
+bin/pachat storage integrity --config configs/config.example.yaml
 ```
 
 Current CLI limitation: the command now runs local memory/RAG/verification synthesis through Runtime, but it does not yet automate the browser, execute model-backed Leader DAG planning, meter live provider calls, or use public model escalation.
@@ -218,6 +233,12 @@ P11 is documented in `docs/p11_runtime_integration_closure.md`, `docs/projdocs/P
 
 Current P11 boundary: persisted workflows can execute `memory.search`, `rag.search`, and `verification.verify` through Runtime dispatch. Full P11 completion still requires model-backed Leader planning, complete Scheduler replacement for the direct Runtime fast path, BrowserAgent/CodingAgent/MCP execution from user-facing commands, public model escalation, live provider usage metering, and Runtime-backed multi-turn chat.
 
+### P12 Operator Experience Core Slice
+
+P12 is documented in `docs/p12_operator_experience.md`, `docs/projdocs/P0_P14_EXECUTION_PLAN.md`, and `docs/projdocs/task/P12.md`. This core slice adds versioned strict config validation, `pachat init`, `pachat config validate`, `pachat doctor`, local knowledge indexing/list/status/reindex/remove commands, project create/list/show/update/archive/use commands, task/workflow JSON output, workflow checkpoint event inspection, a packaged local `pachat serve` command with health/readiness endpoints, backup create/restore dry-run, event retention cleanup, and SQLite integrity/vacuum/checkpoint maintenance commands.
+
+Current P12 boundary: the operator CLI is functional for local SQLite-backed workflows, but the full P12 product surface still needs a web dashboard, SSE dashboard updates, persistent approval inbox storage wired into Runtime confirmations, real external service health probes, model discovery against live local endpoints, and a filesystem watcher daemon.
+
 ### Validation
 
 Run:
@@ -241,9 +262,9 @@ make smoke
 
 面向本地用户工作流的 AI Agent。
 
-本仓库是一个 Go 版本本地优先并行个人 Agent。当前实现包含 P0 基础层、P1 模型/隐私基础层、P2 RAG/记忆基础层、P3 编排/Sub-Agent 基础层、P4 浏览器运行时基础层、P5 权限/验证/成本基础层、P6 API/E2E/加固基础层、P7 Runtime MVP 第一条 vertical slice、P8 External Coding Agent 库层基础、P9 Capability/Skill/Workflow 核心 slice、P10 proactive trigger/event 核心 slice，以及第一条 P11 Runtime Integration Closure slice：`pachat` CLI 打包、配置加载、SQLite 迁移、核心 agent/browser 契约、交互式本地记忆、长任务状态跟踪、模型注册/策略契约、OpenAI-compatible provider 边界、面向 public remote 模型调用的 fail-closed Privacy Gateway、本地 BM25 检索、RRF 结果融合、Qdrant 边界、上下文压缩、working/episodic/semantic memory store、可取消 DAG 编排、依赖感知并行调度、Sub-Agent retry、early stop、有序节点生命周期 evidence event、受治理的 chromedp 浏览器运行时边界、全局权限策略评估、确认审计记录、claim/evidence 验证、冲突检测、基于 registry 的成本核算、本地 REST 任务 API、确认 approve/deny API、基于 mock 的完整本地 E2E 覆盖、secret-leak 回归 fixture、CLI/API 任务执行使用的统一本地优先 Runtime、面向 Codex/Claude 风格 CLI backend 的受治理 External Coding Agent 边界、确定性 capability/skill registry、持久化 workflow checkpoint、只读 MCP metadata adapter、持久化 proactive trigger、不可信 event envelope，以及由 Runtime 持有的本地只读 capability workflow dispatch。
+本仓库是一个 Go 版本本地优先并行个人 Agent。当前实现包含 P0 基础层、P1 模型/隐私基础层、P2 RAG/记忆基础层、P3 编排/Sub-Agent 基础层、P4 浏览器运行时基础层、P5 权限/验证/成本基础层、P6 API/E2E/加固基础层、P7 Runtime MVP 第一条 vertical slice、P8 External Coding Agent 库层基础、P9 Capability/Skill/Workflow 核心 slice、P10 proactive trigger/event 核心 slice、第一条 P11 Runtime Integration Closure slice，以及 P12 Operator Experience 核心 slice：`pachat` CLI 打包、配置加载、SQLite 迁移、核心 agent/browser 契约、交互式本地记忆、长任务状态跟踪、模型注册/策略契约、OpenAI-compatible provider 边界、面向 public remote 模型调用的 fail-closed Privacy Gateway、本地 BM25 检索、RRF 结果融合、Qdrant 边界、上下文压缩、working/episodic/semantic memory store、可取消 DAG 编排、依赖感知并行调度、Sub-Agent retry、early stop、有序节点生命周期 evidence event、受治理的 chromedp 浏览器运行时边界、全局权限策略评估、确认审计记录、claim/evidence 验证、冲突检测、基于 registry 的成本核算、本地 REST 任务 API、确认 approve/deny API、基于 mock 的完整本地 E2E 覆盖、secret-leak 回归 fixture、CLI/API 任务执行使用的统一本地优先 Runtime、面向 Codex/Claude 风格 CLI backend 的受治理 External Coding Agent 边界、确定性 capability/skill registry、持久化 workflow checkpoint、只读 MCP metadata adapter、持久化 proactive trigger、不可信 event envelope、由 Runtime 持有的本地只读 capability workflow dispatch、严格版本化配置校验、本地 doctor 诊断、knowledge/project 运维命令、打包本地 HTTP server、backup/restore dry-run、retention cleanup 和 SQLite maintenance 命令。
 
-仓库包含 Browser Tool、Browser Session Manager、Permission Layer 接入、Privacy Gateway 脱敏、Evidence Bus 记录、模型选择、provider enforcement、本地检索/记忆索引、编排、语义浏览器定位、accessibility 读取、截图、坐标兜底、带确认 gate 的浏览器执行、全局权限决策、验证 gate、预算控制、本地 HTTP handler wiring、接入 Runtime 的本地 RAG/Memory/Verification synthesis、coding agent adapter 选择、安全进程执行、环境脱敏、Git worktree 隔离、CLI adapter request mapping、coding evidence 收集、repository privacy 检查、trigger scheduling helper、trigger state persistence、event deduplication 和内存 event bus。仓库暂不包含 cookie 读取器、密码读取器、生产模型调用接线、接入 CLI 的浏览器执行、模型驱动的 Leader DAG planning、API 后台任务取消、实时模型调用计量、public model escalation、打包后的常驻 HTTP server 命令、从用户命令自动调度真实 Codex/Claude CLI 进程、proactive 后台 daemon、trigger CLI/API、通知投递、长期目标规划或文件系统 watcher。
+仓库包含 Browser Tool、Browser Session Manager、Permission Layer 接入、Privacy Gateway 脱敏、Evidence Bus 记录、模型选择、provider enforcement、本地检索/记忆索引、编排、语义浏览器定位、accessibility 读取、截图、坐标兜底、带确认 gate 的浏览器执行、全局权限决策、验证 gate、预算控制、本地 HTTP handler wiring、接入 Runtime 的本地 RAG/Memory/Verification synthesis、coding agent adapter 选择、安全进程执行、环境脱敏、Git worktree 隔离、CLI adapter request mapping、coding evidence 收集、repository privacy 检查、trigger scheduling helper、trigger state persistence、event deduplication、内存 event bus 和本地运维工具。仓库暂不包含 cookie 读取器、密码读取器、生产模型调用接线、接入 CLI 的浏览器执行、模型驱动的 Leader DAG planning、API 后台任务取消、实时模型调用计量、public model escalation、从用户命令自动调度真实 Codex/Claude CLI 进程、proactive 后台 daemon、trigger CLI/API、通知投递、长期目标规划、完整 Web Dashboard、基于 SSE 的 Dashboard 实时事件、持久化 approval inbox 或文件系统 watcher。
 
 ### 内容
 
@@ -330,6 +351,21 @@ bin/pachat run --config configs/config.example.yaml --task "long local task" --l
 bin/pachat task list --config configs/config.example.yaml
 bin/pachat task show --config configs/config.example.yaml --id <task_id>
 bin/pachat task cancel --config configs/config.example.yaml --id <task_id>
+```
+
+运维命令：
+
+```sh
+bin/pachat init --config configs/config.yaml --data-dir ./data
+bin/pachat config validate --config configs/config.example.yaml
+bin/pachat doctor --config configs/config.example.yaml
+bin/pachat knowledge add --config configs/config.example.yaml ./notes.txt
+bin/pachat knowledge list --config configs/config.example.yaml --json
+bin/pachat project create --config configs/config.example.yaml --name "Local Project"
+bin/pachat workflow events --config configs/config.example.yaml --id <workflow_id>
+bin/pachat serve --config configs/config.example.yaml
+bin/pachat backup create --config configs/config.example.yaml
+bin/pachat storage integrity --config configs/config.example.yaml
 ```
 
 当前 CLI 限制：该命令已经通过 Runtime 执行本地 memory/RAG/verification synthesis，但尚未自动化浏览器、执行模型驱动的 Leader DAG planning、计量实时 provider 调用或使用 public model escalation。
@@ -454,6 +490,12 @@ P10 已记录在 `docs/p10_core_release_slice.md`、`docs/projdocs/P0_P10_EXECUT
 P11 已记录在 `docs/p11_runtime_integration_closure.md`、`docs/projdocs/P0_P14_EXECUTION_PLAN.md` 和 `docs/projdocs/task/P11.md` 中。第一条 closure slice 增加 Runtime 持有的 workflow engine：它会加载持久化 workflow run，恢复非终态 node，检查 project capability policy，检查已注册 capability 可用性，通过现有 scheduler 执行本地只读 node，写入 per-node checkpoint，并将 workflow 标记为 completed、failed 或 cancelled。
 
 当前 P11 边界：持久化 workflow 可以通过 Runtime dispatch 执行 `memory.search`、`rag.search` 和 `verification.verify`。完整 P11 仍需继续实现模型驱动 Leader planning、用 Scheduler 完整替代直接 Runtime fast path、从用户命令执行 BrowserAgent/CodingAgent/MCP、public model escalation、实时 provider usage metering，以及接入 Runtime 的多轮 chat。
+
+### P12 Operator Experience 核心 Slice
+
+P12 已记录在 `docs/p12_operator_experience.md`、`docs/projdocs/P0_P14_EXECUTION_PLAN.md` 和 `docs/projdocs/task/P12.md` 中。本核心 slice 增加版本化严格配置校验、`pachat init`、`pachat config validate`、`pachat doctor`、本地 knowledge index/list/status/reindex/remove 命令、project create/list/show/update/archive/use 命令、task/workflow JSON 输出、workflow checkpoint event 查看、带 health/readiness endpoint 的本地 `pachat serve` 命令、backup create/restore dry-run、event retention cleanup，以及 SQLite integrity/vacuum/checkpoint maintenance 命令。
+
+当前 P12 边界：运维 CLI 已可用于本地 SQLite-backed workflow，但完整 P12 产品体验仍需要 Web Dashboard、Dashboard SSE 实时更新、接入 Runtime confirmation 的持久化 approval inbox、真实外部服务健康探测、针对本地 endpoint 的模型发现，以及文件系统 watcher daemon。
 
 ### 验证
 

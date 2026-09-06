@@ -38,6 +38,12 @@ func RunWithIO(ctx context.Context, args []string, ioStreams IO) error {
 		ioStreams.Stdin = strings.NewReader("")
 	}
 	switch args[0] {
+	case "init":
+		return initCommand(ctx, args[1:], ioStreams)
+	case "config":
+		return configCommand(ctx, args[1:], ioStreams.Stdout)
+	case "doctor":
+		return doctorCommand(ctx, args[1:], ioStreams.Stdout)
 	case "run":
 		return runTask(ctx, args[1:], ioStreams.Stdout)
 	case "chat":
@@ -48,6 +54,20 @@ func RunWithIO(ctx context.Context, args []string, ioStreams IO) error {
 		return capabilityCommand(ctx, args[1:], ioStreams.Stdout)
 	case "workflow":
 		return workflowCommand(ctx, args[1:], ioStreams.Stdout)
+	case "knowledge":
+		return knowledgeCommand(ctx, args[1:], ioStreams.Stdout)
+	case "project":
+		return projectCommand(ctx, args[1:], ioStreams.Stdout)
+	case "approval":
+		return approvalCommand(ctx, args[1:], ioStreams.Stdout)
+	case "serve":
+		return serveCommand(ctx, args[1:], ioStreams.Stdout)
+	case "backup":
+		return backupCommand(ctx, args[1:], ioStreams.Stdout)
+	case "retention":
+		return retentionCommand(ctx, args[1:], ioStreams.Stdout)
+	case "storage":
+		return storageCommand(ctx, args[1:], ioStreams.Stdout)
 	default:
 		return usageError("unknown command " + args[0])
 	}
@@ -90,10 +110,13 @@ func boolText(value bool) string {
 
 func workflowCommand(ctx context.Context, args []string, stdout io.Writer) error {
 	if len(args) == 0 {
-		return usageError("workflow requires list, show, pause, resume, or cancel")
+		return usageError("workflow requires list, show, pause, resume, cancel, or events")
 	}
 	if args[0] == "list" {
 		return workflowList(ctx, args[1:], stdout)
+	}
+	if args[0] == "events" {
+		return workflowEvents(ctx, args[1:], stdout)
 	}
 	if len(args) < 1 || (args[0] != "show" && args[0] != "pause" && args[0] != "resume" && args[0] != "cancel") {
 		return usageError("unknown workflow subcommand")
@@ -102,6 +125,7 @@ func workflowCommand(ctx context.Context, args []string, stdout io.Writer) error
 	fs.SetOutput(io.Discard)
 	configPath := fs.String("config", "", "config file path")
 	id := fs.String("id", "", "workflow id")
+	jsonOutput := fs.Bool("json", false, "print JSON")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -119,6 +143,9 @@ func workflowCommand(ctx context.Context, args []string, stdout io.Writer) error
 		if err != nil {
 			return err
 		}
+		if *jsonOutput {
+			return writePrettyJSON(stdout, run)
+		}
 		_, err = fmt.Fprintf(stdout, "id=%s\nstatus=%s\ntask_id=%s\nproject_id=%s\nskill=%s@%s\n", run.ID, run.Status, run.TaskID, run.ProjectID, run.SkillID, run.SkillVersion)
 		return err
 	}
@@ -134,6 +161,7 @@ func workflowList(ctx context.Context, args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("workflow list", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	configPath := fs.String("config", "", "config file path")
+	jsonOutput := fs.Bool("json", false, "print JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -149,8 +177,60 @@ func workflowList(ctx context.Context, args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if *jsonOutput {
+		return writePrettyJSON(stdout, map[string]any{"workflows": runs})
+	}
 	for _, run := range runs {
 		fmt.Fprintf(stdout, "%s\t%s\t%s\n", run.ID, run.Status, run.TaskID)
+	}
+	return nil
+}
+
+func workflowEvents(ctx context.Context, args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("workflow events", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	configPath := fs.String("config", "", "config file path")
+	id := fs.String("id", "", "workflow id")
+	jsonOutput := fs.Bool("json", false, "print JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *configPath == "" || *id == "" {
+		return usageError("workflow events requires --config and --id")
+	}
+	_, db, err := openConfiguredDB(ctx, *configPath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	rows, err := db.SQL.QueryContext(ctx, `SELECT node_id, status, evidence_ids_json, result_ref, usage_json, created_at FROM workflow_checkpoints WHERE workflow_id = ? ORDER BY created_at ASC`, *id)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	var events []map[string]string
+	for rows.Next() {
+		event := map[string]string{}
+		var nodeID, status, evidence, resultRef, usage, createdAt string
+		if err := rows.Scan(&nodeID, &status, &evidence, &resultRef, &usage, &createdAt); err != nil {
+			return err
+		}
+		event["node_id"] = nodeID
+		event["status"] = status
+		event["evidence_ids_json"] = evidence
+		event["result_ref"] = resultRef
+		event["usage_json"] = usage
+		event["created_at"] = createdAt
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if *jsonOutput {
+		return writePrettyJSON(stdout, map[string]any{"events": events})
+	}
+	for _, event := range events {
+		fmt.Fprintf(stdout, "%s\t%s\t%s\n", event["created_at"], event["node_id"], event["status"])
 	}
 	return nil
 }
@@ -315,6 +395,7 @@ func taskList(ctx context.Context, args []string, stdout io.Writer) error {
 	fs.SetOutput(io.Discard)
 	configPath := fs.String("config", "", "config file path")
 	limit := fs.Int("limit", 20, "task limit")
+	jsonOutput := fs.Bool("json", false, "print JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -330,6 +411,9 @@ func taskList(ctx context.Context, args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if *jsonOutput {
+		return writePrettyJSON(stdout, map[string]any{"tasks": tasks})
+	}
 	for _, task := range tasks {
 		fmt.Fprintf(stdout, "%s\t%s\t%s\n", task.ID, task.Status, task.Title)
 	}
@@ -341,6 +425,7 @@ func taskShow(ctx context.Context, args []string, stdout io.Writer) error {
 	fs.SetOutput(io.Discard)
 	configPath := fs.String("config", "", "config file path")
 	taskID := fs.String("id", "", "task id")
+	jsonOutput := fs.Bool("json", false, "print JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -355,6 +440,9 @@ func taskShow(ctx context.Context, args []string, stdout io.Writer) error {
 	task, err := db.GetTask(ctx, *taskID)
 	if err != nil {
 		return err
+	}
+	if *jsonOutput {
+		return writePrettyJSON(stdout, task)
 	}
 	fmt.Fprintf(stdout, "id=%s\nstatus=%s\ntitle=%s\ninput=%s\n", task.ID, task.Status, task.Title, task.Input)
 	if task.FinalAnswer != nil {

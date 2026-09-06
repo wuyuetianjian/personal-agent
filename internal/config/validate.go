@@ -13,6 +13,9 @@ var (
 )
 
 func (c Config) Validate() error {
+	if c.ConfigVersion != 0 && c.ConfigVersion != 1 {
+		return fmt.Errorf("unsupported config_version %d", c.ConfigVersion)
+	}
 	if c.App.Name == "" {
 		return ErrMissingAppName
 	}
@@ -42,6 +45,32 @@ func (c Config) Validate() error {
 	}
 	if c.Agent.Leader.ModelID == "" {
 		return errors.New("agent.leader.model_id is required")
+	}
+	models := make(map[string]struct{}, len(c.Models.Registry))
+	for _, item := range c.Models.Registry {
+		if item.ID == "" {
+			return errors.New("models.registry[].id is required")
+		}
+		if item.Provider == "" {
+			return fmt.Errorf("models.registry.%s.provider is required", item.ID)
+		}
+		if _, ok := c.Models.Providers[item.Provider]; !ok {
+			return fmt.Errorf("models.registry.%s.provider %q is not defined", item.ID, item.Provider)
+		}
+		models[item.ID] = struct{}{}
+	}
+	if len(models) > 0 {
+		if _, ok := models[c.Agent.Leader.ModelID]; !ok {
+			return fmt.Errorf("agent.leader.model_id %q is not defined in models.registry", c.Agent.Leader.ModelID)
+		}
+		for role, cfg := range c.Agent.SubAgents {
+			if cfg.ModelID == "" {
+				continue
+			}
+			if _, ok := models[cfg.ModelID]; !ok {
+				return fmt.Errorf("agent.subagents.%s.model_id %q is not defined in models.registry", role, cfg.ModelID)
+			}
+		}
 	}
 	if c.CodingAgents.DefaultBackend != "" {
 		if _, ok := c.CodingAgents.Backends[c.CodingAgents.DefaultBackend]; !ok {

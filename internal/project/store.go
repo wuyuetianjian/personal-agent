@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"time"
 )
 
 type Store struct{ DB *sql.DB }
@@ -33,4 +34,38 @@ func (s Store) Get(ctx context.Context, id string) (Project, error) {
 		}
 	}
 	return p, nil
+}
+
+func (s Store) List(ctx context.Context, limit int) ([]Project, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := s.DB.QueryContext(ctx, `SELECT id,name,privacy_class,repository_refs_json,knowledge_scopes_json,memory_scope,allowed_skills_json,allowed_capabilities_json,allowed_coding_agents_json,budget_policy FROM projects ORDER BY name ASC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Project
+	for rows.Next() {
+		var p Project
+		var repos, scopes, skills, caps, agents string
+		if err := rows.Scan(&p.ID, &p.Name, &p.PrivacyClass, &repos, &scopes, &p.MemoryScope, &skills, &caps, &agents, &p.BudgetPolicy); err != nil {
+			return nil, err
+		}
+		for _, item := range []struct {
+			raw string
+			dst any
+		}{{repos, &p.RepositoryRefs}, {scopes, &p.KnowledgeScopes}, {skills, &p.AllowedSkills}, {caps, &p.AllowedCapabilities}, {agents, &p.AllowedCodingAgents}} {
+			if err := json.Unmarshal([]byte(item.raw), item.dst); err != nil {
+				return nil, err
+			}
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+func (s Store) Archive(ctx context.Context, id string) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE projects SET name = name || ' (archived ' || ? || ')' WHERE id = ? AND name NOT LIKE '% (archived %)'`, time.Now().UTC().Format("2006-01-02"), id)
+	return err
 }

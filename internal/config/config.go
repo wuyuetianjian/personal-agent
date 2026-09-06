@@ -3,15 +3,16 @@ package config
 import "time"
 
 type Config struct {
-	App          AppConfig          `yaml:"app"`
-	Server       ServerConfig       `yaml:"server"`
-	Storage      StorageConfig      `yaml:"storage"`
-	Privacy      PrivacyConfig      `yaml:"privacy"`
-	Models       ModelsConfig       `yaml:"models"`
-	Agent        AgentConfig        `yaml:"agent"`
-	Browser      BrowserConfig      `yaml:"browser"`
-	Permissions  PermissionsConfig  `yaml:"permissions"`
-	CodingAgents CodingAgentsConfig `yaml:"coding_agents"`
+	ConfigVersion int                `yaml:"config_version"`
+	App           AppConfig          `yaml:"app"`
+	Server        ServerConfig       `yaml:"server"`
+	Storage       StorageConfig      `yaml:"storage"`
+	Privacy       PrivacyConfig      `yaml:"privacy"`
+	Models        ModelsConfig       `yaml:"models"`
+	Agent         AgentConfig        `yaml:"agent"`
+	Browser       BrowserConfig      `yaml:"browser"`
+	Permissions   PermissionsConfig  `yaml:"permissions"`
+	CodingAgents  CodingAgentsConfig `yaml:"coding_agents"`
 }
 
 type AppConfig struct {

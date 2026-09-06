@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"time"
@@ -9,19 +10,38 @@ import (
 )
 
 func Load(path string) (Config, error) {
-	content, err := os.ReadFile(path)
+	report, err := Inspect(path)
 	if err != nil {
 		return Config{}, err
 	}
+	return report.Config, nil
+}
+
+type Report struct {
+	Config   Config
+	Warnings []string
+}
+
+func Inspect(path string) (Report, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return Report{}, err
+	}
 
 	var cfg Config
-	if err := yaml.Unmarshal(content, &cfg); err != nil {
-		return Config{}, err
+	decoder := yaml.NewDecoder(bytes.NewReader(content))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&cfg); err != nil {
+		return Report{}, err
 	}
 	if err := cfg.Validate(); err != nil {
-		return Config{}, err
+		return Report{}, err
 	}
-	return cfg, nil
+	report := Report{Config: cfg}
+	if cfg.ConfigVersion == 0 {
+		report.Warnings = append(report.Warnings, "config_version is missing; treating file as legacy schema v1")
+	}
+	return report, nil
 }
 
 func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
