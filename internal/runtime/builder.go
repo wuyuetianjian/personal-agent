@@ -3,12 +3,15 @@ package runtime
 import (
 	"context"
 
+	"agent/internal/audit"
 	"agent/internal/capability"
 	"agent/internal/config"
 	"agent/internal/memory"
+	"agent/internal/observability"
 	"agent/internal/orchestrator"
 	"agent/internal/project"
 	"agent/internal/rag"
+	"agent/internal/reliability"
 	"agent/internal/storage"
 	"agent/internal/verification"
 	"agent/internal/workflow"
@@ -26,6 +29,9 @@ type Runtime struct {
 	Workflows    workflow.Store
 	Projects     project.Store
 	Workflow     *WorkflowEngine
+	Governor     *reliability.Governor
+	Tracer       *observability.Tracer
+	Audit        audit.Store
 	ownsStorage  bool
 	LeaderModel  string
 	PrivacyClass string
@@ -63,6 +69,9 @@ func NewLocal(cfg config.Config, db *storage.DB, events orchestrator.EvidenceBus
 		Capabilities: buildCapabilities(cfg),
 		Workflows:    workflow.Store{DB: db.SQL},
 		Projects:     project.Store{DB: db.SQL},
+		Governor:     reliability.NewGovernor(cfg.Reliability.Resources),
+		Tracer:       observability.NewTracer(),
+		Audit:        audit.Store{DB: db.SQL},
 		LeaderModel:  cfg.Agent.Leader.ModelID,
 		PrivacyClass: "local_private",
 	}

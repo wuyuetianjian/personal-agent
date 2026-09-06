@@ -24,6 +24,7 @@ type Server struct {
 	Runner        RuntimeRunner
 	LeaderModelID string
 	Now           func() time.Time
+	Security      SecurityPolicy
 }
 
 func NewServer(tasks TaskStore, events EventSource, confirmations ConfirmationStore, leaderModelID string) Server {
@@ -52,7 +53,7 @@ func (s Server) Handler() http.Handler {
 	mux.HandleFunc("GET /confirmations/{id}", s.getConfirmation)
 	mux.HandleFunc("POST /confirmations/{id}/approve", s.approveConfirmation)
 	mux.HandleFunc("POST /confirmations/{id}/deny", s.denyConfirmation)
-	return mux
+	return s.Security.Middleware(mux)
 }
 
 type createTaskRequest struct {

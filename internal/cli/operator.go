@@ -23,6 +23,7 @@ import (
 	"agent/internal/permission"
 	"agent/internal/project"
 	"agent/internal/rag"
+	"agent/internal/reliability"
 	"agent/internal/runtime"
 	"agent/internal/storage"
 )
@@ -673,6 +674,7 @@ func serveCommand(ctx context.Context, args []string, stdout io.Writer) error {
 	confirmations := permission.NewInMemoryConfirmationStore()
 	eventSource, _ := rt.Events.(api.EventSource)
 	server := api.NewServerWithRunner(rt.Storage, eventSource, confirmations, cfg.Agent.Leader.ModelID, rt)
+	server.Security = api.NewSecurityPolicy(cfg.Security.API)
 	metrics := observability.NewRegistry()
 	mux := http.NewServeMux()
 	mux.Handle("/", metricsMiddleware(metrics, server.Handler()))
@@ -763,6 +765,22 @@ func readinessDependencies(cfg config.Config) []observability.ComponentStatus {
 		dependencies = append(dependencies, observability.ComponentStatus{Name: "browser", Status: "OK"})
 	} else {
 		dependencies = append(dependencies, observability.ComponentStatus{Name: "browser", Status: "WARN", Remediation: "browser disabled"})
+	}
+	if len(cfg.Reliability.Disk.Paths) > 0 {
+		disk := reliability.CheckDiskPressure(cfg.Reliability.Disk)
+		status := "OK"
+		remediation := ""
+		if disk.Status == reliability.DiskSoft {
+			status = "WARN"
+			remediation = "disk soft pressure; cleanup temporary artifacts"
+		} else if disk.Status == reliability.DiskHard {
+			status = "FAIL"
+			remediation = "disk hard pressure; stop non-critical write-heavy tasks"
+		} else if disk.Status == reliability.DiskUnknown {
+			status = "WARN"
+			remediation = "disk usage could not be measured"
+		}
+		dependencies = append(dependencies, observability.ComponentStatus{Name: "disk_pressure", Status: status, Remediation: remediation})
 	}
 	for id, backend := range cfg.CodingAgents.Backends {
 		status := "OK"

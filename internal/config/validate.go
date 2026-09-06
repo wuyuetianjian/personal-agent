@@ -88,5 +88,22 @@ func (c Config) Validate() error {
 			return fmt.Errorf("coding_agents.backends.%s.execution_location is required", id)
 		}
 	}
+	if c.Security.API.MaxBodyBytes < 0 {
+		return errors.New("security.api.max_body_bytes must be non-negative")
+	}
+	if c.Security.API.RateLimitPerMinute < 0 {
+		return errors.New("security.api.rate_limit_per_minute must be non-negative")
+	}
+	resources := c.Reliability.Resources
+	if resources.MaxConcurrentWorkflows < 0 || resources.MaxModelCalls < 0 || resources.MaxBrowserSessions < 0 ||
+		resources.MaxCodingAgents < 0 || resources.MaxMCPCalls < 0 || resources.MaxOpenFiles < 0 || resources.MaxTemporaryDiskBytes < 0 {
+		return errors.New("reliability.resources limits must be non-negative")
+	}
+	if c.Reliability.Disk.SoftLimitBytes < 0 || c.Reliability.Disk.HardLimitBytes < 0 {
+		return errors.New("reliability.disk limits must be non-negative")
+	}
+	if c.Reliability.Disk.SoftLimitBytes > 0 && c.Reliability.Disk.HardLimitBytes > 0 && c.Reliability.Disk.SoftLimitBytes > c.Reliability.Disk.HardLimitBytes {
+		return errors.New("reliability.disk.soft_limit_bytes must be <= hard_limit_bytes")
+	}
 	return nil
 }

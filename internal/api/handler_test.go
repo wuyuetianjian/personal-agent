@@ -162,6 +162,58 @@ func TestConfirmationEndpoints(t *testing.T) {
 	}
 }
 
+func TestSecurityPolicyMiddleware(t *testing.T) {
+	db := openTestDB(t)
+	server := NewServer(db, nil, permission.NewInMemoryConfirmationStore(), "local-planner")
+	now := time.Date(2026, 9, 6, 1, 2, 3, 0, time.UTC)
+	server.Security = SecurityPolicy{
+		AuthToken:          "test-token",
+		AllowedOrigins:     []string{"http://127.0.0.1:8787"},
+		MaxBodyBytes:       64,
+		RateLimitPerMinute: 1,
+		Now:                func() time.Time { return now },
+	}
+	handler := server.Handler()
+
+	unauthorized := httptest.NewRecorder()
+	handler.ServeHTTP(unauthorized, httptest.NewRequest(http.MethodGet, "/tasks", nil))
+	if unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized status = %d", unauthorized.Code)
+	}
+	if unauthorized.Header().Get("X-Content-Type-Options") != "nosniff" {
+		t.Fatalf("security headers missing: %+v", unauthorized.Header())
+	}
+
+	deniedOrigin := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/tasks", nil)
+	req.Header.Set("Origin", "https://evil.test")
+	req.Header.Set("Authorization", "Bearer test-token")
+	handler.ServeHTTP(deniedOrigin, req)
+	if deniedOrigin.Code != http.StatusForbidden {
+		t.Fatalf("denied origin status = %d", deniedOrigin.Code)
+	}
+
+	ok := httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/tasks", nil)
+	req.Header.Set("Origin", "http://127.0.0.1:8787")
+	req.Header.Set("Authorization", "Bearer test-token")
+	handler.ServeHTTP(ok, req)
+	if ok.Code != http.StatusOK {
+		t.Fatalf("authorized status = %d body=%s", ok.Code, ok.Body.String())
+	}
+	if ok.Header().Get("Access-Control-Allow-Origin") != "http://127.0.0.1:8787" {
+		t.Fatalf("CORS header missing: %+v", ok.Header())
+	}
+
+	rateLimited := httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/tasks", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	handler.ServeHTTP(rateLimited, req)
+	if rateLimited.Code != http.StatusTooManyRequests {
+		t.Fatalf("rate-limited status = %d", rateLimited.Code)
+	}
+}
+
 func openTestDB(t *testing.T) *storage.DB {
 	t.Helper()
 	db, err := storage.OpenSQLite(context.Background(), filepath.Join(t.TempDir(), "agent.db"))

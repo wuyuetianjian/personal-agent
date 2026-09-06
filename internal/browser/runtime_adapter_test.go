@@ -86,7 +86,7 @@ func TestRuntimeActionAdapterCoordinateFallbackRequiresCoordinates(t *testing.T)
 }
 
 func TestGovernedToolPublishesEvidenceAndRequiresConfirmation(t *testing.T) {
-	now := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
 	manager := NewInMemorySessionManager()
 	if _, err := manager.Create(Session{
 		ID:              "session-1",

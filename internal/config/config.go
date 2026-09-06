@@ -13,6 +13,8 @@ type Config struct {
 	Browser       BrowserConfig      `yaml:"browser"`
 	Permissions   PermissionsConfig  `yaml:"permissions"`
 	CodingAgents  CodingAgentsConfig `yaml:"coding_agents"`
+	Security      SecurityConfig     `yaml:"security"`
+	Reliability   ReliabilityConfig  `yaml:"reliability"`
 }
 
 type AppConfig struct {
@@ -139,6 +141,46 @@ type CodingAgentBackendConfig struct {
 
 func (c CodingAgentBackendConfig) IsEnabled() bool {
 	return c.Enabled == nil || *c.Enabled
+}
+
+type SecurityConfig struct {
+	API     APISecurityConfig     `yaml:"api"`
+	Network NetworkSecurityConfig `yaml:"network"`
+}
+
+type APISecurityConfig struct {
+	AuthTokenEnv       string   `yaml:"auth_token_env"`
+	AllowedOrigins     []string `yaml:"allowed_origins"`
+	MaxBodyBytes       int64    `yaml:"max_body_bytes"`
+	RateLimitPerMinute int      `yaml:"rate_limit_per_minute"`
+}
+
+type NetworkSecurityConfig struct {
+	AllowedDomains       []string `yaml:"allowed_domains"`
+	AllowPrivateNetworks bool     `yaml:"allow_private_networks"`
+	AllowedSchemes       []string `yaml:"allowed_schemes"`
+}
+
+type ReliabilityConfig struct {
+	Resources ResourceLimitsConfig `yaml:"resources"`
+	Disk      DiskPressureConfig   `yaml:"disk"`
+}
+
+type ResourceLimitsConfig struct {
+	MaxConcurrentWorkflows int   `yaml:"max_concurrent_workflows"`
+	MaxModelCalls          int   `yaml:"max_model_calls"`
+	MaxBrowserSessions     int   `yaml:"max_browser_sessions"`
+	MaxCodingAgents        int   `yaml:"max_coding_agents"`
+	MaxMCPCalls            int   `yaml:"max_mcp_calls"`
+	MaxOpenFiles           int   `yaml:"max_open_files"`
+	MaxTemporaryDiskBytes  int64 `yaml:"max_temporary_disk_bytes"`
+}
+
+type DiskPressureConfig struct {
+	Paths             []string `yaml:"paths"`
+	SoftLimitBytes    int64    `yaml:"soft_limit_bytes"`
+	HardLimitBytes    int64    `yaml:"hard_limit_bytes"`
+	CleanupTempOnSoft bool     `yaml:"cleanup_temp_on_soft"`
 }
 
 type Duration struct {

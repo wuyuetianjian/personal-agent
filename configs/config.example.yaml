@@ -105,3 +105,29 @@ coding_agents:
       privacy_policy: deny_confidential
       capabilities: [coding, code_review, code_test, code_debug]
       allow_direct_writes: false
+
+security:
+  api:
+    auth_token_env: PACHAT_API_TOKEN
+    allowed_origins: [http://127.0.0.1:8787]
+    max_body_bytes: 1048576
+    rate_limit_per_minute: 120
+  network:
+    allowed_domains: []
+    allowed_schemes: [http, https]
+    allow_private_networks: false
+
+reliability:
+  resources:
+    max_concurrent_workflows: 4
+    max_model_calls: 4
+    max_browser_sessions: 2
+    max_coding_agents: 1
+    max_mcp_calls: 8
+    max_open_files: 256
+    max_temporary_disk_bytes: 1073741824
+  disk:
+    paths: [./data]
+    soft_limit_bytes: 5368709120
+    hard_limit_bytes: 10737418240
+    cleanup_temp_on_soft: true

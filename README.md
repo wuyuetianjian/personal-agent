@@ -243,11 +243,13 @@ P12 is documented in `docs/p12_operator_experience.md`, `docs/projdocs/P0_P14_EX
 
 Current P12 boundary: the operator CLI is functional for local SQLite-backed workflows, but the full P12 product surface still needs a web dashboard, SSE dashboard updates, persistent approval inbox storage wired into Runtime confirmations, real external service health probes, model discovery against live local endpoints, and a filesystem watcher daemon.
 
-### P13 Reliability / Security / Observability Core Slice
+### P13 Reliability / Security / Observability Release Gate
 
 P13 is documented in `docs/p13_reliability_security_observability.md`, `docs/projdocs/P0_P14_EXECUTION_PLAN.md`, and `docs/projdocs/task/P13.md`. This core slice adds centralized redaction for structured logs and API-facing text, in-process local runtime metrics, JSON `/healthz` and `/readyz` reports for `pachat serve`, a JSON `/metrics` endpoint, request/error/activity counters, and secret-leak regression coverage for observability output.
 
-Current P13 boundary: this is not the full P13 release gate. OpenTelemetry tracing, global resource governance, disk pressure handling, full graceful shutdown checkpointing, crash/chaos tests, race/load hardening, prompt-injection fixtures, shell/path/network/API security hardening, external-agent/browser security suites, durable audit logs, vulnerability CI, golden evals, and measurable quality gates remain follow-up P13 work.
+The remaining P13 release-gate foundations add local tracing spans, a global resource governor, disk pressure checks in readiness, graceful shutdown coordination primitives, API auth/CORS/body-limit/rate-limit/security-header middleware, command/path/network policy helpers, prompt-injection and secret-leak fixtures, coding-agent sandbox checks, browser security regression helpers, a durable `security_audit_log` migration/store, golden eval cases, and measurable quality-gate threshold evaluation.
+
+Current P13 boundary: P13 now provides local policy boundaries and regression gates. It does not claim production-grade OS-level sandboxing, distributed tracing export, external vulnerability services, or kernel/browser isolation.
 
 ### Validation
 
@@ -511,11 +513,13 @@ P12 已记录在 `docs/p12_operator_experience.md`、`docs/projdocs/P0_P14_EXECU
 
 当前 P12 边界：运维 CLI 已可用于本地 SQLite-backed workflow，但完整 P12 产品体验仍需要 Web Dashboard、Dashboard SSE 实时更新、接入 Runtime confirmation 的持久化 approval inbox、真实外部服务健康探测、针对本地 endpoint 的模型发现，以及文件系统 watcher daemon。
 
-### P13 Reliability / Security / Observability 核心 Slice
+### P13 Reliability / Security / Observability Release Gate
 
 P13 已记录在 `docs/p13_reliability_security_observability.md`、`docs/projdocs/P0_P14_EXECUTION_PLAN.md` 和 `docs/projdocs/task/P13.md` 中。本核心 slice 增加 structured log 与 API-facing text 的集中脱敏、进程内本地 runtime metrics、`pachat serve` 的 JSON `/healthz` 和 `/readyz`、JSON `/metrics` endpoint、请求/错误/活动请求计数，以及 observability 输出的 secret-leak 回归覆盖。
 
-当前 P13 边界：这不是完整 P13 release gate。OpenTelemetry tracing、全局资源治理、磁盘压力处理、完整 graceful shutdown checkpoint、crash/chaos 测试、race/load 加固、prompt-injection fixture、shell/path/network/API 安全加固、external-agent/browser security suite、持久化 audit log、漏洞 CI、golden eval 和可度量 quality gate 仍是后续 P13 工作。
+P13 剩余 release-gate 基础现已补齐：本地 tracing span、全局 resource governor、readiness 中的 disk pressure check、graceful shutdown 协调原语、API auth/CORS/body limit/rate limit/security header middleware、command/path/network policy helper、prompt-injection 与 secret-leak fixture、coding-agent sandbox 检查、browser security regression helper、持久化 `security_audit_log` migration/store、golden eval case，以及可度量 quality-gate threshold evaluation。
+
+当前 P13 边界：P13 现在提供本地 policy boundary 和 regression gate，但不声称已经具备生产级 OS sandbox、分布式 tracing export、外部漏洞扫描服务，或 kernel/browser 隔离能力。
 
 ### 验证
 

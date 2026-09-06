@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"agent/internal/agent"
+	"agent/internal/observability"
 	"agent/internal/orchestrator"
 	"agent/internal/verification"
 )
@@ -17,6 +18,14 @@ func (r *Runtime) Run(ctx context.Context, req RunRequest) (*RunResult, error) {
 	if strings.TrimSpace(req.Input) == "" {
 		return nil, fmt.Errorf("runtime run requires input")
 	}
+	release, err := r.Governor.Acquire("workflow", 1)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	traceCtx, finish := r.Tracer.Start(ctx, observabilitySpan(req.TaskID, "runtime.run", "workflow"))
+	ctx = traceCtx
+	defer func() { finish(nil) }()
 	if err := r.publish(ctx, req.TaskID, orchestrator.EventNodeStarted, "task", agent.RoleLeader, nil); err != nil {
 		return nil, err
 	}
@@ -85,6 +94,14 @@ func (r *Runtime) Run(ctx context.Context, req RunRequest) (*RunResult, error) {
 	result.Usage.OutputTokens = estimateTokens(answer)
 	result.Usage.RemoteTokens = 0
 	return result, nil
+}
+
+func observabilitySpan(taskID, name, kind string) observability.TraceSpan {
+	return observability.TraceSpan{
+		Name:   name,
+		TaskID: taskID,
+		Kind:   kind,
+	}
 }
 
 func (r *Runtime) publish(ctx context.Context, taskID string, eventType orchestrator.EventType, nodeID string, role agent.Role, ids []string) error {
