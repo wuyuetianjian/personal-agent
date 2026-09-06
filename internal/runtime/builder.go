@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 
+	"agent/internal/capability"
 	"agent/internal/config"
 	"agent/internal/memory"
 	"agent/internal/orchestrator"
@@ -19,6 +20,7 @@ type Runtime struct {
 	Memory       MemoryService
 	Evidence     EvidenceStore
 	Verifier     verification.Verifier
+	Capabilities *capability.Registry
 	ownsStorage  bool
 	LeaderModel  string
 	PrivacyClass string
@@ -53,6 +55,7 @@ func NewLocal(cfg config.Config, db *storage.DB, events orchestrator.EvidenceBus
 		Memory:       SQLiteMemoryService{Episodic: memory.NewStore(db.SQL), Semantic: memory.NewSemanticStore(db.SQL, ragStore)},
 		Evidence:     SQLiteEvidenceStore{DB: db.SQL},
 		Verifier:     verification.Verifier{Policy: verification.DefaultPolicy()},
+		Capabilities: buildCapabilities(cfg),
 		LeaderModel:  cfg.Agent.Leader.ModelID,
 		PrivacyClass: "local_private",
 	}

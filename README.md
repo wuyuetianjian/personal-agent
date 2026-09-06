@@ -27,6 +27,11 @@ It includes Go contracts and safety skeletons for the Browser Tool, Browser Sess
 - `internal/api`: Local REST handler for task create/list/status/cancel/events and confirmation inspect/approve/deny.
 - `internal/runtime`: Local-first Personal Agent Runtime that connects task execution to memory, RAG, evidence, verification, and synthesis.
 - `internal/codingagent`: External Coding Agent contracts, registry, safe process executor, worktree isolation, Codex/Claude CLI adapters, environment sanitizer, and evidence validation.
+- `internal/capability`: Capability descriptions, health states, deterministic policy resolver, and Runtime capability registration.
+- `internal/skill`: Versioned Skill manifests, dependency/permission validation, registry, and skill-first matching.
+- `internal/workflow`: Persistent workflow/node state, checkpoints, recovery, and pause/resume/cancel transitions.
+- `internal/project`: Project context and allowlist policy persisted through SQLite.
+- `internal/mcp`: Read-only MCP server/tool metadata and capability adaptation boundary.
 - `internal/e2e`: Mock-based local integration tests that combine API, SQLite, RAG, memory, model mocks, browser denial, verification, cost, and secret-leak regression coverage.
 
 ### P0 Usage
@@ -181,6 +186,24 @@ P8 includes configurable backend enablement, independent execution location and 
 
 Current P8 limitation: the package is ready for Runtime integration, but `pachat run` and local REST APIs do not yet automatically dispatch coding task nodes to real Codex/Claude CLI processes.
 
+### P9 Core Release Slice
+
+P9 is documented in `docs/p9_core_release_slice.md`, `docs/projdocs/P0_P9_EXECUTION_PLAN.md`, and `docs/projdocs/task/P9.md`. This slice adds deterministic capability discovery and policy resolution, versioned Skill validation and matching, Project-scoped policy data, persistent Workflow checkpoints and recovery, and a read-only MCP metadata adapter.
+
+Operator commands:
+
+```sh
+bin/pachat capability list --config configs/config.example.yaml
+bin/pachat capability health --config configs/config.example.yaml
+bin/pachat workflow list --config configs/config.example.yaml
+bin/pachat workflow show --config configs/config.example.yaml --id <workflow_id>
+bin/pachat workflow pause --config configs/config.example.yaml --id <workflow_id>
+bin/pachat workflow resume --config configs/config.example.yaml --id <workflow_id>
+bin/pachat workflow cancel --config configs/config.example.yaml --id <workflow_id>
+```
+
+The current P9 boundary persists workflow state and exposes safe lifecycle transitions. A full background worker, external MCP transport, and Skill-to-Scheduler execution remain follow-up increments.
+
 ### Validation
 
 Run:
@@ -227,6 +250,11 @@ make smoke
 - `internal/api`：本地 REST handler，支持 task create/list/status/cancel/events 和 confirmation inspect/approve/deny。
 - `internal/runtime`：本地优先 Personal Agent Runtime，连接 task execution、memory、RAG、evidence、verification 和 synthesis。
 - `internal/codingagent`：External Coding Agent 契约、registry、安全进程执行器、worktree 隔离、Codex/Claude CLI adapter、环境脱敏和 evidence 验证。
+- `internal/capability`：Capability 描述、health 状态、确定性 policy resolver 和 Runtime capability 注册。
+- `internal/skill`：版本化 Skill manifest、依赖/权限校验、registry 和 skill-first matching。
+- `internal/workflow`：持久化 workflow/node 状态、checkpoint、recovery 和 pause/resume/cancel 状态转换。
+- `internal/project`：通过 SQLite 持久化的 Project context 与 allowlist policy。
+- `internal/mcp`：只读 MCP server/tool metadata 和 capability adapter 边界。
 - `internal/e2e`：基于 mock 的本地集成测试，组合 API、SQLite、RAG、memory、model mock、浏览器 denial、verification、cost 和 secret-leak 回归覆盖。
 
 ### P0 使用方式
@@ -380,6 +408,24 @@ P8 已记录在 `docs/projdocs/P0_P8_EXECUTION_PLAN.md`、`docs/p8_external_codi
 P8 包含可配置 backend enablement、独立的 execution location 与 inference trust、基于 capability 的 backend selection 与 fallback、安全 subprocess 执行及 timeout/cancellation、最小环境脱敏、Git worktree 隔离、Codex/Claude adapter request mapping、针对 confidential repository + public remote inference 的隐私拒绝，以及要求真实 diff/files/tests 而非 self-reported completion 的 evidence 验证。
 
 当前 P8 边界：包已为 Runtime integration 准备好，但 `pachat run` 和本地 REST API 尚不会自动把 coding task node 调度到真实 Codex/Claude CLI 进程。
+
+### P9 核心 Release Slice
+
+P9 已记录在 `docs/p9_core_release_slice.md`、`docs/projdocs/P0_P9_EXECUTION_PLAN.md` 和 `docs/projdocs/task/P9.md` 中。本核心 slice 增加确定性的 Capability Registry/Resolver、版本化 Skill manifest 校验与匹配、Project-scoped policy 数据、带 checkpoint 和 crash recovery 查询的持久化 Workflow state，以及只读 MCP metadata adapter。
+
+运维命令：
+
+```sh
+bin/pachat capability list --config configs/config.example.yaml
+bin/pachat capability health --config configs/config.example.yaml
+bin/pachat workflow list --config configs/config.example.yaml
+bin/pachat workflow show --config configs/config.example.yaml --id <workflow_id>
+bin/pachat workflow pause --config configs/config.example.yaml --id <workflow_id>
+bin/pachat workflow resume --config configs/config.example.yaml --id <workflow_id>
+bin/pachat workflow cancel --config configs/config.example.yaml --id <workflow_id>
+```
+
+当前 P9 边界持久化 Workflow 状态并提供安全的生命周期转换；完整后台 worker、外部 MCP transport 和 Skill 到 Scheduler 的执行接线作为后续增量。
 
 ### 验证
 

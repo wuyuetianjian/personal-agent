@@ -14,6 +14,7 @@ import (
 	"agent/internal/memory"
 	"agent/internal/runtime"
 	"agent/internal/storage"
+	"agent/internal/workflow"
 	"github.com/chzyer/readline"
 )
 
@@ -43,9 +44,115 @@ func RunWithIO(ctx context.Context, args []string, ioStreams IO) error {
 		return chat(ctx, args[1:], ioStreams)
 	case "task":
 		return taskCommand(ctx, args[1:], ioStreams.Stdout)
+	case "capability":
+		return capabilityCommand(ctx, args[1:], ioStreams.Stdout)
+	case "workflow":
+		return workflowCommand(ctx, args[1:], ioStreams.Stdout)
 	default:
 		return usageError("unknown command " + args[0])
 	}
+}
+
+func capabilityCommand(ctx context.Context, args []string, stdout io.Writer) error {
+	if len(args) == 0 || (args[0] != "list" && args[0] != "health") {
+		return usageError("capability requires list or health")
+	}
+	fs := flag.NewFlagSet("capability", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	configPath := fs.String("config", "", "config file path")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if *configPath == "" {
+		return usageError("capability requires --config")
+	}
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	rt, err := runtime.Build(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer rt.Close()
+	for _, item := range rt.Capabilities.List("") {
+		fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\n", item.ID, item.Kind, item.Health, boolText(item.Enabled))
+	}
+	return nil
+}
+
+func boolText(value bool) string {
+	if value {
+		return "enabled"
+	}
+	return "disabled"
+}
+
+func workflowCommand(ctx context.Context, args []string, stdout io.Writer) error {
+	if len(args) == 0 {
+		return usageError("workflow requires list, show, pause, resume, or cancel")
+	}
+	if args[0] == "list" {
+		return workflowList(ctx, args[1:], stdout)
+	}
+	if len(args) < 1 || (args[0] != "show" && args[0] != "pause" && args[0] != "resume" && args[0] != "cancel") {
+		return usageError("unknown workflow subcommand")
+	}
+	fs := flag.NewFlagSet("workflow "+args[0], flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	configPath := fs.String("config", "", "config file path")
+	id := fs.String("id", "", "workflow id")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if *configPath == "" || *id == "" {
+		return usageError("workflow command requires --config and --id")
+	}
+	_, db, err := openConfiguredDB(ctx, *configPath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	store := workflow.Store{DB: db.SQL}
+	if args[0] == "show" {
+		run, err := store.Get(ctx, *id)
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(stdout, "id=%s\nstatus=%s\ntask_id=%s\nproject_id=%s\nskill=%s@%s\n", run.ID, run.Status, run.TaskID, run.ProjectID, run.SkillID, run.SkillVersion)
+		return err
+	}
+	status := map[string]workflow.Status{"pause": workflow.StatusPaused, "resume": workflow.StatusRunning, "cancel": workflow.StatusCancelled}[args[0]]
+	if err := store.UpdateStatus(ctx, *id, status); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(stdout, "workflow_id=%s status=%s\n", *id, status)
+	return err
+}
+
+func workflowList(ctx context.Context, args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("workflow list", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	configPath := fs.String("config", "", "config file path")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *configPath == "" {
+		return usageError("workflow list requires --config")
+	}
+	_, db, err := openConfiguredDB(ctx, *configPath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	runs, err := (workflow.Store{DB: db.SQL}).List(ctx, 20)
+	if err != nil {
+		return err
+	}
+	for _, run := range runs {
+		fmt.Fprintf(stdout, "%s\t%s\t%s\n", run.ID, run.Status, run.TaskID)
+	}
+	return nil
 }
 
 func runTask(ctx context.Context, args []string, stdout io.Writer) error {

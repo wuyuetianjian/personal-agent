@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"agent/internal/storage"
+	"agent/internal/workflow"
 	"bytes"
 	"context"
 	"os"
@@ -136,6 +138,41 @@ func TestRunRequiresTask(t *testing.T) {
 	err := Run(context.Background(), []string{"run", "--config", "config.yaml"}, &out)
 	if err == nil {
 		t.Fatal("Run() error = nil, want usage error")
+	}
+}
+
+func TestCapabilityAndWorkflowCommands(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	dbPath := filepath.Join(dir, "agent.db")
+	writeConfig(t, configPath, dbPath)
+
+	var capabilityOut bytes.Buffer
+	if err := Run(context.Background(), []string{"capability", "list", "--config", configPath}, &capabilityOut); err != nil {
+		t.Fatalf("capability list error = %v", err)
+	}
+	if !strings.Contains(capabilityOut.String(), "memory.search") || !strings.Contains(capabilityOut.String(), "rag.search") {
+		t.Fatalf("capability output = %q", capabilityOut.String())
+	}
+
+	db, err := storage.OpenSQLite(context.Background(), dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := storage.Migrate(context.Background(), db.SQL); err != nil {
+		t.Fatal(err)
+	}
+	if err := (workflow.Store{DB: db.SQL}).Create(context.Background(), workflow.Run{ID: "workflow-1", TaskID: "task-1", Status: workflow.StatusPending}, nil); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	var workflowOut bytes.Buffer
+	if err := Run(context.Background(), []string{"workflow", "pause", "--config", configPath, "--id", "workflow-1"}, &workflowOut); err != nil {
+		t.Fatalf("workflow pause error = %v", err)
+	}
+	if !strings.Contains(workflowOut.String(), "status=paused") {
+		t.Fatalf("workflow output = %q", workflowOut.String())
 	}
 }
 

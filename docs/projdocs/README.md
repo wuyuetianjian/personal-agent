@@ -2,7 +2,7 @@
 
 ## 中文
 
-本需求包用于指导 Codex 在 `wuyuetianjian/personal-agent` 仓库中实现一个 Go 版本 Local-first Parallel Personal Agent。
+本需求包用于指导 Codex 在 `wuyuetianjian/personal-agent` 仓库中实现一个 Go 版本 Local-first Parallel Personal Agent，当前计划覆盖 P0-P9。
 
 目标系统包含：
 
@@ -35,7 +35,7 @@
 
 This package is an executable engineering specification for implementing a Go-based Local-first Parallel Personal Agent in the `wuyuetianjian/personal-agent` repository.
 
-The system includes separated Leader/Sub-Agent model configuration, an OpenAI-compatible model layer, local-first RAG, memory, parallel task orchestration, browser automation with session reuse, privacy enforcement, claim verification, token/cost accounting, and governed External Coding Agent adapters for Codex/Claude-style CLI backends.
+The system includes separated Leader/Sub-Agent model configuration, an OpenAI-compatible model layer, local-first RAG, memory, parallel task orchestration, browser automation with session reuse, privacy enforcement, claim verification, token/cost accounting, governed External Coding Agent adapters for Codex/Claude-style CLI backends, capability discovery, versioned skills, project policy, and persistent workflow state.
 
 Recommended execution order:
 
