@@ -12,8 +12,10 @@ import (
 
 	"agent/internal/config"
 	"agent/internal/memory"
+	"agent/internal/release"
 	"agent/internal/runtime"
 	"agent/internal/storage"
+	"agent/internal/version"
 	"agent/internal/workflow"
 	"github.com/chzyer/readline"
 )
@@ -38,6 +40,10 @@ func RunWithIO(ctx context.Context, args []string, ioStreams IO) error {
 		ioStreams.Stdin = strings.NewReader("")
 	}
 	switch args[0] {
+	case "version":
+		return versionCommand(args[1:], ioStreams.Stdout)
+	case "release":
+		return releaseCommand(ctx, args[1:], ioStreams.Stdout)
 	case "init":
 		return initCommand(ctx, args[1:], ioStreams)
 	case "config":
@@ -79,6 +85,50 @@ func RunWithIO(ctx context.Context, args []string, ioStreams IO) error {
 	default:
 		return usageError("unknown command " + args[0])
 	}
+}
+
+func versionCommand(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("version", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	jsonOutput := fs.Bool("json", false, "print JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	info := version.Current()
+	if *jsonOutput {
+		return writePrettyJSON(stdout, info)
+	}
+	_, err := fmt.Fprintf(stdout, "version=%s\ncommit=%s\nbuild_date=%s\ngo_version=%s\nconfig_schema=%s\ndatabase_schema=%s\nskill_manifest=%s\napi_version=%s\n",
+		info.Version, info.Commit, info.BuildDate, info.GoVersion, info.ConfigSchema, info.DatabaseSchema, info.SkillManifest, info.APIVersion)
+	return err
+}
+
+func releaseCommand(ctx context.Context, args []string, stdout io.Writer) error {
+	if len(args) == 0 || args[0] != "check" {
+		return usageError("release requires check")
+	}
+	fs := flag.NewFlagSet("release check", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	quick := fs.Bool("quick", false, "skip release matrix and checksum generation")
+	jsonOutput := fs.Bool("json", false, "print JSON")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	report, err := release.RunChecks(ctx, release.Options{Quick: *quick})
+	if *jsonOutput {
+		if writeErr := writePrettyJSON(stdout, report); writeErr != nil {
+			return writeErr
+		}
+		return err
+	}
+	for _, check := range report.Checks {
+		if check.Detail == "" {
+			fmt.Fprintf(stdout, "%s\t%s\n", check.Status, check.Name)
+			continue
+		}
+		fmt.Fprintf(stdout, "%s\t%s\t%s\n", check.Status, check.Name, check.Detail)
+	}
+	return err
 }
 
 func capabilityCommand(ctx context.Context, args []string, stdout io.Writer) error {

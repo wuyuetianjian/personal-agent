@@ -1,0 +1,24 @@
+[Unit]
+Description=Personal Agent pachat service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pachat
+Group=pachat
+WorkingDirectory=/var/lib/pachat
+EnvironmentFile=-/etc/pachat/pachat.env
+ExecStart=/usr/local/bin/pachat serve --config /etc/pachat/config.yaml
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/pachat /var/log/pachat
+LimitNOFILE=4096
+MemoryMax=2G
+
+[Install]
+WantedBy=multi-user.target

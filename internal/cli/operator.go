@@ -1029,7 +1029,7 @@ func retentionCommand(ctx context.Context, args []string, stdout io.Writer) erro
 
 func storageCommand(ctx context.Context, args []string, stdout io.Writer) error {
 	if len(args) == 0 {
-		return usageError("storage requires integrity, vacuum, or checkpoint")
+		return usageError("storage requires integrity, migrate, vacuum, or checkpoint")
 	}
 	fs := flag.NewFlagSet("storage "+args[0], flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -1052,6 +1052,11 @@ func storageCommand(ctx context.Context, args []string, stdout io.Writer) error 
 			return err
 		}
 		fmt.Fprintf(stdout, "integrity=%s\n", result)
+	case "migrate":
+		if err := storage.Migrate(ctx, db.SQL); err != nil {
+			return err
+		}
+		fmt.Fprintln(stdout, "migrate=ok")
 	case "vacuum":
 		if err := storage.Vacuum(ctx, db.SQL); err != nil {
 			return err

@@ -141,6 +141,19 @@ func TestRunRequiresTask(t *testing.T) {
 	}
 }
 
+func TestVersionCommand(t *testing.T) {
+	var out bytes.Buffer
+	if err := Run(context.Background(), []string{"version"}, &out); err != nil {
+		t.Fatalf("version error = %v", err)
+	}
+	got := out.String()
+	for _, field := range []string{"version=", "commit=", "build_date=", "go_version=", "config_schema=", "database_schema=", "skill_manifest=", "api_version="} {
+		if !strings.Contains(got, field) {
+			t.Fatalf("version output missing %s: %q", field, got)
+		}
+	}
+}
+
 func TestCapabilityAndWorkflowCommands(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
@@ -288,6 +301,14 @@ func TestP12InitConfigValidateDoctorAndMaintenance(t *testing.T) {
 	}
 	if !strings.Contains(integrityOut.String(), "integrity=ok") {
 		t.Fatalf("integrity output = %q", integrityOut.String())
+	}
+
+	var migrateOut bytes.Buffer
+	if err := Run(context.Background(), []string{"storage", "migrate", "--config", configPath}, &migrateOut); err != nil {
+		t.Fatalf("storage migrate error = %v", err)
+	}
+	if !strings.Contains(migrateOut.String(), "migrate=ok") {
+		t.Fatalf("migrate output = %q", migrateOut.String())
 	}
 }
 

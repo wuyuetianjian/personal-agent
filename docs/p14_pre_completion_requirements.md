@@ -48,3 +48,7 @@
 - Approval inbox、notification inbox、dashboard/SSE、model discovery、filesystem watcher 基础入口已接入 SQLite 和 CLI/API。
 - Bounded model planner、public escalation fail-closed 接口、hybrid RAG 降级路径、capability runtime metrics、skill eval activation gate、draft skill candidate generator 和 bounded goal planner 已补齐库层闭环。
 - 示例配置已改为 external coding backend 默认禁用且 direct writes 默认禁用。
+
+## 后续 P14 发布闭环
+
+P14 GA 发布打包已作为独立需求记录在 `docs/p14_ga_release_requirements.md`，完成状态归档在 `docs/projdocs/task/P14.md`。发布闭环包括版本模型、构建矩阵、checksum、安装/升级脚本、systemd/launchd 示例、production config 示例、发布文档、迁移兼容测试和 release checklist 自动化。

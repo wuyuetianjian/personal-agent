@@ -16,9 +16,20 @@ temp/
 *.log
 /data/
 /bin/
+/dist/
 
-# Project documentation generated from handoff packs
-/docs/
+# Project documentation generated from handoff packs.
+# Existing tracked docs stay tracked; allow P14 release docs to be added.
+/docs/*
+!/docs/p14_ga_release_requirements.md
+!/docs/release/
+/docs/release/*
+!/docs/release/*.md
+!/docs/projdocs/
+/docs/projdocs/*
+!/docs/projdocs/task/
+/docs/projdocs/task/*
+!/docs/projdocs/task/P14.md
 
 # Browser automation local-only material
 browser-profiles/

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.personal-agent.pachat</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/USER/.local/bin/pachat</string>
+    <string>serve</string>
+    <string>--config</string>
+    <string>/Users/USER/.config/pachat/config.yaml</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/USER/.local/share/pachat</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/USER/Library/Logs/pachat/stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/USER/Library/Logs/pachat/stderr.log</string>
+</dict>
+</plist>

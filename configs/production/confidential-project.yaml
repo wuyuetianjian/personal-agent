@@ -1,0 +1,41 @@
+config_version: 1
+app:
+  name: personal-agent
+  environment: confidential
+  data_dir: ${PACHAT_DATA_DIR}
+storage:
+  driver: sqlite
+  sqlite:
+    path: ${PACHAT_SQLITE_PATH}
+privacy:
+  hmac_secret_env: PERSONAL_AGENT_PRIVACY_HMAC_SECRET
+  fail_closed_for_public_models: true
+models:
+  default_provider: local-ollama
+  providers:
+    local-ollama:
+      type: openai_compatible
+      base_url_env: PACHAT_LOCAL_MODEL_BASE_URL
+      api_key_env: PACHAT_LOCAL_MODEL_API_KEY
+      trust_level: local_private
+  registry:
+    - id: local-planner
+      provider: local-ollama
+      model: ${PACHAT_LOCAL_MODEL}
+      trust_level: local_private
+      context_window: 32768
+      capabilities: [chat, tool_calling, json_schema]
+agent:
+  leader:
+    model_id: local-planner
+    trust_level_required: local_private
+permissions:
+  default: deny
+coding_agents:
+  default_backend: ""
+  backends: {}
+security:
+  network:
+    allowed_domains: []
+    allowed_schemes: [http, https]
+    allow_private_networks: false

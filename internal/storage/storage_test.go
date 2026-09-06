@@ -57,3 +57,36 @@ func TestCreateCompletedTask(t *testing.T) {
 		t.Fatalf("TaskCount() = %d, want 1", count)
 	}
 }
+
+func TestMigrateFromP13Snapshot(t *testing.T) {
+	ctx := context.Background()
+	db, err := OpenSQLite(ctx, filepath.Join(t.TempDir(), "agent.db"))
+	if err != nil {
+		t.Fatalf("OpenSQLite() error = %v", err)
+	}
+	defer db.Close()
+	if _, err := db.SQL.ExecContext(ctx, `CREATE TABLE schema_migrations (version text primary key, applied_at timestamp not null DEFAULT CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"0001_initial.sql", "0002_p9_core.sql", "0003_p10_core.sql", "0004_p13_audit.sql"} {
+		content, err := migrationFiles.ReadFile("migrations/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.SQL.ExecContext(ctx, string(content)); err != nil {
+			t.Fatalf("apply snapshot migration %s: %v", name, err)
+		}
+		if _, err := db.SQL.ExecContext(ctx, `INSERT INTO schema_migrations (version) VALUES (?)`, name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Migrate(ctx, db.SQL); err != nil {
+		t.Fatalf("Migrate() from P13 snapshot error = %v", err)
+	}
+	if _, err := db.SQL.ExecContext(ctx, `SELECT dependencies_json, dag_version FROM workflow_nodes LIMIT 1`); err != nil {
+		t.Fatalf("workflow node P14 columns missing: %v", err)
+	}
+	if _, err := db.SQL.ExecContext(ctx, `SELECT id, status FROM confirmation_requests LIMIT 1`); err != nil {
+		t.Fatalf("confirmation_requests missing: %v", err)
+	}
+}

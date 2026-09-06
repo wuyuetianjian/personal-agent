@@ -1,0 +1,47 @@
+config_version: 1
+app:
+  name: personal-agent
+  environment: server
+  data_dir: /var/lib/pachat
+server:
+  enabled: true
+  listen_addr: 127.0.0.1:8787
+  request_timeout: 120s
+storage:
+  driver: sqlite
+  sqlite:
+    path: /var/lib/pachat/personal-agent.db
+privacy:
+  hmac_secret_env: PERSONAL_AGENT_PRIVACY_HMAC_SECRET
+  fail_closed_for_public_models: true
+models:
+  default_provider: local-ollama
+  providers:
+    local-ollama:
+      type: openai_compatible
+      base_url_env: PACHAT_LOCAL_MODEL_BASE_URL
+      api_key_env: PACHAT_LOCAL_MODEL_API_KEY
+      trust_level: local_private
+  registry:
+    - id: local-planner
+      provider: local-ollama
+      model: ${PACHAT_LOCAL_MODEL}
+      trust_level: local_private
+      context_window: 32768
+      capabilities: [chat, tool_calling, json_schema]
+agent:
+  leader:
+    model_id: local-planner
+    trust_level_required: local_private
+permissions:
+  default: deny
+security:
+  api:
+    auth_token_env: PACHAT_API_TOKEN
+    allowed_origins: [http://127.0.0.1:8787]
+    max_body_bytes: 1048576
+    rate_limit_per_minute: 120
+reliability:
+  resources:
+    max_concurrent_workflows: 4
+    max_open_files: 1024

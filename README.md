@@ -4,7 +4,7 @@
 
 AI agent for local user workflows.
 
-This repository is a Go implementation of a local-first parallel personal agent. The current implementation includes the P0 foundation, P1 model/privacy foundation, P2 RAG/memory foundation, P3 orchestration/Sub-Agent foundation, P4 browser runtime foundation, P5 permissions/verification/cost foundation, P6 API/E2E/hardening foundation, P7 Runtime MVP closure, P8 External Coding Agent library foundation, P9 Capability/Skill/Workflow core closure, P10 proactive trigger/event core closure, P11 Runtime Integration closure, the P12 Operator Experience core closure, and the P13 Reliability/Security/Observability core slice: `pachat` CLI packaging, configuration loading, SQLite migrations, core agent/browser contracts, Runtime-backed chat, long-task state tracking with cancellable API background execution, model registry/policy contracts, OpenAI-compatible provider boundaries, a fail-closed Privacy Gateway for public remote model calls, local BM25 retrieval, optional vector/RRF/reranker hybrid retrieval with BM25 fallback, context compression, working/episodic/semantic memory stores, cancellable DAG orchestration, dependency-aware parallel scheduling, Sub-Agent retry handling, early stop, ordered node lifecycle evidence events, a governed chromedp browser runtime boundary, global permission policy evaluation, persistent confirmation inbox records, confirmation approve/deny APIs, claim/evidence verification, conflict detection, registry-backed cost accounting, local REST task APIs, full mock-based local E2E coverage, secret-leak regression fixtures, a unified workflow-backed Runtime used by CLI/API task execution, bounded model-backed Leader planning interfaces, governed External Coding Agent boundaries for Codex/Claude-style CLI backends, deterministic capability and skill registries, capability runtime metrics, skill eval activation gates, draft skill candidate generation, persistent workflow checkpoints with node dependencies, read-only MCP metadata adaptation plus governed MCP execution placeholders, persistent proactive triggers, untrusted event envelopes, event ingestion APIs, proactive daemon tick/recovery helpers, local notification inboxes, bounded goal planning, filesystem watcher scans, strict versioned config validation, local doctor diagnostics, knowledge/project/operator commands, packaged local HTTP serving, dashboard/SSE/model-discovery endpoints, backup/restore dry-run, retention cleanup, SQLite maintenance commands, structured log redaction, local runtime metrics, and JSON health/readiness responses.
+This repository is a Go implementation of a local-first parallel personal agent. The current implementation includes the P0 foundation, P1 model/privacy foundation, P2 RAG/memory foundation, P3 orchestration/Sub-Agent foundation, P4 browser runtime foundation, P5 permissions/verification/cost foundation, P6 API/E2E/hardening foundation, P7 Runtime MVP closure, P8 External Coding Agent library foundation, P9 Capability/Skill/Workflow core closure, P10 proactive trigger/event core closure, P11 Runtime Integration closure, the P12 Operator Experience core closure, the P13 Reliability/Security/Observability core slice, and the P14 v1.0 GA release packaging slice: `pachat` CLI packaging, configuration loading, SQLite migrations, core agent/browser contracts, Runtime-backed chat, long-task state tracking with cancellable API background execution, model registry/policy contracts, OpenAI-compatible provider boundaries, a fail-closed Privacy Gateway for public remote model calls, local BM25 retrieval, optional vector/RRF/reranker hybrid retrieval with BM25 fallback, context compression, working/episodic/semantic memory stores, cancellable DAG orchestration, dependency-aware parallel scheduling, Sub-Agent retry handling, early stop, ordered node lifecycle evidence events, a governed chromedp browser runtime boundary, global permission policy evaluation, persistent confirmation inbox records, confirmation approve/deny APIs, claim/evidence verification, conflict detection, registry-backed cost accounting, local REST task APIs, full mock-based local E2E coverage, secret-leak regression fixtures, a unified workflow-backed Runtime used by CLI/API task execution, bounded model-backed Leader planning interfaces, governed External Coding Agent boundaries for Codex/Claude-style CLI backends, deterministic capability and skill registries, capability runtime metrics, skill eval activation gates, draft skill candidate generation, persistent workflow checkpoints with node dependencies, read-only MCP metadata adaptation plus governed MCP execution placeholders, persistent proactive triggers, untrusted event envelopes, event ingestion APIs, proactive daemon tick/recovery helpers, local notification inboxes, bounded goal planning, filesystem watcher scans, strict versioned config validation, local doctor diagnostics, knowledge/project/operator commands, packaged local HTTP serving, dashboard/SSE/model-discovery endpoints, backup/restore dry-run, retention cleanup, SQLite maintenance commands, structured log redaction, local runtime metrics, JSON health/readiness responses, release version metadata, cross-platform release builds, checksums, install/upgrade scripts, service templates, sample production configs, and release runbooks.
 
 It includes Go contracts and safety skeletons for the Browser Tool, Browser Session Manager, Permission Layer integration, Privacy Gateway filtering, Evidence Bus records, model selection, provider enforcement, hybrid local retrieval/memory indexing, orchestration, semantic browser location, accessibility reads, screenshot capture, coordinate fallback, confirmation-gated browser execution, global permission decisions, verification gates, budget enforcement, local HTTP handler wiring, workflow-backed Runtime execution, coding agent adapter selection, safe process execution, environment sanitization, Git worktree isolation, CLI adapter request mapping, coding evidence collection, repository privacy checks, trigger scheduling helpers, trigger state persistence, event deduplication, local operator tooling, persistent approvals, notifications, dashboard event stubs, watcher scans, and bounded goal planning. It still does not include cookie reading, password reading, production-grade OS/kernel/browser isolation, external tracing export, external vulnerability scanning, or third-party notification delivery.
 
@@ -261,6 +261,12 @@ The remaining P13 release-gate foundations add local tracing spans, a global res
 
 Current P13 boundary: P13 now provides local policy boundaries and regression gates. It does not claim production-grade OS-level sandboxing, distributed tracing export, external vulnerability services, or kernel/browser isolation.
 
+### P14 v1.0 GA Release Packaging
+
+P14 is documented in `docs/p14_ga_release_requirements.md`, `docs/projdocs/P0_P14_EXECUTION_PLAN.md`, and `docs/projdocs/task/P14.md`. This release slice adds a version model (`pachat version`), reproducible release metadata, a required build matrix for `darwin/arm64`, `linux/amd64`, and `linux/arm64`, SHA256 checksum generation, bootstrap install and upgrade scripts, systemd and launchd service examples, safe production config examples, migration compatibility coverage, and release checklist automation through `pachat release check` and `make release-check`.
+
+P14 documentation lives under `docs/release/` and covers quickstart, user operations, administration, security/threat model, troubleshooting, upgrade, RC E2E scenarios, soak testing, performance baselines, and data-loss recovery drills. The current release package is archive/script based; package manager publishing and Windows binaries are post-v1 work.
+
 ### Validation
 
 Run:
@@ -269,6 +275,9 @@ Run:
 go test ./...
 make build
 make smoke
+make release-build
+make checksums
+go run ./cmd/pachat release check --quick
 ```
 
 ### Safety Defaults
@@ -541,6 +550,12 @@ P13 剩余 release-gate 基础现已补齐：本地 tracing span、全局 resour
 
 当前 P13 边界：P13 现在提供本地 policy boundary 和 regression gate，但不声称已经具备生产级 OS sandbox、分布式 tracing export、外部漏洞扫描服务，或 kernel/browser 隔离能力。
 
+### P14 v1.0 GA 发布打包
+
+P14 已记录在 `docs/p14_ga_release_requirements.md`、`docs/projdocs/P0_P14_EXECUTION_PLAN.md` 和 `docs/projdocs/task/P14.md` 中。本发布 slice 增加版本模型（`pachat version`）、可复现发布元数据、`darwin/arm64`、`linux/amd64` 与 `linux/arm64` 的必需构建矩阵、SHA256 checksum 生成、bootstrap install 与 upgrade 脚本、systemd 与 launchd 服务示例、安全 production config 示例、迁移兼容测试，以及通过 `pachat release check` 和 `make release-check` 执行的发布检查自动化。
+
+P14 文档位于 `docs/release/`，覆盖 quickstart、用户操作、管理员操作、安全/threat model、troubleshooting、upgrade、RC E2E scenario、soak test、performance baseline 和 data-loss recovery drill。当前发布包采用 archive/script 形式；package manager 发布和 Windows 二进制属于 post-v1 工作。
+
 ### 验证
 
 运行：
@@ -549,6 +564,9 @@ P13 剩余 release-gate 基础现已补齐：本地 tracing span、全局 resour
 go test ./...
 make build
 make smoke
+make release-build
+make checksums
+go run ./cmd/pachat release check --quick
 ```
 
 ### 默认安全策略
