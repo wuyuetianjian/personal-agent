@@ -82,7 +82,7 @@ coding_agents:
   default_backend: codex
   backends:
     codex:
-      enabled: true
+      enabled: false
       adapter: codex
       binary: codex
       binary_env: PACHAT_CODEX_CLI_PATH
@@ -92,7 +92,7 @@ coding_agents:
       inference_trust: public_remote
       privacy_policy: deny_confidential
       capabilities: [coding, code_review, code_test, code_debug]
-      allow_direct_writes: true
+      allow_direct_writes: false
     claude:
       enabled: false
       adapter: claude

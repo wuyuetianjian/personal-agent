@@ -67,6 +67,17 @@ func (r *Runtime) Run(ctx context.Context, req RunRequest) (*RunResult, error) {
 	}
 
 	answer, confidence := synthesizeLocalAnswer(req.Input, allEvidence)
+	remoteUsage := modelUsage{}
+	if len(allEvidence) == 0 && r.Escalator != nil {
+		escalated, usage, err := r.Escalator.Escalate(ctx, req.Input, allEvidence)
+		if err != nil {
+			_ = r.Storage.FailTask(ctx, req.TaskID, "public_escalation_failed", err.Error())
+			return nil, err
+		}
+		answer = escalated
+		confidence = 0.55
+		remoteUsage = modelUsage{input: usage.InputTokens, output: usage.OutputTokens}
+	}
 	claim := verification.Claim{
 		ID:          "claim_final_answer",
 		Text:        finalClaimText(req.Input, allEvidence),
@@ -77,7 +88,7 @@ func (r *Runtime) Run(ctx context.Context, req RunRequest) (*RunResult, error) {
 	if !report.PassesPolicy && len(allEvidence) > 0 {
 		confidence = 0.7
 	}
-	if len(allEvidence) == 0 {
+	if len(allEvidence) == 0 && remoteUsage.input+remoteUsage.output == 0 {
 		confidence = 0.35
 	}
 	if err := r.publish(ctx, req.TaskID, orchestrator.EventNodeCompleted, "verification", agent.RoleVerification, evidenceIDs(allEvidence)); err != nil {
@@ -99,8 +110,16 @@ func (r *Runtime) Run(ctx context.Context, req RunRequest) (*RunResult, error) {
 	}
 	result.Usage.InputTokens = estimateTokens(req.Input)
 	result.Usage.OutputTokens = estimateTokens(answer)
-	result.Usage.RemoteTokens = 0
+	result.Usage.RemoteTokens = remoteUsage.input + remoteUsage.output
+	if result.Usage.RemoteTokens > 0 {
+		result.RemoteCalls = 1
+	}
 	return result, nil
+}
+
+type modelUsage struct {
+	input  int
+	output int
 }
 
 func (r *Runtime) runViaWorkflow(ctx context.Context, req RunRequest) (*RunResult, error) {
@@ -117,11 +136,10 @@ func (r *Runtime) runViaWorkflow(ctx context.Context, req RunRequest) (*RunResul
 	if err != nil {
 		return nil, err
 	}
-	nodes := []workflow.Node{
-		{WorkflowID: workflowID, NodeID: "memory", CapabilityID: "memory.search", Role: string(agent.RoleMemory), Status: workflow.NodePending, IdempotencyKey: workflowID + ":memory"},
-		{WorkflowID: workflowID, NodeID: "retrieval", CapabilityID: "rag.search", Role: string(agent.RoleRetrieval), Status: workflow.NodePending, IdempotencyKey: workflowID + ":retrieval"},
-		{WorkflowID: workflowID, NodeID: "verification", CapabilityID: "verification.verify", Role: string(agent.RoleVerification), Dependencies: []string{"memory", "retrieval"}, Status: workflow.NodePending, IdempotencyKey: workflowID + ":verification"},
-		{WorkflowID: workflowID, NodeID: "synthesis", CapabilityID: "synthesis.local", Role: string(agent.RoleSynthesis), Dependencies: []string{"verification"}, Status: workflow.NodePending, IdempotencyKey: workflowID + ":synthesis"},
+	nodes, err := r.planWorkflowNodes(ctx, workflowID, req)
+	if err != nil {
+		_ = r.Storage.FailTask(ctx, req.TaskID, "planning_failed", err.Error())
+		return nil, err
 	}
 	if err := r.Workflows.Create(ctx, workflow.Run{
 		ID:           workflowID,
@@ -144,6 +162,17 @@ func (r *Runtime) runViaWorkflow(ctx context.Context, req RunRequest) (*RunResul
 		return nil, err
 	}
 	answer, confidence := synthesizeLocalAnswer(req.Input, allEvidence)
+	remoteUsage := modelUsage{}
+	if len(allEvidence) == 0 && r.Escalator != nil {
+		escalated, usage, err := r.Escalator.Escalate(ctx, req.Input, allEvidence)
+		if err != nil {
+			_ = r.Storage.FailTask(ctx, req.TaskID, "public_escalation_failed", err.Error())
+			return nil, err
+		}
+		answer = escalated
+		confidence = 0.55
+		remoteUsage = modelUsage{input: usage.InputTokens, output: usage.OutputTokens}
+	}
 	claim := verification.Claim{
 		ID:          "claim_final_answer",
 		Text:        finalClaimText(req.Input, allEvidence),
@@ -154,7 +183,7 @@ func (r *Runtime) runViaWorkflow(ctx context.Context, req RunRequest) (*RunResul
 	if !report.PassesPolicy && len(allEvidence) > 0 {
 		confidence = 0.7
 	}
-	if len(allEvidence) == 0 {
+	if len(allEvidence) == 0 && remoteUsage.input+remoteUsage.output == 0 {
 		confidence = 0.35
 	}
 	if err := r.Storage.CompleteTask(ctx, req.TaskID, answer, confidence); err != nil {
@@ -170,8 +199,43 @@ func (r *Runtime) runViaWorkflow(ctx context.Context, req RunRequest) (*RunResul
 	}
 	result.Usage.InputTokens = estimateTokens(req.Input)
 	result.Usage.OutputTokens = estimateTokens(answer)
-	result.Usage.RemoteTokens = 0
+	result.Usage.RemoteTokens = remoteUsage.input + remoteUsage.output
+	if result.Usage.RemoteTokens > 0 {
+		result.RemoteCalls = 1
+	}
 	return result, nil
+}
+
+func (r *Runtime) planWorkflowNodes(ctx context.Context, workflowID string, req RunRequest) ([]workflow.Node, error) {
+	if r.Planner != nil {
+		planned, _, err := r.Planner.Plan(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		return workflowNodesFromAgentNodes(workflowID, planned), nil
+	}
+	return []workflow.Node{
+		{WorkflowID: workflowID, NodeID: "memory", CapabilityID: "memory.search", Role: string(agent.RoleMemory), Status: workflow.NodePending, IdempotencyKey: workflowID + ":memory"},
+		{WorkflowID: workflowID, NodeID: "retrieval", CapabilityID: "rag.search", Role: string(agent.RoleRetrieval), Status: workflow.NodePending, IdempotencyKey: workflowID + ":retrieval"},
+		{WorkflowID: workflowID, NodeID: "verification", CapabilityID: "verification.verify", Role: string(agent.RoleVerification), Dependencies: []string{"memory", "retrieval"}, Status: workflow.NodePending, IdempotencyKey: workflowID + ":verification"},
+		{WorkflowID: workflowID, NodeID: "synthesis", CapabilityID: "synthesis.local", Role: string(agent.RoleSynthesis), Dependencies: []string{"verification"}, Status: workflow.NodePending, IdempotencyKey: workflowID + ":synthesis"},
+	}, nil
+}
+
+func workflowNodesFromAgentNodes(workflowID string, nodes []agent.TaskNode) []workflow.Node {
+	out := make([]workflow.Node, 0, len(nodes))
+	for _, node := range nodes {
+		out = append(out, workflow.Node{
+			WorkflowID:     workflowID,
+			NodeID:         node.ID,
+			CapabilityID:   node.Type,
+			Role:           string(node.Role),
+			Dependencies:   append([]string(nil), node.Dependencies...),
+			Status:         workflow.NodePending,
+			IdempotencyKey: workflowID + ":" + node.ID,
+		})
+	}
+	return out
 }
 
 func randomID(prefix string) (string, error) {

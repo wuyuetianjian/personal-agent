@@ -18,8 +18,14 @@ type Pipeline interface {
 
 type LocalPipeline struct {
 	BM25       rag.BM25
+	Vector     VectorRetriever
+	Reranker   rag.Reranker
 	Compressor rag.Compressor
 	TopK       int
+}
+
+type VectorRetriever interface {
+	Search(ctx context.Context, query string, limit int) ([]rag.Result, error)
 }
 
 func (p LocalPipeline) Retrieve(ctx context.Context, taskID string, query string, opts RetrieveOptions) ([]Evidence, error) {
@@ -30,9 +36,23 @@ func (p LocalPipeline) Retrieve(ctx context.Context, taskID string, query string
 	if topK <= 0 {
 		topK = 8
 	}
-	results, err := p.BM25.Search(ctx, query, topK)
+	bm25Results, err := p.BM25.Search(ctx, query, topK)
 	if err != nil {
 		return nil, err
+	}
+	lists := []rag.RankedList{bm25Results}
+	if p.Vector != nil {
+		vectorResults, vectorErr := p.Vector.Search(ctx, query, topK)
+		if vectorErr == nil && len(vectorResults) > 0 {
+			lists = append(lists, vectorResults)
+		}
+	}
+	results := rag.FuseRRF(lists, topK, 60)
+	if p.Reranker != nil {
+		reranked, rerankErr := p.Reranker.Rerank(query, results)
+		if rerankErr == nil && len(reranked) > 0 {
+			results = reranked
+		}
 	}
 	compressed := p.Compressor.Compress(query, results)
 	evidence := make([]Evidence, 0, len(compressed.Excerpts))

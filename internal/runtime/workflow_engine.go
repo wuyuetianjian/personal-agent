@@ -167,6 +167,9 @@ func (e *WorkflowEngine) localAgents(workflowID string, input workflowInput) map
 		agent.RoleRetrieval:    workflowSubAgent{role: agent.RoleRetrieval, engine: e, workflowID: workflowID, input: input},
 		agent.RoleVerification: workflowSubAgent{role: agent.RoleVerification, engine: e, workflowID: workflowID, input: input},
 		agent.RoleSynthesis:    workflowSubAgent{role: agent.RoleSynthesis, engine: e, workflowID: workflowID, input: input},
+		agent.RoleReasoning:    workflowSubAgent{role: agent.RoleReasoning, engine: e, workflowID: workflowID, input: input},
+		agent.RoleBrowser:      workflowSubAgent{role: agent.RoleBrowser, engine: e, workflowID: workflowID, input: input},
+		agent.RoleTool:         workflowSubAgent{role: agent.RoleTool, engine: e, workflowID: workflowID, input: input},
 	}
 }
 
@@ -273,6 +276,10 @@ func (a workflowSubAgent) executeLocal(ctx context.Context, node agent.TaskNode)
 		answer, _ := synthesizeLocalAnswer(node.Input, evidence)
 		return agent.Result{Text: answer, EvidenceIDs: evidenceIDs(evidence), Usage: agentUsage(node.Input, answer)}, nil
 	default:
+		if strings.HasPrefix(node.Type, "browser.") || strings.HasPrefix(node.Type, "coding.") || strings.HasPrefix(node.Type, "mcp.") || strings.HasPrefix(node.Type, "tool.") {
+			msg := "runtime capability requires an enabled governed executor: " + node.Type
+			return agent.Result{ErrorCategory: agent.ErrorBlockedMissingInput, ErrorMessage: msg, Usage: agentUsage(node.Input, "")}, errors.New(msg)
+		}
 		msg := "unsupported runtime workflow capability: " + node.Type
 		return agent.Result{ErrorCategory: agent.ErrorBlockedMissingInput, ErrorMessage: msg}, errors.New(msg)
 	}
@@ -291,6 +298,15 @@ func parseWorkflowInput(raw string) workflowInput {
 }
 
 func roleForCapability(capabilityID string, fallback string) agent.Role {
+	if strings.HasPrefix(capabilityID, "browser.") {
+		return agent.RoleBrowser
+	}
+	if strings.HasPrefix(capabilityID, "coding.") {
+		return agent.RoleTool
+	}
+	if strings.HasPrefix(capabilityID, "mcp.") || strings.HasPrefix(capabilityID, "tool.") {
+		return agent.RoleTool
+	}
 	switch capabilityID {
 	case "memory.search":
 		return agent.RoleMemory

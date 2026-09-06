@@ -29,6 +29,8 @@ type Runtime struct {
 	Workflows    workflow.Store
 	Projects     project.Store
 	Workflow     *WorkflowEngine
+	Planner      Planner
+	Escalator    *PublicEscalator
 	Governor     *reliability.Governor
 	Tracer       *observability.Tracer
 	Audit        audit.Store

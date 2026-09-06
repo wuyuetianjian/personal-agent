@@ -215,6 +215,30 @@ func TestWorkflowEngineRejectsProjectDeniedCapability(t *testing.T) {
 	}
 }
 
+func TestRunUsesConfiguredPublicEscalatorUsage(t *testing.T) {
+	ctx := context.Background()
+	db := openRuntimeTestDB(t)
+	cfg := configForRuntimeTest()
+	rt := NewLocal(cfg, db, &orchestrator.InMemoryEvidenceBus{})
+	rt.Escalator = &PublicEscalator{Provider: staticChatProvider("public summary")}
+	if err := db.CreateTask(ctx, storage.Task{ID: "task-public", Title: "public", Input: "unknown", Status: "running", LeaderModelID: "local-planner", PrivacyClass: "local_private"}); err != nil {
+		t.Fatal(err)
+	}
+	result, err := rt.Run(ctx, RunRequest{TaskID: "task-public", Input: "unknown", LeaderModelID: "local-planner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.RemoteCalls != 1 || result.Usage.RemoteTokens != 8 {
+		t.Fatalf("result=%#v, want one remote call with provider usage", result)
+	}
+}
+
+func configForRuntimeTest() config.Config {
+	var cfg config.Config
+	cfg.Agent.Leader.ModelID = "local-planner"
+	return cfg
+}
+
 func openRuntimeTestDB(t *testing.T) *storage.DB {
 	t.Helper()
 	db, err := storage.OpenSQLite(context.Background(), filepath.Join(t.TempDir(), "agent.db"))
