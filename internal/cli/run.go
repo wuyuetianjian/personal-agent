@@ -60,6 +60,8 @@ func RunWithIO(ctx context.Context, args []string, ioStreams IO) error {
 		return projectCommand(ctx, args[1:], ioStreams.Stdout)
 	case "approval":
 		return approvalCommand(ctx, args[1:], ioStreams.Stdout)
+	case "trigger":
+		return triggerCommand(ctx, args[1:], ioStreams.Stdout)
 	case "serve":
 		return serveCommand(ctx, args[1:], ioStreams.Stdout)
 	case "backup":

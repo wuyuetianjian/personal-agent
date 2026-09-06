@@ -12,10 +12,12 @@ import (
 	"time"
 
 	"agent/internal/config"
+	agentEvent "agent/internal/event"
 	"agent/internal/orchestrator"
 	"agent/internal/permission"
 	"agent/internal/runtime"
 	"agent/internal/storage"
+	"agent/internal/trigger"
 )
 
 func TestTaskLifecycleEndpoints(t *testing.T) {
@@ -191,6 +193,41 @@ func TestConfirmationEndpoints(t *testing.T) {
 	approved, err = confirmations.IsApproved(ctx, "confirm-1")
 	if err != nil || approved {
 		t.Fatalf("IsApproved() after deny = %v, %v; want false", approved, err)
+	}
+}
+
+func TestTriggerAndEventEndpoints(t *testing.T) {
+	db := openTestDB(t)
+	server := NewServer(db, nil, permission.NewInMemoryConfirmationStore(), "local-planner")
+	server.Triggers = trigger.Store{DB: db.SQL}
+	server.EventStore = agentEvent.Store{DB: db.SQL}
+	handler := server.Handler()
+
+	createTrigger := httptest.NewRecorder()
+	handler.ServeHTTP(createTrigger, httptest.NewRequest(http.MethodPost, "/triggers", strings.NewReader(`{"id":"tr-api","project_id":"default","type":"manual","enabled":true}`)))
+	if createTrigger.Code != http.StatusCreated {
+		t.Fatalf("trigger create status = %d body=%s", createTrigger.Code, createTrigger.Body.String())
+	}
+	list := httptest.NewRecorder()
+	handler.ServeHTTP(list, httptest.NewRequest(http.MethodGet, "/triggers", nil))
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), "tr-api") {
+		t.Fatalf("trigger list status=%d body=%s", list.Code, list.Body.String())
+	}
+	run := httptest.NewRecorder()
+	handler.ServeHTTP(run, httptest.NewRequest(http.MethodPost, "/triggers/tr-api/run", nil))
+	if run.Code != http.StatusOK {
+		t.Fatalf("trigger run status=%d body=%s", run.Code, run.Body.String())
+	}
+	history := httptest.NewRecorder()
+	handler.ServeHTTP(history, httptest.NewRequest(http.MethodGet, "/triggers/tr-api/history", nil))
+	if history.Code != http.StatusOK || !strings.Contains(history.Body.String(), "trigger fired") {
+		t.Fatalf("history status=%d body=%s", history.Code, history.Body.String())
+	}
+
+	createEvent := httptest.NewRecorder()
+	handler.ServeHTTP(createEvent, httptest.NewRequest(http.MethodPost, "/events", strings.NewReader(`{"id":"ev-api","source":"test","type":"push","project_id":"default","payload":{"token":"secret"}}`)))
+	if createEvent.Code != http.StatusCreated {
+		t.Fatalf("event create status=%d body=%s", createEvent.Code, createEvent.Body.String())
 	}
 }
 

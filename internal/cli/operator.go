@@ -19,6 +19,7 @@ import (
 
 	"agent/internal/api"
 	"agent/internal/config"
+	agentEvent "agent/internal/event"
 	"agent/internal/observability"
 	"agent/internal/permission"
 	"agent/internal/project"
@@ -26,6 +27,7 @@ import (
 	"agent/internal/reliability"
 	"agent/internal/runtime"
 	"agent/internal/storage"
+	"agent/internal/trigger"
 )
 
 type checkResult struct {
@@ -675,6 +677,8 @@ func serveCommand(ctx context.Context, args []string, stdout io.Writer) error {
 	eventSource, _ := rt.Events.(api.EventSource)
 	server := api.NewServerWithRunner(rt.Storage, eventSource, confirmations, cfg.Agent.Leader.ModelID, rt)
 	server.Security = api.NewSecurityPolicy(cfg.Security.API)
+	server.Triggers = trigger.Store{DB: rt.Storage.SQL}
+	server.EventStore = agentEvent.Store{DB: rt.Storage.SQL}
 	metrics := observability.NewRegistry()
 	mux := http.NewServeMux()
 	mux.Handle("/", metricsMiddleware(metrics, server.Handler()))

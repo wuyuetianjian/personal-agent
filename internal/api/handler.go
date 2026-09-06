@@ -12,10 +12,12 @@ import (
 	"strings"
 	"time"
 
+	agentEvent "agent/internal/event"
 	"agent/internal/orchestrator"
 	"agent/internal/permission"
 	"agent/internal/runtime"
 	"agent/internal/storage"
+	"agent/internal/trigger"
 )
 
 type Server struct {
@@ -24,6 +26,8 @@ type Server struct {
 	Confirmations ConfirmationStore
 	Runner        RuntimeRunner
 	ActiveTasks   *TaskRunner
+	Triggers      trigger.Store
+	EventStore    agentEvent.Store
 	LeaderModelID string
 	Now           func() time.Time
 	Security      SecurityPolicy
@@ -53,6 +57,14 @@ func (s Server) Handler() http.Handler {
 	mux.HandleFunc("GET /tasks/{id}", s.getTask)
 	mux.HandleFunc("POST /tasks/{id}/cancel", s.cancelTask)
 	mux.HandleFunc("GET /tasks/{id}/events", s.listEvents)
+	mux.HandleFunc("POST /events", s.createEvent)
+	mux.HandleFunc("POST /triggers", s.createTrigger)
+	mux.HandleFunc("GET /triggers", s.listTriggers)
+	mux.HandleFunc("GET /triggers/{id}", s.getTrigger)
+	mux.HandleFunc("POST /triggers/{id}/enable", s.enableTrigger)
+	mux.HandleFunc("POST /triggers/{id}/disable", s.disableTrigger)
+	mux.HandleFunc("POST /triggers/{id}/run", s.runTrigger)
+	mux.HandleFunc("GET /triggers/{id}/history", s.triggerHistory)
 	mux.HandleFunc("GET /confirmations/{id}", s.getConfirmation)
 	mux.HandleFunc("POST /confirmations/{id}/approve", s.approveConfirmation)
 	mux.HandleFunc("POST /confirmations/{id}/deny", s.denyConfirmation)
@@ -102,6 +114,29 @@ type confirmationResponse struct {
 	ProposedEffect string   `json:"proposed_effect"`
 	Status         string   `json:"status"`
 	RequestedAt    string   `json:"requested_at,omitempty"`
+}
+
+type triggerRequest struct {
+	ID          string `json:"id"`
+	ProjectID   string `json:"project_id"`
+	Type        string `json:"type"`
+	Enabled     bool   `json:"enabled"`
+	SkillID     string `json:"skill_id"`
+	Interval    string `json:"interval,omitempty"`
+	EventSource string `json:"event_source,omitempty"`
+	EventType   string `json:"event_type,omitempty"`
+	Condition   string `json:"condition,omitempty"`
+}
+
+type eventRequest struct {
+	ID            string          `json:"id"`
+	Source        string          `json:"source"`
+	Type          string          `json:"type"`
+	ProjectID     string          `json:"project_id"`
+	Payload       json.RawMessage `json:"payload"`
+	PrivacyClass  string          `json:"privacy_class"`
+	DedupKey      string          `json:"dedup_key"`
+	CorrelationID string          `json:"correlation_id"`
 }
 
 func (s Server) createTask(w http.ResponseWriter, r *http.Request) {
@@ -252,6 +287,179 @@ func (s Server) listEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"events": responses})
+}
+
+func (s Server) createEvent(w http.ResponseWriter, r *http.Request) {
+	if s.EventStore.DB == nil {
+		writeError(w, http.StatusServiceUnavailable, "event_store_unavailable")
+		return
+	}
+	var request eventRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json")
+		return
+	}
+	if request.ID == "" {
+		id, err := newID("event")
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "id_generation_failed")
+			return
+		}
+		request.ID = id
+	}
+	if request.ProjectID == "" {
+		request.ProjectID = "default"
+	}
+	event := agentEvent.Event{
+		ID:            request.ID,
+		Source:        request.Source,
+		Type:          request.Type,
+		ProjectID:     request.ProjectID,
+		Payload:       []byte(sanitizeForAPI(string(request.Payload))),
+		PrivacyClass:  request.PrivacyClass,
+		TrustLevel:    "untrusted",
+		DedupKey:      request.DedupKey,
+		CorrelationID: request.CorrelationID,
+	}
+	if err := s.EventStore.Put(r.Context(), event); err != nil {
+		writeError(w, http.StatusBadRequest, "event_create_failed")
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"id": event.ID, "status": "accepted"})
+}
+
+func (s Server) createTrigger(w http.ResponseWriter, r *http.Request) {
+	if s.Triggers.DB == nil {
+		writeError(w, http.StatusServiceUnavailable, "trigger_store_unavailable")
+		return
+	}
+	var request triggerRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json")
+		return
+	}
+	tr, err := triggerFromRequest(request)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_trigger")
+		return
+	}
+	if tr.ID == "" {
+		tr.ID, err = newID("trigger")
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "id_generation_failed")
+			return
+		}
+	}
+	if tr.ProjectID == "" {
+		tr.ProjectID = "default"
+	}
+	if err := s.Triggers.Put(r.Context(), tr); err != nil {
+		writeError(w, http.StatusBadRequest, "trigger_create_failed")
+		return
+	}
+	writeJSON(w, http.StatusCreated, tr)
+}
+
+func (s Server) listTriggers(w http.ResponseWriter, r *http.Request) {
+	if s.Triggers.DB == nil {
+		writeError(w, http.StatusServiceUnavailable, "trigger_store_unavailable")
+		return
+	}
+	triggers, err := s.Triggers.List(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "trigger_list_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"triggers": triggers})
+}
+
+func (s Server) getTrigger(w http.ResponseWriter, r *http.Request) {
+	tr, err := s.Triggers.Get(r.Context(), r.PathValue("id"))
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "trigger_not_found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "trigger_get_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, tr)
+}
+
+func (s Server) enableTrigger(w http.ResponseWriter, r *http.Request) {
+	s.setTriggerEnabled(w, r, true)
+}
+
+func (s Server) disableTrigger(w http.ResponseWriter, r *http.Request) {
+	s.setTriggerEnabled(w, r, false)
+}
+
+func (s Server) setTriggerEnabled(w http.ResponseWriter, r *http.Request, enabled bool) {
+	if err := s.Triggers.SetEnabled(r.Context(), r.PathValue("id"), enabled); errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "trigger_not_found")
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "trigger_update_failed")
+	} else {
+		writeJSON(w, http.StatusOK, map[string]any{"id": r.PathValue("id"), "enabled": enabled})
+	}
+}
+
+func (s Server) runTrigger(w http.ResponseWriter, r *http.Request) {
+	daemon := trigger.Daemon{Store: s.Triggers}
+	if err := daemon.RunNow(r.Context(), r.PathValue("id")); err != nil {
+		writeError(w, http.StatusInternalServerError, "trigger_run_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"id": r.PathValue("id"), "status": "fired"})
+}
+
+func (s Server) triggerHistory(w http.ResponseWriter, r *http.Request) {
+	history, err := s.Triggers.History(r.Context(), r.PathValue("id"), 50)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "trigger_history_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"history": history})
+}
+
+func triggerFromRequest(request triggerRequest) (trigger.Trigger, error) {
+	tr := trigger.Trigger{
+		ID:        strings.TrimSpace(request.ID),
+		ProjectID: strings.TrimSpace(request.ProjectID),
+		Type:      trigger.Type(strings.TrimSpace(request.Type)),
+		Enabled:   request.Enabled,
+		SkillID:   strings.TrimSpace(request.SkillID),
+	}
+	if tr.Type == "" {
+		tr.Type = trigger.TypeManual
+	}
+	if tr.ProjectID == "" {
+		tr.ProjectID = "default"
+	}
+	switch tr.Type {
+	case trigger.TypeInterval:
+		interval, err := time.ParseDuration(request.Interval)
+		if err != nil {
+			return tr, err
+		}
+		tr.Schedule.Interval = interval
+	case trigger.TypeEvent:
+		tr.Event.Source = strings.TrimSpace(request.EventSource)
+		tr.Event.Type = strings.TrimSpace(request.EventType)
+	case trigger.TypeConditionWatch:
+		tr.Condition.Evaluator = "false_to_true"
+		tr.Condition.Query = strings.TrimSpace(request.Condition)
+	case trigger.TypeManual, trigger.TypeGoal:
+	default:
+		return tr, trigger.ErrInvalidTrigger
+	}
+	if tr.PolicyRef == "" {
+		tr.PolicyRef = "default"
+	}
+	if tr.BudgetRef == "" {
+		tr.BudgetRef = "default"
+	}
+	return tr, nil
 }
 
 func (s Server) getConfirmation(w http.ResponseWriter, r *http.Request) {

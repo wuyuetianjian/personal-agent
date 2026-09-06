@@ -176,6 +176,35 @@ func TestCapabilityAndWorkflowCommands(t *testing.T) {
 	}
 }
 
+func TestTriggerCommands(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	dbPath := filepath.Join(dir, "agent.db")
+	writeConfig(t, configPath, dbPath)
+
+	var createOut bytes.Buffer
+	if err := Run(context.Background(), []string{"trigger", "create", "--config", configPath, "--id", "tr-cli", "--type", "manual"}, &createOut); err != nil {
+		t.Fatalf("trigger create error = %v", err)
+	}
+	if !strings.Contains(createOut.String(), "trigger_id=tr-cli") {
+		t.Fatalf("create output = %q", createOut.String())
+	}
+	var listOut bytes.Buffer
+	if err := Run(context.Background(), []string{"trigger", "list", "--config", configPath}, &listOut); err != nil {
+		t.Fatalf("trigger list error = %v", err)
+	}
+	if !strings.Contains(listOut.String(), "tr-cli") {
+		t.Fatalf("list output = %q", listOut.String())
+	}
+	var runOut bytes.Buffer
+	if err := Run(context.Background(), []string{"trigger", "run-now", "--config", configPath, "--id", "tr-cli"}, &runOut); err != nil {
+		t.Fatalf("trigger run-now error = %v", err)
+	}
+	if !strings.Contains(runOut.String(), "status=fired") {
+		t.Fatalf("run-now output = %q", runOut.String())
+	}
+}
+
 func TestP12InitConfigValidateDoctorAndMaintenance(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")

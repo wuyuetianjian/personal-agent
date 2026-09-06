@@ -66,6 +66,25 @@ type State struct {
 	StateJSON           string
 }
 
+type History struct {
+	ID         string
+	TriggerID  string
+	EventID    string
+	WorkflowID string
+	Status     string
+	Message    string
+	CreatedAt  time.Time
+}
+
+type DeadLetter struct {
+	ID         string
+	SourceID   string
+	SourceType string
+	Reason     string
+	Payload    []byte
+	CreatedAt  time.Time
+}
+
 type BackoffPolicy struct {
 	Initial     time.Duration
 	Multiplier  float64
