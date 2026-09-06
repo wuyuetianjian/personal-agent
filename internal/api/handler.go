@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -22,6 +23,7 @@ type Server struct {
 	Events        EventSource
 	Confirmations ConfirmationStore
 	Runner        RuntimeRunner
+	ActiveTasks   *TaskRunner
 	LeaderModelID string
 	Now           func() time.Time
 	Security      SecurityPolicy
@@ -40,6 +42,7 @@ func NewServer(tasks TaskStore, events EventSource, confirmations ConfirmationSt
 func NewServerWithRunner(tasks TaskStore, events EventSource, confirmations ConfirmationStore, leaderModelID string, runner RuntimeRunner) Server {
 	server := NewServer(tasks, events, confirmations, leaderModelID)
 	server.Runner = runner
+	server.ActiveTasks = NewTaskRunner(runner)
 	return server
 }
 
@@ -152,13 +155,14 @@ func (s Server) createTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "task_create_failed")
 		return
 	}
+	runReq := runtime.RunRequest{
+		TaskID:        id,
+		Input:         request.Input,
+		LeaderModelID: modelID,
+		PrivacyClass:  privacyClass,
+	}
 	if !request.Long {
-		if _, err := s.Runner.Run(r.Context(), runtime.RunRequest{
-			TaskID:        id,
-			Input:         request.Input,
-			LeaderModelID: modelID,
-			PrivacyClass:  privacyClass,
-		}); err != nil {
+		if _, err := s.Runner.Run(r.Context(), runReq); err != nil {
 			writeError(w, http.StatusInternalServerError, "runtime_failed")
 			return
 		}
@@ -169,6 +173,13 @@ func (s Server) createTask(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusCreated, taskToResponse(updated))
 		return
+	}
+	if s.Runner != nil {
+		active := s.ActiveTasks
+		if active == nil {
+			active = NewTaskRunner(s.Runner)
+		}
+		active.Start(context.Background(), runReq)
 	}
 	writeJSON(w, http.StatusCreated, taskToResponse(task))
 }
@@ -210,6 +221,9 @@ func (s Server) getTask(w http.ResponseWriter, r *http.Request) {
 
 func (s Server) cancelTask(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if s.ActiveTasks != nil {
+		s.ActiveTasks.Cancel(id)
+	}
 	if err := s.Tasks.CancelTask(r.Context(), id); err != nil {
 		writeError(w, http.StatusInternalServerError, "task_cancel_failed")
 		return

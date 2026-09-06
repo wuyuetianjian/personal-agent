@@ -112,6 +112,38 @@ func TestCreateTaskRunsRuntime(t *testing.T) {
 	}
 }
 
+func TestCancelTaskCancelsBackgroundRuntime(t *testing.T) {
+	db := openTestDB(t)
+	bus := &orchestrator.InMemoryEvidenceBus{}
+	runner := &blockingRunner{started: make(chan struct{}), cancelled: make(chan struct{})}
+	server := NewServerWithRunner(db, bus, permission.NewInMemoryConfirmationStore(), "local-planner", runner)
+	handler := server.Handler()
+
+	create := httptest.NewRecorder()
+	handler.ServeHTTP(create, httptest.NewRequest(http.MethodPost, "/tasks", strings.NewReader(`{"input":"long running runtime","long":true}`)))
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create status = %d body=%s", create.Code, create.Body.String())
+	}
+	var created taskResponse
+	if err := json.Unmarshal(create.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !runner.waitStarted(time.Second) {
+		t.Fatal("background runner did not start")
+	}
+
+	cancel := httptest.NewRecorder()
+	handler.ServeHTTP(cancel, httptest.NewRequest(http.MethodPost, "/tasks/"+created.ID+"/cancel", nil))
+	if cancel.Code != http.StatusOK {
+		t.Fatalf("cancel status = %d body=%s", cancel.Code, cancel.Body.String())
+	}
+	select {
+	case <-runner.cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("background runtime context was not cancelled")
+	}
+}
+
 func TestConfirmationEndpoints(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
@@ -241,4 +273,25 @@ func configForAPITest() config.Config {
 	var cfg config.Config
 	cfg.Agent.Leader.ModelID = "local-planner"
 	return cfg
+}
+
+type blockingRunner struct {
+	started   chan struct{}
+	cancelled chan struct{}
+}
+
+func (r *blockingRunner) Run(ctx context.Context, req runtime.RunRequest) (*runtime.RunResult, error) {
+	close(r.started)
+	<-ctx.Done()
+	close(r.cancelled)
+	return nil, ctx.Err()
+}
+
+func (r *blockingRunner) waitStarted(timeout time.Duration) bool {
+	select {
+	case <-r.started:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
 }
