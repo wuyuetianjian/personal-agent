@@ -263,6 +263,8 @@ Commit boundary:
 
 ## P7: Runtime Integration / Personal Agent MVP
 
+Status: P7 Runtime MVP completed locally on 2026-09-06 for the first vertical slice. See `docs/projdocs/task/P7.md`.
+
 
 ### 1. P7 核心目标
 

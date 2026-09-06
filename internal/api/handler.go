@@ -13,6 +13,7 @@ import (
 
 	"agent/internal/orchestrator"
 	"agent/internal/permission"
+	"agent/internal/runtime"
 	"agent/internal/storage"
 )
 
@@ -20,6 +21,7 @@ type Server struct {
 	Tasks         TaskStore
 	Events        EventSource
 	Confirmations ConfirmationStore
+	Runner        RuntimeRunner
 	LeaderModelID string
 	Now           func() time.Time
 }
@@ -32,6 +34,12 @@ func NewServer(tasks TaskStore, events EventSource, confirmations ConfirmationSt
 		LeaderModelID: leaderModelID,
 		Now:           func() time.Time { return time.Now().UTC() },
 	}
+}
+
+func NewServerWithRunner(tasks TaskStore, events EventSource, confirmations ConfirmationStore, leaderModelID string, runner RuntimeRunner) Server {
+	server := NewServer(tasks, events, confirmations, leaderModelID)
+	server.Runner = runner
+	return server
 }
 
 func (s Server) Handler() http.Handler {
@@ -123,35 +131,42 @@ func (s Server) createTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "id_generation_failed")
 		return
 	}
-	status := "completed"
-	answer := "No-op task completed."
-	var finalAnswer *string = &answer
-	confidence := 1.0
-	var finalConfidence *float64 = &confidence
-	var completedAt *time.Time
+	status := "running"
 	now := s.now()
-	if request.Long {
-		status = "running"
-		finalAnswer = nil
-		finalConfidence = nil
-	} else {
-		completedAt = &now
+	if !request.Long && s.Runner == nil {
+		writeError(w, http.StatusServiceUnavailable, "runtime_unavailable")
+		return
 	}
 	task := storage.Task{
-		ID:              id,
-		Title:           sanitizeForAPI(request.Title),
-		Input:           request.Input,
-		Status:          status,
-		CreatedAt:       now,
-		UpdatedAt:       now,
-		CompletedAt:     completedAt,
-		LeaderModelID:   modelID,
-		PrivacyClass:    privacyClass,
-		FinalAnswer:     sanitizePtr(finalAnswer),
-		FinalConfidence: finalConfidence,
+		ID:            id,
+		Title:         sanitizeForAPI(request.Title),
+		Input:         request.Input,
+		Status:        status,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		LeaderModelID: modelID,
+		PrivacyClass:  privacyClass,
 	}
 	if err := s.Tasks.CreateTask(r.Context(), task); err != nil {
 		writeError(w, http.StatusInternalServerError, "task_create_failed")
+		return
+	}
+	if !request.Long {
+		if _, err := s.Runner.Run(r.Context(), runtime.RunRequest{
+			TaskID:        id,
+			Input:         request.Input,
+			LeaderModelID: modelID,
+			PrivacyClass:  privacyClass,
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, "runtime_failed")
+			return
+		}
+		updated, err := s.Tasks.GetTask(r.Context(), id)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "task_get_failed")
+			return
+		}
+		writeJSON(w, http.StatusCreated, taskToResponse(updated))
 		return
 	}
 	writeJSON(w, http.StatusCreated, taskToResponse(task))

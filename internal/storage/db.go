@@ -162,6 +162,27 @@ WHERE id = ? AND status IN ('pending', 'running')
 	return err
 }
 
+func (db *DB) CompleteTask(ctx context.Context, id string, answer string, confidence float64) error {
+	now := time.Now().UTC()
+	_, err := db.SQL.ExecContext(ctx, `
+UPDATE tasks
+SET status = 'completed', updated_at = ?, completed_at = ?, final_answer = ?, final_confidence = ?,
+  error_category = NULL, error_message = NULL
+WHERE id = ?
+`, now, now, answer, confidence, id)
+	return err
+}
+
+func (db *DB) FailTask(ctx context.Context, id string, category string, message string) error {
+	now := time.Now().UTC()
+	_, err := db.SQL.ExecContext(ctx, `
+UPDATE tasks
+SET status = 'failed', updated_at = ?, error_category = ?, error_message = ?
+WHERE id = ?
+`, now, category, message, id)
+	return err
+}
+
 func (db *DB) TaskCount(ctx context.Context) (int, error) {
 	var count int
 	err := db.SQL.QueryRowContext(ctx, `SELECT COUNT(*) FROM tasks`).Scan(&count)

@@ -12,6 +12,7 @@ import (
 
 	"agent/internal/config"
 	"agent/internal/memory"
+	"agent/internal/runtime"
 	"agent/internal/storage"
 	"github.com/chzyer/readline"
 )
@@ -63,44 +64,57 @@ func runTask(ctx context.Context, args []string, stdout io.Writer) error {
 		return usageError("run requires --task")
 	}
 
-	cfg, db, err := openConfiguredDB(ctx, *configPath)
+	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	rt, err := runtime.Build(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer rt.Close()
 
 	taskID, err := newID("task")
 	if err != nil {
 		return err
 	}
-	status := "completed"
-	answer := "No-op task completed."
-	var finalAnswer *string = &answer
-	confidence := 1.0
-	var finalConfidence *float64 = &confidence
+	status := "running"
 	if *longTask {
-		status = "running"
-		finalAnswer = nil
-		finalConfidence = nil
-	}
-	if err := db.CreateTask(ctx, storage.Task{
-		ID:              taskID,
-		Title:           summarizeTitle(*taskInput),
-		Input:           *taskInput,
-		Status:          status,
-		LeaderModelID:   cfg.Agent.Leader.ModelID,
-		PrivacyClass:    "local_private",
-		FinalAnswer:     finalAnswer,
-		FinalConfidence: finalConfidence,
-	}); err != nil {
-		return err
-	}
-
-	if *longTask {
+		if err := rt.Storage.CreateTask(ctx, storage.Task{
+			ID:            taskID,
+			Title:         summarizeTitle(*taskInput),
+			Input:         *taskInput,
+			Status:        status,
+			LeaderModelID: cfg.Agent.Leader.ModelID,
+			PrivacyClass:  "local_private",
+		}); err != nil {
+			return err
+		}
 		_, err = fmt.Fprintf(stdout, "task_id=%s status=running\n", taskID)
 		return err
 	}
-	_, err = fmt.Fprintf(stdout, "task_id=%s status=completed answer=%q\n", taskID, answer)
+	if err := rt.Storage.CreateTask(ctx, storage.Task{
+		ID:            taskID,
+		Title:         summarizeTitle(*taskInput),
+		Input:         *taskInput,
+		Status:        status,
+		LeaderModelID: cfg.Agent.Leader.ModelID,
+		PrivacyClass:  "local_private",
+	}); err != nil {
+		return err
+	}
+	result, err := rt.Run(ctx, runtime.RunRequest{
+		TaskID:        taskID,
+		Input:         *taskInput,
+		PrivacyClass:  "local_private",
+		LeaderModelID: cfg.Agent.Leader.ModelID,
+	})
+	if err != nil {
+		_ = rt.Storage.FailTask(ctx, taskID, "runtime_failed", err.Error())
+		return err
+	}
+	_, err = fmt.Fprintf(stdout, "task_id=%s\nstatus=completed\nconfidence=%.2f\nremote_tokens=%d\n\nanswer:\n%s\n",
+		taskID, result.Confidence, result.Usage.RemoteTokens, result.Answer)
 	return err
 }
 

@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestRunNoopTask(t *testing.T) {
+func TestRunRuntimeTask(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
 	dbPath := filepath.Join(dir, "agent.db")
@@ -22,6 +22,12 @@ func TestRunNoopTask(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "status=completed") {
 		t.Fatalf("output = %q, want completed status", out.String())
+	}
+	if strings.Contains(out.String(), "No-op task completed.") {
+		t.Fatalf("output = %q, still contains no-op answer", out.String())
+	}
+	if !strings.Contains(out.String(), "remote_tokens=0") || !strings.Contains(out.String(), "answer:") {
+		t.Fatalf("output = %q, want runtime answer shape", out.String())
 	}
 	if _, err := os.Stat(dbPath); err != nil {
 		t.Fatalf("database was not created: %v", err)

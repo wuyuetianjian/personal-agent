@@ -1,5 +1,7 @@
 # P7 — Runtime Integration / Personal Agent MVP
 
+Status: P7 Runtime MVP first vertical slice completed locally on 2026-09-06. See `docs/p7_runtime_mvp_implementation.md` and `docs/projdocs/task/P7.md`.
+
 ## 1. P7 核心目标
 
 P7 的唯一核心目标：

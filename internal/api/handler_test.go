@@ -11,8 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"agent/internal/config"
 	"agent/internal/orchestrator"
 	"agent/internal/permission"
+	"agent/internal/runtime"
 	"agent/internal/storage"
 )
 
@@ -76,6 +78,37 @@ func TestTaskLifecycleEndpoints(t *testing.T) {
 	handler.ServeHTTP(list, httptest.NewRequest(http.MethodGet, "/tasks?limit=10", nil))
 	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), created.ID) {
 		t.Fatalf("list status=%d body=%s", list.Code, list.Body.String())
+	}
+}
+
+func TestCreateTaskRunsRuntime(t *testing.T) {
+	db := openTestDB(t)
+	bus := &orchestrator.InMemoryEvidenceBus{}
+	runner := runtime.NewLocal(configForAPITest(), db, bus)
+	handler := NewServerWithRunner(db, bus, permission.NewInMemoryConfirmationStore(), "local-planner", runner).Handler()
+
+	create := httptest.NewRecorder()
+	handler.ServeHTTP(create, httptest.NewRequest(http.MethodPost, "/tasks", strings.NewReader(`{"input":"summarize local runtime notes"}`)))
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create status = %d body=%s", create.Code, create.Body.String())
+	}
+	var created taskResponse
+	if err := json.Unmarshal(create.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if created.Status != "completed" || created.FinalAnswer == nil {
+		t.Fatalf("created task = %+v, want completed runtime result", created)
+	}
+	if strings.Contains(*created.FinalAnswer, "No-op task completed.") {
+		t.Fatalf("final answer still no-op: %q", *created.FinalAnswer)
+	}
+	if len(bus.Events()) == 0 {
+		t.Fatal("runtime did not publish API-visible events")
+	}
+	events := httptest.NewRecorder()
+	handler.ServeHTTP(events, httptest.NewRequest(http.MethodGet, "/tasks/"+created.ID+"/events", nil))
+	if events.Code != http.StatusOK || !strings.Contains(events.Body.String(), `"events"`) {
+		t.Fatalf("events status=%d body=%s", events.Code, events.Body.String())
 	}
 }
 
@@ -150,4 +183,10 @@ func assertRedacted(t *testing.T, body *bytes.Buffer) {
 			t.Fatalf("response leaked %q: %s", forbidden, got)
 		}
 	}
+}
+
+func configForAPITest() config.Config {
+	var cfg config.Config
+	cfg.Agent.Leader.ModelID = "local-planner"
+	return cfg
 }

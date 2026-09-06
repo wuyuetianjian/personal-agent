@@ -5,6 +5,7 @@ import (
 
 	"agent/internal/orchestrator"
 	"agent/internal/permission"
+	"agent/internal/runtime"
 	"agent/internal/storage"
 )
 
@@ -29,4 +30,8 @@ type ConfirmationStore interface {
 
 type ConfirmationStatusStore interface {
 	Status(ctx context.Context, confirmationID string) (string, error)
+}
+
+type RuntimeRunner interface {
+	Run(ctx context.Context, req runtime.RunRequest) (*runtime.RunResult, error)
 }

@@ -4,9 +4,9 @@
 
 AI agent for local user workflows.
 
-This repository is a Go implementation of a local-first parallel personal agent. The current implementation includes the P0 foundation, P1 model/privacy foundation, P2 RAG/memory foundation, P3 orchestration/Sub-Agent foundation, P4 browser runtime foundation, P5 permissions/verification/cost foundation, and P6 API/E2E/hardening foundation: `pachat` CLI packaging, configuration loading, SQLite migrations, core agent/browser contracts, interactive local memory, long-task state tracking, model registry/policy contracts, OpenAI-compatible provider boundaries, a fail-closed Privacy Gateway for public remote model calls, local BM25 retrieval, RRF result fusion, Qdrant boundary code, context compression, working/episodic/semantic memory stores, cancellable DAG orchestration, dependency-aware parallel scheduling, Sub-Agent retry handling, early stop, ordered node lifecycle evidence events, a governed chromedp browser runtime boundary, global permission policy evaluation, confirmation audit records, claim/evidence verification, conflict detection, registry-backed cost accounting, local REST task APIs, confirmation approve/deny APIs, full mock-based local E2E coverage, and secret-leak regression fixtures. P7 is now documented as the runtime integration phase that turns these foundations into a Personal Agent MVP.
+This repository is a Go implementation of a local-first parallel personal agent. The current implementation includes the P0 foundation, P1 model/privacy foundation, P2 RAG/memory foundation, P3 orchestration/Sub-Agent foundation, P4 browser runtime foundation, P5 permissions/verification/cost foundation, P6 API/E2E/hardening foundation, and the P7 Runtime MVP first vertical slice: `pachat` CLI packaging, configuration loading, SQLite migrations, core agent/browser contracts, interactive local memory, long-task state tracking, model registry/policy contracts, OpenAI-compatible provider boundaries, a fail-closed Privacy Gateway for public remote model calls, local BM25 retrieval, RRF result fusion, Qdrant boundary code, context compression, working/episodic/semantic memory stores, cancellable DAG orchestration, dependency-aware parallel scheduling, Sub-Agent retry handling, early stop, ordered node lifecycle evidence events, a governed chromedp browser runtime boundary, global permission policy evaluation, confirmation audit records, claim/evidence verification, conflict detection, registry-backed cost accounting, local REST task APIs, confirmation approve/deny APIs, full mock-based local E2E coverage, secret-leak regression fixtures, and a unified local-first Runtime used by CLI/API task execution.
 
-It includes Go contracts and safety skeletons for the Browser Tool, Browser Session Manager, Permission Layer integration, Privacy Gateway filtering, Evidence Bus records, model selection, provider enforcement, local retrieval/memory indexing, orchestration, semantic browser location, accessibility reads, screenshot capture, coordinate fallback, confirmation-gated browser execution, global permission decisions, verification gates, budget enforcement, and local HTTP handler wiring. It does not yet include cookie reading, password reading, production model caller wiring, CLI-connected RAG execution, CLI-connected browser execution, CLI-connected Sub-Agent task execution, CLI-connected verification, live model-call metering, or a packaged long-running HTTP server command.
+It includes Go contracts and safety skeletons for the Browser Tool, Browser Session Manager, Permission Layer integration, Privacy Gateway filtering, Evidence Bus records, model selection, provider enforcement, local retrieval/memory indexing, orchestration, semantic browser location, accessibility reads, screenshot capture, coordinate fallback, confirmation-gated browser execution, global permission decisions, verification gates, budget enforcement, local HTTP handler wiring, and Runtime-connected local RAG/memory/verification synthesis. It does not yet include cookie reading, password reading, production model caller wiring, CLI-connected browser execution, model-backed Leader DAG planning, API background task cancellation, live model-call metering, public model escalation, or a packaged long-running HTTP server command.
 
 ### Contents
 
@@ -25,6 +25,7 @@ It includes Go contracts and safety skeletons for the Browser Tool, Browser Sess
 - `internal/model`: Model trust levels, capabilities, registry, policy selection, provider interfaces, and OpenAI-compatible HTTP boundary.
 - `internal/privacy`: HMAC-SHA256 pseudonymization, secret redaction, credential dump blocking, and audit metadata.
 - `internal/api`: Local REST handler for task create/list/status/cancel/events and confirmation inspect/approve/deny.
+- `internal/runtime`: Local-first Personal Agent Runtime that connects task execution to memory, RAG, evidence, verification, and synthesis.
 - `internal/e2e`: Mock-based local integration tests that combine API, SQLite, RAG, memory, model mocks, browser denial, verification, cost, and secret-leak regression coverage.
 
 ### P0 Usage
@@ -49,10 +50,16 @@ Run with your own task text:
 bin/pachat run --config configs/config.example.yaml --task "summarize my local notes"
 ```
 
-Expected output:
+Expected output shape:
 
 ```text
-task_id=task_<generated_id> status=completed answer="No-op task completed."
+task_id=task_<generated_id>
+status=completed
+confidence=0.90
+remote_tokens=0
+
+answer:
+Local-first answer for: smoke test
 ```
 
 What happens:
@@ -60,8 +67,8 @@ What happens:
 - The CLI loads and validates `configs/config.example.yaml`.
 - SQLite opens at `./data/personal-agent.db`.
 - Embedded migrations under `internal/storage/migrations` are applied.
-- One row is inserted into the `tasks` table.
-- The task is marked `completed` with a no-op answer.
+- One row is inserted into the `tasks` table as `running`.
+- The Runtime queries local memory and local RAG, stores evidence, verifies the answer, and marks the task `completed`.
 
 Interactive local memory with slash-command completion:
 
@@ -80,7 +87,7 @@ bin/pachat task show --config configs/config.example.yaml --id <task_id>
 bin/pachat task cancel --config configs/config.example.yaml --id <task_id>
 ```
 
-Current CLI limitation: the command does not yet call models, run RAG as part of task execution, automate the browser, verify claims, meter live model calls, or execute Sub-Agents. P7 is the planned runtime integration phase that removes the no-op answer path and wires CLI/API execution through the Personal Agent Runtime.
+Current CLI limitation: the command now runs local memory/RAG/verification synthesis through Runtime, but it does not yet automate the browser, execute model-backed Leader DAG planning, meter live provider calls, or use public model escalation.
 
 ### P1 Model And Privacy Foundation
 
@@ -161,9 +168,9 @@ P6 adds local API and integration validation:
 
 ### P7 Runtime Integration / Personal Agent MVP
 
-P7 is documented in `docs/projdocs/P0_P7_EXECUTION_PLAN.md` and `docs/p7_runtime_integration.md`. It plans the runtime integration work that connects model, privacy, RAG, memory, orchestration, browser, permission, verification, cost, and API components into real task execution.
+P7 Runtime MVP is documented in `docs/projdocs/P0_P7_EXECUTION_PLAN.md`, `docs/p7_runtime_integration.md`, `docs/p7_runtime_mvp_implementation.md`, and `docs/projdocs/task/P7.md`. The first vertical slice connects storage, memory, local RAG, evidence, verification, synthesis, CLI execution, and API task creation into real local-first task execution.
 
-P7 acceptance focuses on local-first evidence, structured Leader DAG planning, real Retrieval/Memory/Reasoning/Verification/Browser Sub-Agents, cancellable parallel execution, verification-based early stop, live token/cost accounting, forced Privacy Gateway handling for public models, CLI/API runtime execution, and secret-leak regression coverage.
+P7 MVP acceptance covers the removal of the no-op task path, local-first evidence, zero public model usage when local evidence is enough, Runtime-backed CLI/API task execution, verification reports, persisted final answers, and secret-leak regression coverage. Remaining P7 increments cover model-backed Leader DAG planning, BrowserAgent execution, API background cancellation, public model escalation, and live token/cost accounting.
 
 ### Validation
 
@@ -188,9 +195,9 @@ make smoke
 
 面向本地用户工作流的 AI Agent。
 
-本仓库是一个 Go 版本本地优先并行个人 Agent。当前实现包含 P0 基础层、P1 模型/隐私基础层、P2 RAG/记忆基础层、P3 编排/Sub-Agent 基础层、P4 浏览器运行时基础层、P5 权限/验证/成本基础层和 P6 API/E2E/加固基础层：`pachat` CLI 打包、配置加载、SQLite 迁移、核心 agent/browser 契约、交互式本地记忆、长任务状态跟踪、模型注册/策略契约、OpenAI-compatible provider 边界、面向 public remote 模型调用的 fail-closed Privacy Gateway、本地 BM25 检索、RRF 结果融合、Qdrant 边界、上下文压缩、working/episodic/semantic memory store、可取消 DAG 编排、依赖感知并行调度、Sub-Agent retry、early stop、有序节点生命周期 evidence event、受治理的 chromedp 浏览器运行时边界、全局权限策略评估、确认审计记录、claim/evidence 验证、冲突检测、基于 registry 的成本核算、本地 REST 任务 API、确认 approve/deny API、基于 mock 的完整本地 E2E 覆盖和 secret-leak 回归 fixture。P7 现已作为 runtime integration 阶段写入文档，用于把这些基础能力连接成 Personal Agent MVP。
+本仓库是一个 Go 版本本地优先并行个人 Agent。当前实现包含 P0 基础层、P1 模型/隐私基础层、P2 RAG/记忆基础层、P3 编排/Sub-Agent 基础层、P4 浏览器运行时基础层、P5 权限/验证/成本基础层、P6 API/E2E/加固基础层和 P7 Runtime MVP 第一条 vertical slice：`pachat` CLI 打包、配置加载、SQLite 迁移、核心 agent/browser 契约、交互式本地记忆、长任务状态跟踪、模型注册/策略契约、OpenAI-compatible provider 边界、面向 public remote 模型调用的 fail-closed Privacy Gateway、本地 BM25 检索、RRF 结果融合、Qdrant 边界、上下文压缩、working/episodic/semantic memory store、可取消 DAG 编排、依赖感知并行调度、Sub-Agent retry、early stop、有序节点生命周期 evidence event、受治理的 chromedp 浏览器运行时边界、全局权限策略评估、确认审计记录、claim/evidence 验证、冲突检测、基于 registry 的成本核算、本地 REST 任务 API、确认 approve/deny API、基于 mock 的完整本地 E2E 覆盖、secret-leak 回归 fixture，以及 CLI/API 任务执行使用的统一本地优先 Runtime。
 
-仓库包含 Browser Tool、Browser Session Manager、Permission Layer 接入、Privacy Gateway 脱敏、Evidence Bus 记录、模型选择、provider enforcement、本地检索/记忆索引、编排、语义浏览器定位、accessibility 读取、截图、坐标兜底、带确认 gate 的浏览器执行、全局权限决策、验证 gate、预算控制和本地 HTTP handler wiring 的 Go 契约与安全骨架。仓库暂不包含 cookie 读取器、密码读取器、生产模型调用接线、接入 CLI 任务执行的 RAG runtime、接入 CLI 的浏览器执行、接入 CLI 的 Sub-Agent 任务执行、接入 CLI 的 claim 验证、实时模型调用计量或打包后的常驻 HTTP server 命令。
+仓库包含 Browser Tool、Browser Session Manager、Permission Layer 接入、Privacy Gateway 脱敏、Evidence Bus 记录、模型选择、provider enforcement、本地检索/记忆索引、编排、语义浏览器定位、accessibility 读取、截图、坐标兜底、带确认 gate 的浏览器执行、全局权限决策、验证 gate、预算控制、本地 HTTP handler wiring，以及接入 Runtime 的本地 RAG/Memory/Verification synthesis。仓库暂不包含 cookie 读取器、密码读取器、生产模型调用接线、接入 CLI 的浏览器执行、模型驱动的 Leader DAG planning、API 后台任务取消、实时模型调用计量、public model escalation 或打包后的常驻 HTTP server 命令。
 
 ### 内容
 
@@ -209,6 +216,7 @@ make smoke
 - `internal/model`：模型 trust level、capability、registry、policy selection、provider interface 和 OpenAI-compatible HTTP 边界。
 - `internal/privacy`：HMAC-SHA256 pseudonymization、secret redaction、credential dump blocking 和 audit metadata。
 - `internal/api`：本地 REST handler，支持 task create/list/status/cancel/events 和 confirmation inspect/approve/deny。
+- `internal/runtime`：本地优先 Personal Agent Runtime，连接 task execution、memory、RAG、evidence、verification 和 synthesis。
 - `internal/e2e`：基于 mock 的本地集成测试，组合 API、SQLite、RAG、memory、model mock、浏览器 denial、verification、cost 和 secret-leak 回归覆盖。
 
 ### P0 使用方式
@@ -233,10 +241,16 @@ bin/pachat run --config configs/config.example.yaml --task "smoke test"
 bin/pachat run --config configs/config.example.yaml --task "帮我整理本地资料"
 ```
 
-预期输出：
+预期输出形态：
 
 ```text
-task_id=task_<generated_id> status=completed answer="No-op task completed."
+task_id=task_<generated_id>
+status=completed
+confidence=0.90
+remote_tokens=0
+
+answer:
+Local-first answer for: 帮我整理本地资料
 ```
 
 执行过程：
@@ -244,8 +258,8 @@ task_id=task_<generated_id> status=completed answer="No-op task completed."
 - CLI 加载并校验 `configs/config.example.yaml`。
 - SQLite 打开位置为 `./data/personal-agent.db`。
 - 执行 `internal/storage/migrations` 中的内置迁移。
-- 向 `tasks` 表写入一条记录。
-- 将该任务标记为 `completed`，并写入 no-op answer。
+- 以 `running` 状态向 `tasks` 表写入一条记录。
+- Runtime 查询本地 memory 和本地 RAG、写入 evidence、验证答案，并将任务标记为 `completed`。
 
 带 slash 命令补全的交互式本地记忆：
 
@@ -264,7 +278,7 @@ bin/pachat task show --config configs/config.example.yaml --id <task_id>
 bin/pachat task cancel --config configs/config.example.yaml --id <task_id>
 ```
 
-当前 CLI 限制：该命令还不会调用模型、在任务执行中运行 RAG、自动化浏览器、验证 claims、计量实时模型调用或执行 Sub-Agent。P7 是后续 runtime integration 阶段，目标是移除 no-op answer 路径，并让 CLI/API 执行统一进入 Personal Agent Runtime。
+当前 CLI 限制：该命令已经通过 Runtime 执行本地 memory/RAG/verification synthesis，但尚未自动化浏览器、执行模型驱动的 Leader DAG planning、计量实时 provider 调用或使用 public model escalation。
 
 ### P1 模型与隐私基础
 
@@ -345,9 +359,9 @@ P6 新增本地 API 和集成验证：
 
 ### P7 Runtime Integration / Personal Agent MVP
 
-P7 已记录在 `docs/projdocs/P0_P7_EXECUTION_PLAN.md` 和 `docs/p7_runtime_integration.md` 中。该阶段规划把 model、privacy、RAG、memory、orchestration、browser、permission、verification、cost 和 API 组件连接成真正执行任务的 runtime。
+P7 Runtime MVP 已记录在 `docs/projdocs/P0_P7_EXECUTION_PLAN.md`、`docs/p7_runtime_integration.md`、`docs/p7_runtime_mvp_implementation.md` 和 `docs/projdocs/task/P7.md` 中。第一条 vertical slice 已将 storage、memory、本地 RAG、evidence、verification、synthesis、CLI execution 和 API task creation 连接成真正的本地优先任务执行路径。
 
-P7 验收重点包括 local-first evidence、结构化 Leader DAG planning、真实 Retrieval/Memory/Reasoning/Verification/Browser Sub-Agent、可取消并行执行、基于 verification 的 early stop、实时 token/cost accounting、public model 强制经过 Privacy Gateway、CLI/API runtime 执行和 secret-leak 回归覆盖。
+P7 MVP 验收覆盖移除 no-op task path、local-first evidence、本地证据足够时 public model usage 为零、Runtime-backed CLI/API task execution、verification report、持久化 final answer 和 secret-leak 回归覆盖。后续 P7 增量继续覆盖模型驱动 Leader DAG planning、BrowserAgent execution、API background cancellation、public model escalation 和实时 token/cost accounting。
 
 ### 验证
 

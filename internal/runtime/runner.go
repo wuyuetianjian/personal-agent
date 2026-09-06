@@ -1,0 +1,172 @@
+package runtime
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"agent/internal/agent"
+	"agent/internal/orchestrator"
+	"agent/internal/verification"
+)
+
+func (r *Runtime) Run(ctx context.Context, req RunRequest) (*RunResult, error) {
+	if req.TaskID == "" {
+		return nil, fmt.Errorf("runtime run requires task id")
+	}
+	if strings.TrimSpace(req.Input) == "" {
+		return nil, fmt.Errorf("runtime run requires input")
+	}
+	if err := r.publish(ctx, req.TaskID, orchestrator.EventNodeStarted, "task", agent.RoleLeader, nil); err != nil {
+		return nil, err
+	}
+
+	memoryEvidence, err := r.Memory.Search(ctx, req.TaskID, req.Input, 8)
+	if err != nil {
+		_ = r.Storage.FailTask(ctx, req.TaskID, "memory_failed", err.Error())
+		return nil, err
+	}
+	if err := r.publish(ctx, req.TaskID, orchestrator.EventNodeCompleted, "memory", agent.RoleMemory, evidenceIDs(memoryEvidence)); err != nil {
+		return nil, err
+	}
+	ragEvidence, err := r.RAG.Retrieve(ctx, req.TaskID, req.Input, RetrieveOptions{TopK: 8})
+	if err != nil {
+		_ = r.Storage.FailTask(ctx, req.TaskID, "retrieval_failed", err.Error())
+		return nil, err
+	}
+	if err := r.publish(ctx, req.TaskID, orchestrator.EventNodeCompleted, "retrieval", agent.RoleRetrieval, evidenceIDs(ragEvidence)); err != nil {
+		return nil, err
+	}
+
+	allEvidence := dedupeEvidence(append(memoryEvidence, ragEvidence...))
+	for i := range allEvidence {
+		allEvidence[i].PrivacyClass = defaultPrivacyClass(allEvidence[i].PrivacyClass)
+		if allEvidence[i].TaskID == "" {
+			allEvidence[i].TaskID = req.TaskID
+		}
+		if err := r.Evidence.Put(ctx, allEvidence[i]); err != nil {
+			_ = r.Storage.FailTask(ctx, req.TaskID, "evidence_failed", err.Error())
+			return nil, err
+		}
+	}
+
+	answer, confidence := synthesizeLocalAnswer(req.Input, allEvidence)
+	claim := verification.Claim{
+		ID:          "claim_final_answer",
+		Text:        finalClaimText(req.Input, allEvidence),
+		Confidence:  confidence,
+		EvidenceIDs: evidenceIDs(allEvidence),
+	}
+	report := r.Verifier.Verify([]verification.Claim{claim}, verificationEvidence(allEvidence, claim.Text))
+	if !report.PassesPolicy && len(allEvidence) > 0 {
+		confidence = 0.7
+	}
+	if len(allEvidence) == 0 {
+		confidence = 0.35
+	}
+	if err := r.publish(ctx, req.TaskID, orchestrator.EventNodeCompleted, "verification", agent.RoleVerification, evidenceIDs(allEvidence)); err != nil {
+		return nil, err
+	}
+	if err := r.Storage.CompleteTask(ctx, req.TaskID, answer, confidence); err != nil {
+		return nil, err
+	}
+	if err := r.publish(ctx, req.TaskID, orchestrator.EventNodeCompleted, "synthesis", agent.RoleSynthesis, evidenceIDs(allEvidence)); err != nil {
+		return nil, err
+	}
+	result := &RunResult{
+		TaskID:         req.TaskID,
+		Answer:         answer,
+		Confidence:     confidence,
+		EvidenceIDs:    evidenceIDs(allEvidence),
+		Verification:   report,
+		LocalRouteType: RouteMixed,
+	}
+	result.Usage.InputTokens = estimateTokens(req.Input)
+	result.Usage.OutputTokens = estimateTokens(answer)
+	result.Usage.RemoteTokens = 0
+	return result, nil
+}
+
+func (r *Runtime) publish(ctx context.Context, taskID string, eventType orchestrator.EventType, nodeID string, role agent.Role, ids []string) error {
+	if r.Events == nil {
+		return nil
+	}
+	return r.Events.Publish(ctx, orchestrator.Event{
+		Type:        eventType,
+		TaskID:      taskID,
+		NodeID:      nodeID,
+		Role:        role,
+		EvidenceIDs: append([]string(nil), ids...),
+	})
+}
+
+func synthesizeLocalAnswer(input string, evidence []Evidence) (string, float64) {
+	if len(evidence) == 0 {
+		return "No local evidence was found for: " + input, 0.35
+	}
+	var b strings.Builder
+	b.WriteString("Local-first answer for: ")
+	b.WriteString(input)
+	b.WriteString("\n\nEvidence summary:")
+	for i, item := range evidence {
+		if i >= 5 {
+			break
+		}
+		b.WriteString("\n- [")
+		b.WriteString(item.ID)
+		b.WriteString("] ")
+		b.WriteString(strings.TrimSpace(item.Content))
+	}
+	b.WriteString("\n\nPublic model calls: 0")
+	return b.String(), 0.9
+}
+
+func finalClaimText(input string, evidence []Evidence) string {
+	if len(evidence) == 0 {
+		return "No local evidence was found for: " + input
+	}
+	return "Local evidence was found for: " + input
+}
+
+func verificationEvidence(evidence []Evidence, claimText string) []verification.Evidence {
+	out := make([]verification.Evidence, 0, len(evidence))
+	for _, item := range evidence {
+		out = append(out, verification.Evidence{
+			ID:       item.ID,
+			Text:     item.Content,
+			Supports: []string{claimText},
+		})
+	}
+	return out
+}
+
+func evidenceIDs(evidence []Evidence) []string {
+	ids := make([]string, 0, len(evidence))
+	for _, item := range evidence {
+		if item.ID != "" {
+			ids = append(ids, item.ID)
+		}
+	}
+	return ids
+}
+
+func dedupeEvidence(items []Evidence) []Evidence {
+	seen := make(map[string]bool, len(items))
+	out := make([]Evidence, 0, len(items))
+	for _, item := range items {
+		if item.ID == "" || seen[item.ID] {
+			continue
+		}
+		seen[item.ID] = true
+		out = append(out, item)
+	}
+	return out
+}
+
+func estimateTokens(text string) int {
+	words := len(strings.Fields(text))
+	if words == 0 && strings.TrimSpace(text) != "" {
+		return 1
+	}
+	return words
+}
