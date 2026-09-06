@@ -8,6 +8,7 @@ import (
 
 type DeterministicResolver struct {
 	Registry *Registry
+	Metrics  map[string]RuntimeMetric
 }
 
 func (r DeterministicResolver) Resolve(ctx context.Context, req ResolveRequest) ([]Candidate, error) {
@@ -51,6 +52,13 @@ func (r DeterministicResolver) Resolve(ctx context.Context, req ResolveRequest) 
 		}
 		if item.CostClass == "low" {
 			score += 1
+		}
+		if metric, ok := r.Metrics[item.ID]; ok {
+			score += float64(metric.Successes) * 0.1
+			score += float64(metric.VerificationPasses) * 0.1
+			score -= float64(metric.Failures+metric.Retries+metric.Cancels) * 0.2
+			score -= metric.EstimatedCostUSD
+			score -= float64(metric.LatencyMillis) / 100000
 		}
 		out = append(out, Candidate{Capability: item, Score: score, Reason: "enabled, healthy, and policy compatible"})
 	}

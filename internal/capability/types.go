@@ -62,6 +62,16 @@ type Candidate struct {
 	Reason     string
 }
 
+type RuntimeMetric struct {
+	Successes          int
+	Failures           int
+	VerificationPasses int
+	Retries            int
+	Cancels            int
+	LatencyMillis      int
+	EstimatedCostUSD   float64
+}
+
 type Resolver interface {
 	Resolve(context.Context, ResolveRequest) ([]Candidate, error)
 }

@@ -1,7 +1,9 @@
 package skill
 
 import (
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"sort"
 	"sync"
 
@@ -132,4 +134,9 @@ func stringContains(text, wanted string) bool {
 		}
 	}
 	return false
+}
+
+func checksum(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return fmt.Sprintf("%x", sum[:4])
 }
