@@ -66,6 +66,7 @@ agent:
 browser:
   enabled: true
   runtime: chromedp
+  screenshot_dir: ./data/browser/screenshots
   profile_reuse:
     enabled: false
     profile_dir_env: PERSONAL_AGENT_BROWSER_PROFILE_DIR

@@ -99,12 +99,15 @@ type Target struct {
 
 type Action struct {
 	Type           ActionType
+	TaskID         string
+	AgentID        string
 	SessionID      string
 	Domain         string
 	URL            string
 	Mode           ControlMode
 	Target         Target
 	Input          string
+	ConfirmationID string
 	FallbackReason string
 }
 

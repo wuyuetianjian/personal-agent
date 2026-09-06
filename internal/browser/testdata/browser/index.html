@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>P4 Browser Fixture</title>
+  </head>
+  <body>
+    <main>
+      <h1>P4 Browser Fixture</h1>
+      <button id="increment" type="button" onclick="increment()">Increment</button>
+      <p id="count">Count 0</p>
+    </main>
+    <script>
+      function increment() {
+        const count = document.getElementById("count");
+        const next = Number(count.textContent.replace("Count ", "")) + 1;
+        count.textContent = "Count " + next;
+      }
+    </script>
+  </body>
+</html>

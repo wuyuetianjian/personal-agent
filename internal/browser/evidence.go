@@ -1,6 +1,10 @@
 package browser
 
-import "time"
+import (
+	"context"
+	"sync"
+	"time"
+)
 
 type EvidenceCategory string
 
@@ -67,4 +71,30 @@ func (b EvidenceBuilder) Build(category EvidenceCategory, taskID string, agentID
 		Cancelled:  cancelled,
 		RecordedAt: result.RecordedAt,
 	}
+}
+
+type InMemoryBrowserEvidenceBus struct {
+	mu     sync.Mutex
+	events []EvidenceEvent
+}
+
+func (b *InMemoryBrowserEvidenceBus) PublishBrowserEvent(ctx context.Context, event EvidenceEvent) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if event.RecordedAt.IsZero() {
+		event.RecordedAt = time.Now().UTC()
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.events = append(b.events, event)
+	return nil
+}
+
+func (b *InMemoryBrowserEvidenceBus) Events() []EvidenceEvent {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	events := make([]EvidenceEvent, len(b.events))
+	copy(events, b.events)
+	return events
 }

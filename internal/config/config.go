@@ -92,9 +92,10 @@ type RoleModelConfig struct {
 }
 
 type BrowserConfig struct {
-	Enabled      bool                `yaml:"enabled"`
-	Runtime      string              `yaml:"runtime"`
-	ProfileReuse BrowserProfileReuse `yaml:"profile_reuse"`
+	Enabled       bool                `yaml:"enabled"`
+	Runtime       string              `yaml:"runtime"`
+	ScreenshotDir string              `yaml:"screenshot_dir"`
+	ProfileReuse  BrowserProfileReuse `yaml:"profile_reuse"`
 }
 
 type BrowserProfileReuse struct {
