@@ -7,9 +7,11 @@ import (
 	"agent/internal/config"
 	"agent/internal/memory"
 	"agent/internal/orchestrator"
+	"agent/internal/project"
 	"agent/internal/rag"
 	"agent/internal/storage"
 	"agent/internal/verification"
+	"agent/internal/workflow"
 )
 
 type Runtime struct {
@@ -21,6 +23,9 @@ type Runtime struct {
 	Evidence     EvidenceStore
 	Verifier     verification.Verifier
 	Capabilities *capability.Registry
+	Workflows    workflow.Store
+	Projects     project.Store
+	Workflow     *WorkflowEngine
 	ownsStorage  bool
 	LeaderModel  string
 	PrivacyClass string
@@ -47,7 +52,7 @@ func NewLocal(cfg config.Config, db *storage.DB, events orchestrator.EvidenceBus
 		Compressor: rag.Compressor{MaxChars: 4000},
 		TopK:       8,
 	}
-	return &Runtime{
+	rt := &Runtime{
 		Config:       cfg,
 		Storage:      db,
 		Events:       events,
@@ -56,9 +61,13 @@ func NewLocal(cfg config.Config, db *storage.DB, events orchestrator.EvidenceBus
 		Evidence:     SQLiteEvidenceStore{DB: db.SQL},
 		Verifier:     verification.Verifier{Policy: verification.DefaultPolicy()},
 		Capabilities: buildCapabilities(cfg),
+		Workflows:    workflow.Store{DB: db.SQL},
+		Projects:     project.Store{DB: db.SQL},
 		LeaderModel:  cfg.Agent.Leader.ModelID,
 		PrivacyClass: "local_private",
 	}
+	rt.Workflow = NewWorkflowEngine(rt)
+	return rt
 }
 
 func (r *Runtime) Close() error {
