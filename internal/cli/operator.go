@@ -19,6 +19,7 @@ import (
 
 	"agent/internal/api"
 	"agent/internal/config"
+	"agent/internal/observability"
 	"agent/internal/permission"
 	"agent/internal/project"
 	"agent/internal/rag"
@@ -672,10 +673,23 @@ func serveCommand(ctx context.Context, args []string, stdout io.Writer) error {
 	confirmations := permission.NewInMemoryConfirmationStore()
 	eventSource, _ := rt.Events.(api.EventSource)
 	server := api.NewServerWithRunner(rt.Storage, eventSource, confirmations, cfg.Agent.Leader.ModelID, rt)
+	metrics := observability.NewRegistry()
 	mux := http.NewServeMux()
-	mux.Handle("/", server.Handler())
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprintln(w, "ok") })
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) { fmt.Fprintln(w, "ready") })
+	mux.Handle("/", metricsMiddleware(metrics, server.Handler()))
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		writeServeJSON(w, http.StatusOK, observability.Health())
+	})
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		report := observability.Readiness(r.Context(), rt.Storage.SQL, true, readinessDependencies(cfg))
+		status := http.StatusOK
+		if !report.Ready {
+			status = http.StatusServiceUnavailable
+		}
+		writeServeJSON(w, status, report)
+	})
+	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
+		writeServeJSON(w, http.StatusOK, metrics.Snapshot(r.Context(), rt.Storage.SQL))
+	})
 	addr := cfg.Server.ListenAddr
 	if addr == "" {
 		addr = "127.0.0.1:8787"
@@ -702,6 +716,70 @@ func serveCommand(ctx context.Context, args []string, stdout io.Writer) error {
 		}
 		return err
 	}
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
+}
+
+func metricsMiddleware(metrics *observability.Registry, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		metrics.Inc("http_requests_total", 1)
+		metrics.AddGauge("active_requests", 1)
+		defer metrics.AddGauge("active_requests", -1)
+		recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		started := time.Now()
+		next.ServeHTTP(recorder, r)
+		metrics.SetGauge("last_request_duration_ms", float64(time.Since(started).Milliseconds()))
+		if recorder.status >= 500 {
+			metrics.Inc("errors_total", 1)
+		}
+	})
+}
+
+func readinessDependencies(cfg config.Config) []observability.ComponentStatus {
+	dependencies := []observability.ComponentStatus{}
+	for id, provider := range cfg.Models.Providers {
+		status := "OK"
+		remediation := ""
+		if !provider.IsEnabled() {
+			status = "WARN"
+			remediation = "provider disabled"
+		} else if provider.BaseURL == "" && provider.BaseURLEnv != "" {
+			if _, ok := config.EnvValue(provider.BaseURLEnv); !ok {
+				status = "WARN"
+				remediation = "set " + provider.BaseURLEnv + " to check endpoint health"
+			}
+		}
+		dependencies = append(dependencies, observability.ComponentStatus{Name: "model_provider." + id, Status: status, Remediation: remediation})
+	}
+	if cfg.Browser.Enabled {
+		dependencies = append(dependencies, observability.ComponentStatus{Name: "browser", Status: "OK"})
+	} else {
+		dependencies = append(dependencies, observability.ComponentStatus{Name: "browser", Status: "WARN", Remediation: "browser disabled"})
+	}
+	for id, backend := range cfg.CodingAgents.Backends {
+		status := "OK"
+		remediation := ""
+		if !backend.IsEnabled() {
+			status = "WARN"
+			remediation = "backend disabled"
+		}
+		dependencies = append(dependencies, observability.ComponentStatus{Name: "coding_agent." + id, Status: status, Remediation: remediation})
+	}
+	return dependencies
+}
+
+func writeServeJSON(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(value)
 }
 
 func backupCommand(ctx context.Context, args []string, stdout io.Writer) error {

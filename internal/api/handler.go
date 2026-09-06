@@ -379,9 +379,5 @@ func sanitizePtr(value *string) *string {
 }
 
 func sanitizeForAPI(value string) string {
-	result := value
-	for _, redaction := range redactionRules {
-		result = redaction.ReplaceAllString(result, "[REDACTED]")
-	}
-	return result
+	return redactForAPI(value)
 }
