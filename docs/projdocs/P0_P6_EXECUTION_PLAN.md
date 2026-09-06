@@ -239,6 +239,8 @@ Commit boundary:
 
 Goal: expose usable APIs and prove the integrated local-first flow works.
 
+Status: completed locally on 2026-09-06. See `docs/projdocs/task/P6.md`.
+
 Deliverables:
 
 - `internal/api` REST task create/status/cancel/events and confirmation approve/deny endpoints.

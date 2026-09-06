@@ -90,12 +90,12 @@ func (db *DB) CreateTask(ctx context.Context, task Task) error {
 	if task.UpdatedAt.IsZero() {
 		task.UpdatedAt = now
 	}
-	if task.CompletedAt == nil {
-		completedAt := now
-		task.CompletedAt = &completedAt
-	}
 	if task.Status == "" {
 		task.Status = "completed"
+	}
+	if task.Status == "completed" && task.CompletedAt == nil {
+		completedAt := now
+		task.CompletedAt = &completedAt
 	}
 	if task.PrivacyClass == "" {
 		task.PrivacyClass = "local_private"

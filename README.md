@@ -4,9 +4,9 @@
 
 AI agent for local user workflows.
 
-This repository is a Go implementation of a local-first parallel personal agent. The current implementation includes the P0 foundation, P1 model/privacy foundation, P2 RAG/memory foundation, P3 orchestration/Sub-Agent foundation, P4 browser runtime foundation, and P5 permissions/verification/cost foundation: `pachat` CLI packaging, configuration loading, SQLite migrations, core agent/browser contracts, interactive local memory, long-task state tracking, model registry/policy contracts, OpenAI-compatible provider boundaries, a fail-closed Privacy Gateway for public remote model calls, local BM25 retrieval, RRF result fusion, Qdrant boundary code, context compression, working/episodic/semantic memory stores, cancellable DAG orchestration, dependency-aware parallel scheduling, Sub-Agent retry handling, early stop, ordered node lifecycle evidence events, a governed chromedp browser runtime boundary, global permission policy evaluation, confirmation audit records, claim/evidence verification, conflict detection, and registry-backed cost accounting.
+This repository is a Go implementation of a local-first parallel personal agent. The current implementation includes the P0 foundation, P1 model/privacy foundation, P2 RAG/memory foundation, P3 orchestration/Sub-Agent foundation, P4 browser runtime foundation, P5 permissions/verification/cost foundation, and P6 API/E2E/hardening foundation: `pachat` CLI packaging, configuration loading, SQLite migrations, core agent/browser contracts, interactive local memory, long-task state tracking, model registry/policy contracts, OpenAI-compatible provider boundaries, a fail-closed Privacy Gateway for public remote model calls, local BM25 retrieval, RRF result fusion, Qdrant boundary code, context compression, working/episodic/semantic memory stores, cancellable DAG orchestration, dependency-aware parallel scheduling, Sub-Agent retry handling, early stop, ordered node lifecycle evidence events, a governed chromedp browser runtime boundary, global permission policy evaluation, confirmation audit records, claim/evidence verification, conflict detection, registry-backed cost accounting, local REST task APIs, confirmation approve/deny APIs, full mock-based local E2E coverage, and secret-leak regression fixtures.
 
-It includes Go contracts and safety skeletons for the Browser Tool, Browser Session Manager, Permission Layer integration, Privacy Gateway filtering, Evidence Bus records, model selection, provider enforcement, local retrieval/memory indexing, orchestration, semantic browser location, accessibility reads, screenshot capture, coordinate fallback, confirmation-gated browser execution, global permission decisions, verification gates, and budget enforcement. It does not yet include cookie reading, password reading, production model caller wiring, CLI-connected RAG execution, CLI-connected browser execution, CLI-connected Sub-Agent task execution, CLI-connected verification, or live model-call metering.
+It includes Go contracts and safety skeletons for the Browser Tool, Browser Session Manager, Permission Layer integration, Privacy Gateway filtering, Evidence Bus records, model selection, provider enforcement, local retrieval/memory indexing, orchestration, semantic browser location, accessibility reads, screenshot capture, coordinate fallback, confirmation-gated browser execution, global permission decisions, verification gates, budget enforcement, and local HTTP handler wiring. It does not yet include cookie reading, password reading, production model caller wiring, CLI-connected RAG execution, CLI-connected browser execution, CLI-connected Sub-Agent task execution, CLI-connected verification, live model-call metering, or a packaged long-running HTTP server command.
 
 ### Contents
 
@@ -24,6 +24,8 @@ It includes Go contracts and safety skeletons for the Browser Tool, Browser Sess
 - `internal/cost`: Registry-backed pricing lookup, usage estimation, and budget limit enforcement.
 - `internal/model`: Model trust levels, capabilities, registry, policy selection, provider interfaces, and OpenAI-compatible HTTP boundary.
 - `internal/privacy`: HMAC-SHA256 pseudonymization, secret redaction, credential dump blocking, and audit metadata.
+- `internal/api`: Local REST handler for task create/list/status/cancel/events and confirmation inspect/approve/deny.
+- `internal/e2e`: Mock-based local integration tests that combine API, SQLite, RAG, memory, model mocks, browser denial, verification, cost, and secret-leak regression coverage.
 
 ### P0 Usage
 
@@ -146,6 +148,17 @@ P5 adds library-level safety and accounting controls:
 - Registry/config-backed pricing lookup and model usage cost estimation.
 - Budget soft and hard limit enforcement.
 
+### P6 API, E2E, And Hardening Foundation
+
+P6 adds local API and integration validation:
+
+- Standard-library REST handler for task create, list, status, cancel, and event listing.
+- Confirmation inspect, approve, and deny endpoints backed by the confirmation store boundary.
+- JSON responses with stable status codes and secret redaction on API-facing text.
+- Full local E2E test using provider mocks, SQLite, RAG, episodic/semantic memory, browser high-risk denial, verification, cost accounting, and final synthesis.
+- Secret-leak regression fixtures for API responses, Privacy Gateway output, and browser evidence.
+- PostgreSQL integration test placeholder that skips cleanly unless a test DSN is configured.
+
 ### Validation
 
 Run:
@@ -163,14 +176,15 @@ make smoke
 - Browser actions pass through the Permission Layer before execution.
 - High-risk actions such as login submission, payment, deletion, sending messages, uploads, OAuth grants, and legal acceptance require confirmation or elevated policy.
 - Evidence Bus records must be redacted before storage.
+- API responses do not echo raw task input and redact secret-like text in titles, final answers, events, and confirmation fields.
 
 ## 中文
 
 面向本地用户工作流的 AI Agent。
 
-本仓库是一个 Go 版本本地优先并行个人 Agent。当前实现包含 P0 基础层、P1 模型/隐私基础层、P2 RAG/记忆基础层、P3 编排/Sub-Agent 基础层、P4 浏览器运行时基础层和 P5 权限/验证/成本基础层：`pachat` CLI 打包、配置加载、SQLite 迁移、核心 agent/browser 契约、交互式本地记忆、长任务状态跟踪、模型注册/策略契约、OpenAI-compatible provider 边界、面向 public remote 模型调用的 fail-closed Privacy Gateway、本地 BM25 检索、RRF 结果融合、Qdrant 边界、上下文压缩、working/episodic/semantic memory store、可取消 DAG 编排、依赖感知并行调度、Sub-Agent retry、early stop、有序节点生命周期 evidence event、受治理的 chromedp 浏览器运行时边界、全局权限策略评估、确认审计记录、claim/evidence 验证、冲突检测和基于 registry 的成本核算。
+本仓库是一个 Go 版本本地优先并行个人 Agent。当前实现包含 P0 基础层、P1 模型/隐私基础层、P2 RAG/记忆基础层、P3 编排/Sub-Agent 基础层、P4 浏览器运行时基础层、P5 权限/验证/成本基础层和 P6 API/E2E/加固基础层：`pachat` CLI 打包、配置加载、SQLite 迁移、核心 agent/browser 契约、交互式本地记忆、长任务状态跟踪、模型注册/策略契约、OpenAI-compatible provider 边界、面向 public remote 模型调用的 fail-closed Privacy Gateway、本地 BM25 检索、RRF 结果融合、Qdrant 边界、上下文压缩、working/episodic/semantic memory store、可取消 DAG 编排、依赖感知并行调度、Sub-Agent retry、early stop、有序节点生命周期 evidence event、受治理的 chromedp 浏览器运行时边界、全局权限策略评估、确认审计记录、claim/evidence 验证、冲突检测、基于 registry 的成本核算、本地 REST 任务 API、确认 approve/deny API、基于 mock 的完整本地 E2E 覆盖和 secret-leak 回归 fixture。
 
-仓库包含 Browser Tool、Browser Session Manager、Permission Layer 接入、Privacy Gateway 脱敏、Evidence Bus 记录、模型选择、provider enforcement、本地检索/记忆索引、编排、语义浏览器定位、accessibility 读取、截图、坐标兜底、带确认 gate 的浏览器执行、全局权限决策、验证 gate 和预算控制的 Go 契约与安全骨架。仓库暂不包含 cookie 读取器、密码读取器、生产模型调用接线、接入 CLI 任务执行的 RAG runtime、接入 CLI 的浏览器执行、接入 CLI 的 Sub-Agent 任务执行、接入 CLI 的 claim 验证或实时模型调用计量。
+仓库包含 Browser Tool、Browser Session Manager、Permission Layer 接入、Privacy Gateway 脱敏、Evidence Bus 记录、模型选择、provider enforcement、本地检索/记忆索引、编排、语义浏览器定位、accessibility 读取、截图、坐标兜底、带确认 gate 的浏览器执行、全局权限决策、验证 gate、预算控制和本地 HTTP handler wiring 的 Go 契约与安全骨架。仓库暂不包含 cookie 读取器、密码读取器、生产模型调用接线、接入 CLI 任务执行的 RAG runtime、接入 CLI 的浏览器执行、接入 CLI 的 Sub-Agent 任务执行、接入 CLI 的 claim 验证、实时模型调用计量或打包后的常驻 HTTP server 命令。
 
 ### 内容
 
@@ -188,6 +202,8 @@ make smoke
 - `internal/cost`：基于 registry 的价格查询、usage 估算和预算限制执行。
 - `internal/model`：模型 trust level、capability、registry、policy selection、provider interface 和 OpenAI-compatible HTTP 边界。
 - `internal/privacy`：HMAC-SHA256 pseudonymization、secret redaction、credential dump blocking 和 audit metadata。
+- `internal/api`：本地 REST handler，支持 task create/list/status/cancel/events 和 confirmation inspect/approve/deny。
+- `internal/e2e`：基于 mock 的本地集成测试，组合 API、SQLite、RAG、memory、model mock、浏览器 denial、verification、cost 和 secret-leak 回归覆盖。
 
 ### P0 使用方式
 
@@ -310,6 +326,17 @@ P5 新增库层安全和核算控制：
 - 基于 registry/config 的价格查询和模型 usage 成本估算。
 - 预算 soft limit 和 hard limit 执行。
 
+### P6 API、E2E 与加固基础
+
+P6 新增本地 API 和集成验证：
+
+- 基于标准库的 REST handler，支持 task create、list、status、cancel 和 event listing。
+- 基于 confirmation store 边界的 confirmation inspect、approve 和 deny endpoint。
+- JSON 响应提供稳定状态码，并对 API 输出文本做 secret redaction。
+- 完整本地 E2E 测试，覆盖 provider mock、SQLite、RAG、episodic/semantic memory、浏览器高风险拒绝、verification、cost accounting 和 final synthesis。
+- 针对 API 响应、Privacy Gateway 输出和 browser evidence 的 secret-leak 回归 fixture。
+- PostgreSQL integration test placeholder，在未配置 test DSN 时会干净跳过。
+
 ### 验证
 
 运行：
@@ -327,3 +354,4 @@ make smoke
 - 所有浏览器动作执行前都必须经过 Permission Layer。
 - 登录提交、支付、删除、发送消息、上传、OAuth 授权、接受法律条款等高风险动作需要用户确认或更高权限策略。
 - Evidence Bus 写入前必须完成敏感信息脱敏。
+- API 响应不会回显原始 task input，并会对 title、final answer、event 和 confirmation 字段中的 secret-like 文本做脱敏。

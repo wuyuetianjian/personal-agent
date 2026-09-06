@@ -9,18 +9,21 @@ type ConfirmationStore interface {
 	Request(ctx context.Context, request Request) (string, error)
 	IsApproved(ctx context.Context, confirmationID string) (bool, error)
 	Approve(ctx context.Context, confirmationID string) error
+	Deny(ctx context.Context, confirmationID string) error
 }
 
 type InMemoryConfirmationStore struct {
 	mu       sync.RWMutex
 	requests map[string]Request
 	approved map[string]struct{}
+	denied   map[string]struct{}
 }
 
 func NewInMemoryConfirmationStore() *InMemoryConfirmationStore {
 	return &InMemoryConfirmationStore{
 		requests: make(map[string]Request),
 		approved: make(map[string]struct{}),
+		denied:   make(map[string]struct{}),
 	}
 }
 
@@ -55,7 +58,57 @@ func (s *InMemoryConfirmationStore) Approve(ctx context.Context, confirmationID 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.approved[confirmationID] = struct{}{}
+	delete(s.denied, confirmationID)
 	return nil
+}
+
+func (s *InMemoryConfirmationStore) Deny(ctx context.Context, confirmationID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.denied[confirmationID] = struct{}{}
+	delete(s.approved, confirmationID)
+	return nil
+}
+
+func (s *InMemoryConfirmationStore) IsDenied(ctx context.Context, confirmationID string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.denied[confirmationID]
+	return ok, nil
+}
+
+func (s *InMemoryConfirmationStore) Status(ctx context.Context, confirmationID string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.approved[confirmationID]; ok {
+		return "approved", nil
+	}
+	if _, ok := s.denied[confirmationID]; ok {
+		return "denied", nil
+	}
+	if _, ok := s.requests[confirmationID]; ok {
+		return "pending", nil
+	}
+	return "", nil
+}
+
+func (s *InMemoryConfirmationStore) Requests() map[string]Request {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	requests := make(map[string]Request, len(s.requests))
+	for id, request := range s.requests {
+		requests[id] = request
+	}
+	return requests
 }
 
 func (s *InMemoryConfirmationStore) RequestByID(id string) (Request, bool) {
