@@ -106,7 +106,14 @@ type BrowserProfileReuse struct {
 }
 
 type PermissionsConfig struct {
-	Default string `yaml:"default"`
+	Default string                 `yaml:"default"`
+	Rules   []PermissionRuleConfig `yaml:"rules"`
+}
+
+type PermissionRuleConfig struct {
+	Action   string `yaml:"action"`
+	Decision string `yaml:"decision"`
+	HighRisk bool   `yaml:"high_risk"`
 }
 
 type Duration struct {

@@ -215,6 +215,8 @@ Commit boundary:
 
 Goal: enforce side-effect policy, verify claims, and account for model/runtime usage.
 
+Status: completed locally on 2026-09-06. See `docs/projdocs/task/P5.md`.
+
 Deliverables:
 
 - `internal/permission` global policy, decisions, confirmation workflow, evaluator, and audit records.

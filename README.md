@@ -4,9 +4,9 @@
 
 AI agent for local user workflows.
 
-This repository is a Go implementation of a local-first parallel personal agent. The current implementation includes the P0 foundation, P1 model/privacy foundation, P2 RAG/memory foundation, P3 orchestration/Sub-Agent foundation, and P4 browser runtime foundation: `pachat` CLI packaging, configuration loading, SQLite migrations, core agent/browser contracts, interactive local memory, long-task state tracking, model registry/policy contracts, OpenAI-compatible provider boundaries, a fail-closed Privacy Gateway for public remote model calls, local BM25 retrieval, RRF result fusion, Qdrant boundary code, context compression, working/episodic/semantic memory stores, cancellable DAG orchestration, dependency-aware parallel scheduling, Sub-Agent retry handling, early stop, ordered node lifecycle evidence events, and a governed chromedp browser runtime boundary.
+This repository is a Go implementation of a local-first parallel personal agent. The current implementation includes the P0 foundation, P1 model/privacy foundation, P2 RAG/memory foundation, P3 orchestration/Sub-Agent foundation, P4 browser runtime foundation, and P5 permissions/verification/cost foundation: `pachat` CLI packaging, configuration loading, SQLite migrations, core agent/browser contracts, interactive local memory, long-task state tracking, model registry/policy contracts, OpenAI-compatible provider boundaries, a fail-closed Privacy Gateway for public remote model calls, local BM25 retrieval, RRF result fusion, Qdrant boundary code, context compression, working/episodic/semantic memory stores, cancellable DAG orchestration, dependency-aware parallel scheduling, Sub-Agent retry handling, early stop, ordered node lifecycle evidence events, a governed chromedp browser runtime boundary, global permission policy evaluation, confirmation audit records, claim/evidence verification, conflict detection, and registry-backed cost accounting.
 
-It includes Go contracts and safety skeletons for the Browser Tool, Browser Session Manager, Permission Layer integration, Privacy Gateway filtering, Evidence Bus records, model selection, provider enforcement, local retrieval/memory indexing, orchestration, semantic browser location, accessibility reads, screenshot capture, coordinate fallback, and confirmation-gated browser execution. It does not yet include cookie reading, password reading, production model caller wiring, CLI-connected RAG execution, CLI-connected browser execution, or CLI-connected Sub-Agent task execution.
+It includes Go contracts and safety skeletons for the Browser Tool, Browser Session Manager, Permission Layer integration, Privacy Gateway filtering, Evidence Bus records, model selection, provider enforcement, local retrieval/memory indexing, orchestration, semantic browser location, accessibility reads, screenshot capture, coordinate fallback, confirmation-gated browser execution, global permission decisions, verification gates, and budget enforcement. It does not yet include cookie reading, password reading, production model caller wiring, CLI-connected RAG execution, CLI-connected browser execution, CLI-connected Sub-Agent task execution, CLI-connected verification, or live model-call metering.
 
 ### Contents
 
@@ -19,6 +19,9 @@ It includes Go contracts and safety skeletons for the Browser Tool, Browser Sess
 - `internal/agent`: Leader/Sub-Agent contracts, structured results, claims, evidence IDs, usage, and error categories.
 - `internal/orchestrator`: DAG validation, ready-node calculation, parallel scheduling, retry handling, cancellation propagation, early stop, and lifecycle evidence events.
 - `internal/browser`: Go contracts, chromedp runtime adapter, session/profile policy checks, semantic locator, accessibility/screenshot helpers, confirmation gate, coordinate fallback, redaction, evidence builders, and tests.
+- `internal/permission`: Global permission policies, evaluator, confirmation workflow, and audit records.
+- `internal/verification`: Claim extraction, claim/evidence coverage, conflict detection, and confidence policy.
+- `internal/cost`: Registry-backed pricing lookup, usage estimation, and budget limit enforcement.
 - `internal/model`: Model trust levels, capabilities, registry, policy selection, provider interfaces, and OpenAI-compatible HTTP boundary.
 - `internal/privacy`: HMAC-SHA256 pseudonymization, secret redaction, credential dump blocking, and audit metadata.
 
@@ -75,7 +78,7 @@ bin/pachat task show --config configs/config.example.yaml --id <task_id>
 bin/pachat task cancel --config configs/config.example.yaml --id <task_id>
 ```
 
-Current CLI limitation: the command does not yet call models, run RAG as part of task execution, automate the browser, verify claims, or execute Sub-Agents. P1-P4 add library boundaries and the local browser runtime adapter only; CLI/runtime wiring is planned for later phases.
+Current CLI limitation: the command does not yet call models, run RAG as part of task execution, automate the browser, verify claims, meter live model calls, or execute Sub-Agents. P1-P5 add library boundaries and the local browser runtime adapter only; CLI/runtime wiring is planned for later phases.
 
 ### P1 Model And Privacy Foundation
 
@@ -129,6 +132,20 @@ P4 adds a governed local browser runtime boundary:
 - Redacted browser evidence publishing through an in-memory browser Evidence Bus boundary.
 - Local browser E2E fixture under `internal/browser/testdata/browser`; run it with `PACHAT_BROWSER_E2E=1 go test ./internal/browser`.
 
+### P5 Permissions, Verification, And Cost Foundation
+
+P5 adds library-level safety and accounting controls:
+
+- Global permission action categories for file system, network, browser read/write, high-risk browser actions, memory writes, public model calls, credential access, and external side effects.
+- Configurable permission policy defaults and per-action rules.
+- Confirmation requests that include action, target, risk, evidence IDs, and exact proposed effect.
+- Auditable permission decision records for later evidence persistence.
+- Deterministic claim extraction with claim-to-evidence coverage checks.
+- Conflict detection between claims and evidence.
+- Confidence policy gates for final synthesis.
+- Registry/config-backed pricing lookup and model usage cost estimation.
+- Budget soft and hard limit enforcement.
+
 ### Validation
 
 Run:
@@ -151,9 +168,9 @@ make smoke
 
 面向本地用户工作流的 AI Agent。
 
-本仓库是一个 Go 版本本地优先并行个人 Agent。当前实现包含 P0 基础层、P1 模型/隐私基础层、P2 RAG/记忆基础层、P3 编排/Sub-Agent 基础层和 P4 浏览器运行时基础层：`pachat` CLI 打包、配置加载、SQLite 迁移、核心 agent/browser 契约、交互式本地记忆、长任务状态跟踪、模型注册/策略契约、OpenAI-compatible provider 边界、面向 public remote 模型调用的 fail-closed Privacy Gateway、本地 BM25 检索、RRF 结果融合、Qdrant 边界、上下文压缩、working/episodic/semantic memory store、可取消 DAG 编排、依赖感知并行调度、Sub-Agent retry、early stop、有序节点生命周期 evidence event，以及受治理的 chromedp 浏览器运行时边界。
+本仓库是一个 Go 版本本地优先并行个人 Agent。当前实现包含 P0 基础层、P1 模型/隐私基础层、P2 RAG/记忆基础层、P3 编排/Sub-Agent 基础层、P4 浏览器运行时基础层和 P5 权限/验证/成本基础层：`pachat` CLI 打包、配置加载、SQLite 迁移、核心 agent/browser 契约、交互式本地记忆、长任务状态跟踪、模型注册/策略契约、OpenAI-compatible provider 边界、面向 public remote 模型调用的 fail-closed Privacy Gateway、本地 BM25 检索、RRF 结果融合、Qdrant 边界、上下文压缩、working/episodic/semantic memory store、可取消 DAG 编排、依赖感知并行调度、Sub-Agent retry、early stop、有序节点生命周期 evidence event、受治理的 chromedp 浏览器运行时边界、全局权限策略评估、确认审计记录、claim/evidence 验证、冲突检测和基于 registry 的成本核算。
 
-仓库包含 Browser Tool、Browser Session Manager、Permission Layer 接入、Privacy Gateway 脱敏、Evidence Bus 记录、模型选择、provider enforcement、本地检索/记忆索引、编排、语义浏览器定位、accessibility 读取、截图、坐标兜底和带确认 gate 的浏览器执行的 Go 契约与安全骨架。仓库暂不包含 cookie 读取器、密码读取器、生产模型调用接线、接入 CLI 任务执行的 RAG runtime、接入 CLI 的浏览器执行或接入 CLI 的 Sub-Agent 任务执行。
+仓库包含 Browser Tool、Browser Session Manager、Permission Layer 接入、Privacy Gateway 脱敏、Evidence Bus 记录、模型选择、provider enforcement、本地检索/记忆索引、编排、语义浏览器定位、accessibility 读取、截图、坐标兜底、带确认 gate 的浏览器执行、全局权限决策、验证 gate 和预算控制的 Go 契约与安全骨架。仓库暂不包含 cookie 读取器、密码读取器、生产模型调用接线、接入 CLI 任务执行的 RAG runtime、接入 CLI 的浏览器执行、接入 CLI 的 Sub-Agent 任务执行、接入 CLI 的 claim 验证或实时模型调用计量。
 
 ### 内容
 
@@ -166,6 +183,9 @@ make smoke
 - `internal/agent`：Leader/Sub-Agent 契约、结构化结果、claims、evidence IDs、usage 和错误分类。
 - `internal/orchestrator`：DAG 校验、ready-node 计算、并行调度、retry、取消传播、early stop 和生命周期 evidence event。
 - `internal/browser`：Go 契约、chromedp runtime adapter、session/profile 策略校验、semantic locator、accessibility/screenshot helper、confirmation gate、coordinate fallback、脱敏、evidence builder 和测试。
+- `internal/permission`：全局权限策略、评估器、确认流程和审计记录。
+- `internal/verification`：claim 抽取、claim/evidence 覆盖率、冲突检测和置信度策略。
+- `internal/cost`：基于 registry 的价格查询、usage 估算和预算限制执行。
 - `internal/model`：模型 trust level、capability、registry、policy selection、provider interface 和 OpenAI-compatible HTTP 边界。
 - `internal/privacy`：HMAC-SHA256 pseudonymization、secret redaction、credential dump blocking 和 audit metadata。
 
@@ -222,7 +242,7 @@ bin/pachat task show --config configs/config.example.yaml --id <task_id>
 bin/pachat task cancel --config configs/config.example.yaml --id <task_id>
 ```
 
-当前 CLI 限制：该命令还不会调用模型、在任务执行中运行 RAG、自动化浏览器、验证 claims 或执行 Sub-Agent。P1-P4 只新增库层边界和本地浏览器 runtime adapter；CLI/runtime 接线会在后续阶段实现。
+当前 CLI 限制：该命令还不会调用模型、在任务执行中运行 RAG、自动化浏览器、验证 claims、计量实时模型调用或执行 Sub-Agent。P1-P5 只新增库层边界和本地浏览器 runtime adapter；CLI/runtime 接线会在后续阶段实现。
 
 ### P1 模型与隐私基础
 
@@ -275,6 +295,20 @@ P4 新增受治理的本地浏览器 runtime 边界：
 - write 和 high-risk 浏览器动作必须通过 confirmation gate。
 - 通过内存 browser Evidence Bus 边界发布脱敏浏览器 evidence。
 - 本地浏览器 E2E fixture 位于 `internal/browser/testdata/browser`；使用 `PACHAT_BROWSER_E2E=1 go test ./internal/browser` 运行。
+
+### P5 权限、验证与成本基础
+
+P5 新增库层安全和核算控制：
+
+- 覆盖文件系统、网络、浏览器读写、高风险浏览器动作、memory write、public model call、credential access 和 external side effect 的全局权限动作分类。
+- 可配置的权限默认策略和按 action 覆盖规则。
+- 确认请求包含 action、target、risk、evidence IDs 和精确 proposed effect。
+- 可审计的权限决策记录，供后续持久化为 evidence。
+- 确定性 claim 抽取和 claim/evidence 覆盖率检查。
+- 检测 claim 与 evidence 之间的冲突。
+- 用于 final synthesis 的置信度策略 gate。
+- 基于 registry/config 的价格查询和模型 usage 成本估算。
+- 预算 soft limit 和 hard limit 执行。
 
 ### 验证
 
