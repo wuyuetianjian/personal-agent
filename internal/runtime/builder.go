@@ -31,6 +31,7 @@ type Runtime struct {
 	Projects     project.Store
 	Workflow     *WorkflowEngine
 	Planner      Planner
+	Executors    *CapabilityExecutorRegistry
 	Escalator    *PublicEscalator
 	ChatProvider model.ChatProvider
 	ChatModel    model.ModelMetadata
@@ -122,6 +123,7 @@ func NewLocal(cfg config.Config, db *storage.DB, events orchestrator.EvidenceBus
 		Capabilities: buildCapabilities(cfg),
 		Workflows:    workflow.Store{DB: db.SQL},
 		Projects:     project.Store{DB: db.SQL},
+		Executors:    NewCapabilityExecutorRegistry(),
 		Governor:     reliability.NewGovernor(cfg.Reliability.Resources),
 		Tracer:       observability.NewTracer(),
 		Audit:        audit.Store{DB: db.SQL},
@@ -129,7 +131,21 @@ func NewLocal(cfg config.Config, db *storage.DB, events orchestrator.EvidenceBus
 		PrivacyClass: "local_private",
 	}
 	rt.Workflow = NewWorkflowEngine(rt)
+	configureCapabilityExecutors(rt)
 	return rt
+}
+
+func configureCapabilityExecutors(rt *Runtime) {
+	if rt == nil || rt.Executors == nil {
+		return
+	}
+	if rt.Config.Browser.Enabled {
+		executor := NewBrowserExecutor(rt.Config.Browser)
+		executor.Evidence = rt.Evidence
+		rt.Executors.Register("browser.navigate", executor)
+		rt.Executors.Register("browser.read", executor)
+		rt.Executors.Register("browser.write", executor)
+	}
 }
 
 func (r *Runtime) Close() error {

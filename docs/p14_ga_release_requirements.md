@@ -43,6 +43,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `HIGH-03` wires hybrid RAG through production config. `rag.vector` uses a configured embedding model with Qdrant search, then fuses vector and BM25 results with RRF before compression. `rag.reranker` uses a configured rerank-capable model when available. Vector and reranker failures do not fail local retrieval; the pipeline keeps BM25 fallback.
 
+`BLOCK-02A` introduces the Runtime capability executor registry and registers governed browser executors for `browser.navigate`, `browser.read`, and `browser.write` when browser support is enabled. Browser read execution stores real browser observation evidence through the Runtime evidence store. Navigate and write actions are routed through the browser session/domain/confirmation policy boundary before any side effect.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -57,3 +59,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - Planner tests reject unknown capabilities, disabled capabilities, cycles, and node counts over `agent.planner.max_nodes`.
 - Runtime workflow tests verify model-backed `reasoning.local` and `synthesis.local` execution with provider usage and final-answer propagation from the synthesis checkpoint.
 - Hybrid RAG tests verify configured embedding/Qdrant wiring and BM25 fallback when Qdrant is unavailable.
+- Workflow tests verify `browser.read` executes through a registered Runtime executor and persists browser evidence instead of returning the missing-executor error.

@@ -281,6 +281,11 @@ func (a workflowSubAgent) executeLocal(ctx context.Context, node agent.TaskNode)
 		}
 		return a.engine.Runtime.runSynthesisAgent(ctx, node, evidence, a.input)
 	default:
+		if a.engine.Runtime.Executors != nil {
+			if executor, ok := a.engine.Runtime.Executors.Lookup(node.Type); ok {
+				return executor.Execute(ctx, node, a.input)
+			}
+		}
 		if strings.HasPrefix(node.Type, "browser.") || strings.HasPrefix(node.Type, "coding.") || strings.HasPrefix(node.Type, "mcp.") || strings.HasPrefix(node.Type, "tool.") {
 			msg := "runtime capability requires an enabled governed executor: " + node.Type
 			return agent.Result{ErrorCategory: agent.ErrorBlockedMissingInput, ErrorMessage: msg, Usage: agentUsage(node.Input, "")}, errors.New(msg)

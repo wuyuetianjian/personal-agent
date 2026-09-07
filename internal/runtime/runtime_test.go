@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"agent/internal/agent"
+	"agent/internal/browser"
 	"agent/internal/config"
 	"agent/internal/model"
 	"agent/internal/orchestrator"
@@ -310,6 +312,38 @@ func TestRunUsesModelBackedReasoningAndSynthesisCheckpoint(t *testing.T) {
 	}
 }
 
+func TestWorkflowEngineExecutesRegisteredBrowserReadExecutor(t *testing.T) {
+	ctx := context.Background()
+	db := openRuntimeTestDB(t)
+	cfg := configForRuntimeTest()
+	cfg.Browser.Enabled = true
+	rt := NewLocal(cfg, db, &orchestrator.InMemoryEvidenceBus{})
+	rt.Executors.Register("browser.read", BrowserExecutor{
+		Tool:     fakeBrowserTool{observation: browser.Observation{URL: "http://127.0.0.1:8787", Title: "Local", VisibleText: "browser executor evidence"}},
+		Config:   cfg.Browser,
+		Evidence: rt.Evidence,
+	})
+	if err := rt.Workflows.Create(ctx, workflow.Run{
+		ID:        "wf-browser",
+		TaskID:    "task-browser",
+		Status:    workflow.StatusPending,
+		InputJSON: `{"input":"read browser"}`,
+	}, []workflow.Node{{WorkflowID: "wf-browser", NodeID: "browser-read", CapabilityID: "browser.read", Role: string(agent.RoleBrowser), Status: workflow.NodePending}}); err != nil {
+		t.Fatalf("workflow Create() error = %v", err)
+	}
+
+	if err := rt.Workflow.RunWorkflow(ctx, "wf-browser"); err != nil {
+		t.Fatalf("RunWorkflow() error = %v", err)
+	}
+	evidence, err := rt.Evidence.ListByTask(ctx, "task-browser")
+	if err != nil {
+		t.Fatalf("ListByTask() error = %v", err)
+	}
+	if len(evidence) != 1 || evidence[0].SourceType != SourceBrowser || !strings.Contains(evidence[0].Content, "browser executor evidence") {
+		t.Fatalf("evidence = %#v, want browser evidence", evidence)
+	}
+}
+
 type queuedChatProvider struct {
 	responses []model.ChatResponse
 	calls     int
@@ -325,6 +359,18 @@ func (p *queuedChatProvider) Chat(ctx context.Context, request model.ChatRequest
 	response := p.responses[p.calls]
 	p.calls++
 	return response, nil
+}
+
+type fakeBrowserTool struct {
+	observation browser.Observation
+}
+
+func (t fakeBrowserTool) Execute(ctx context.Context, action browser.Action) (browser.Result, error) {
+	return browser.Result{Action: action, Observation: t.observation, Decision: browser.DecisionAllowed}, ctx.Err()
+}
+
+func (t fakeBrowserTool) Observe(ctx context.Context, sessionID string) (browser.Observation, error) {
+	return t.observation, ctx.Err()
 }
 
 func configForRuntimeTest() config.Config {

@@ -282,6 +282,8 @@ Workflow reasoning and synthesis now reuse the configured private local model wh
 
 Hybrid RAG production wiring is controlled by the mountable `rag` config. `rag.vector` composes an embedding model with Qdrant vector search; `rag.reranker` composes a configured rerank model when available. If vector search or reranking is disabled or unavailable, retrieval keeps the local BM25 fallback.
 
+Runtime capability executors are now registered through a local executor registry. When browser support is enabled, `browser.read`, `browser.navigate`, and `browser.write` route through the governed browser tool; read observations are persisted as Runtime evidence, while navigation and write actions still pass through session/domain policy and confirmation gates.
+
 P14 documentation lives under `docs/release/` and covers quickstart, user operations, administration, security/threat model, troubleshooting, upgrade, RC E2E scenarios, soak testing, performance baselines, and data-loss recovery drills. The current release package is archive/script based; package manager publishing and Windows binaries are post-v1 work.
 
 ### Validation
@@ -587,6 +589,8 @@ agent:
 Workflow 中的 reasoning 与 synthesis 现在会在 `Runtime.ChatProvider` 可用时复用配置的私有本地模型。`reasoning.local` 输出有界 claims、evidence IDs、confidence 和 provider usage，不保存 chain-of-thought。`synthesis.local` 基于已验证 evidence 写出最终答案，`Runtime.Run()` 会使用完成的 synthesis checkpoint 作为持久化 task answer。
 
 Hybrid RAG 生产接线由可挂载的 `rag` 配置控制。`rag.vector` 会组合 embedding 模型与 Qdrant 向量检索；`rag.reranker` 会在可用时组合配置的 rerank 模型。vector search 或 reranking 禁用/不可用时，检索会继续使用本地 BM25 fallback。
+
+Runtime capability executor 现在通过本地 executor registry 注册。启用 browser 后，`browser.read`、`browser.navigate` 和 `browser.write` 会进入受治理的 browser tool；read observation 会作为 Runtime evidence 持久化，navigation 与 write action 仍经过 session/domain policy 和 confirmation gate。
 
 P14 文档位于 `docs/release/`，覆盖 quickstart、用户操作、管理员操作、安全/threat model、troubleshooting、upgrade、RC E2E scenario、soak test、performance baseline 和 data-loss recovery drill。当前发布包采用 archive/script 形式；package manager 发布和 Windows 二进制属于 post-v1 工作。
 
