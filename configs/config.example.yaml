@@ -53,6 +53,9 @@ agent:
     temperature: 0.2
     max_output_tokens: 4096
     trust_level_required: local_private
+  planner:
+    enabled: true
+    max_nodes: 8
   subagents:
     research:
       model_id: local-planner

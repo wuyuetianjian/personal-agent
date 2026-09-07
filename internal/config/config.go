@@ -86,6 +86,7 @@ type PricingConfig struct {
 type AgentConfig struct {
 	Leader    RoleModelConfig            `yaml:"leader"`
 	SubAgents map[string]RoleModelConfig `yaml:"subagents"`
+	Planner   PlannerConfig              `yaml:"planner"`
 }
 
 type RoleModelConfig struct {
@@ -93,6 +94,15 @@ type RoleModelConfig struct {
 	Temperature        float64 `yaml:"temperature"`
 	MaxOutputTokens    int     `yaml:"max_output_tokens"`
 	TrustLevelRequired string  `yaml:"trust_level_required"`
+}
+
+type PlannerConfig struct {
+	Enabled  *bool `yaml:"enabled"`
+	MaxNodes int   `yaml:"max_nodes"`
+}
+
+func (c PlannerConfig) IsEnabled() bool {
+	return c.Enabled == nil || *c.Enabled
 }
 
 type BrowserConfig struct {

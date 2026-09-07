@@ -267,7 +267,16 @@ P14 is documented in `docs/p14_ga_release_requirements.md`, `docs/projdocs/P0_P1
 
 The default `configs/config.example.yaml` uses the locally available Ollama model `qwen3.8:27b-mlx`. Change `models.registry[].model` in the mountable config file when using a different local model.
 
-Interactive `pachat chat` now sends turns to the configured local OpenAI-compatible provider and uses `agent.leader.model_id` for model selection. Provider connectivity or response errors are returned explicitly.
+Interactive `pachat chat` now sends turns to the configured local OpenAI-compatible provider and uses `agent.leader.model_id` for model selection. The same configured Leader provider is also wired into `BoundedModelPlanner` when `agent.planner.enabled` is true and the selected model supports `chat` and `json_schema`. Planner output is bounded by `agent.planner.max_nodes`, validated against the Runtime capability registry, and rejected before workflow creation when it references unknown capabilities or invalid DAG dependencies. Provider connectivity or response errors are returned explicitly.
+
+Planner configuration:
+
+```yaml
+agent:
+  planner:
+    enabled: true
+    max_nodes: 8
+```
 
 P14 documentation lives under `docs/release/` and covers quickstart, user operations, administration, security/threat model, troubleshooting, upgrade, RC E2E scenarios, soak testing, performance baselines, and data-loss recovery drills. The current release package is archive/script based; package manager publishing and Windows binaries are post-v1 work.
 
@@ -560,7 +569,16 @@ P14 已记录在 `docs/p14_ga_release_requirements.md`、`docs/projdocs/P0_P14_E
 
 默认配置 `configs/config.example.yaml` 已使用本地 Ollama 模型 `qwen3.8:27b-mlx`；如本机模型名称不同，请在可挂载配置文件中修改 `models.registry[].model`。
 
-交互式 `pachat chat` 现在会调用配置的本地 OpenAI-compatible provider，并使用 `agent.leader.model_id` 选择模型；provider 连接或响应错误会明确返回。
+交互式 `pachat chat` 现在会调用配置的本地 OpenAI-compatible provider，并使用 `agent.leader.model_id` 选择模型。当 `agent.planner.enabled` 为 true 且所选模型支持 `chat` 与 `json_schema` 时，同一个 Leader provider 也会接入 `BoundedModelPlanner`。Planner 输出受 `agent.planner.max_nodes` 约束，并会先通过 Runtime capability registry 与 DAG 依赖校验；引用未知 capability 或无效依赖时，会在创建 workflow 前失败。provider 连接或响应错误会明确返回。
+
+Planner 配置：
+
+```yaml
+agent:
+  planner:
+    enabled: true
+    max_nodes: 8
+```
 
 P14 文档位于 `docs/release/`，覆盖 quickstart、用户操作、管理员操作、安全/threat model、troubleshooting、upgrade、RC E2E scenario、soak test、performance baseline 和 data-loss recovery drill。当前发布包采用 archive/script 形式；package manager 发布和 Windows 二进制属于 post-v1 工作。
 

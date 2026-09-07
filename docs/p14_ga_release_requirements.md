@@ -12,6 +12,7 @@ P14 turns the local-first Personal Agent into a distributable v1.0 package for m
 - Provide safe production config examples without inline secrets.
 - Set the default local Ollama model in `configs/config.example.yaml` to the locally available `qwen3.8:27b-mlx` model.
 - Wire configured OpenAI-compatible local providers into the Runtime chat path so the interactive CLI uses the selected local model.
+- Wire the configured Leader OpenAI-compatible provider into `BoundedModelPlanner` when `agent.planner.enabled` is true and the selected model supports `chat` and `json_schema`.
 - Provide quickstart, user, administrator, security/threat model, troubleshooting, upgrade, RC E2E, soak, performance, and recovery drill documentation.
 - Provide a release checklist command that verifies tests, vet, build, build matrix, checksums, and required release documents.
 - Add migration compatibility coverage for upgrading from a supported P13/P14-pre schema state to the latest embedded migrations.
@@ -23,6 +24,21 @@ P14 turns the local-first Personal Agent into a distributable v1.0 package for m
 - External CI provider configuration.
 - Production-grade kernel or browser isolation beyond documented service hardening examples.
 
+## Functional GA Runtime Brain Slice
+
+`BLOCK-01` closes the first Functional GA blocker by composing the configured local Leader model into the bounded workflow planner:
+
+```text
+Config
+  -> Model Registry
+  -> agent.leader.model_id
+  -> OpenAI-compatible ChatProvider
+  -> BoundedModelPlanner
+  -> Runtime.Planner
+```
+
+The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.max_nodes`. It remains fail-closed: disabled or unavailable providers leave `Runtime.Planner` unset, unknown capabilities are rejected, disabled capabilities are denied, and invalid DAGs such as cycles fail validation before workflow creation.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -33,3 +49,5 @@ P14 turns the local-first Personal Agent into a distributable v1.0 package for m
 - `pachat version` prints all version model fields.
 - `pachat release check --quick` passes in a local development checkout.
 - README contains English and Chinese P14 release notes.
+- `Runtime.Build()` creates both `Runtime.ChatProvider` and `Runtime.Planner` for the default `qwen3.8:27b-mlx` local planner configuration.
+- Planner tests reject unknown capabilities, disabled capabilities, cycles, and node counts over `agent.planner.max_nodes`.

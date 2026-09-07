@@ -29,6 +29,9 @@ agent:
   leader:
     model_id: local-planner
     trust_level_required: local_private
+  planner:
+    enabled: true
+    max_nodes: 8
 permissions:
   default: deny
 coding_agents:

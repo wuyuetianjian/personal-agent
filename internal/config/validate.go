@@ -46,6 +46,9 @@ func (c Config) Validate() error {
 	if c.Agent.Leader.ModelID == "" {
 		return errors.New("agent.leader.model_id is required")
 	}
+	if c.Agent.Planner.MaxNodes < 0 {
+		return errors.New("agent.planner.max_nodes must be non-negative")
+	}
 	models := make(map[string]struct{}, len(c.Models.Registry))
 	for _, item := range c.Models.Registry {
 		if item.ID == "" {

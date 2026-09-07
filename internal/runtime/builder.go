@@ -60,8 +60,26 @@ func Build(ctx context.Context, cfg config.Config) (*Runtime, error) {
 	}
 	rt.ChatProvider = provider
 	rt.ChatModel = metadata
+	rt.Planner = buildConfiguredPlanner(cfg, provider, metadata, rt.Capabilities)
 	rt.ownsStorage = true
 	return rt, nil
+}
+
+func buildConfiguredPlanner(cfg config.Config, provider model.ChatProvider, metadata model.ModelMetadata, capabilities *capability.Registry) Planner {
+	if provider == nil || capabilities == nil || !cfg.Agent.Planner.IsEnabled() {
+		return nil
+	}
+	if !metadata.Capabilities[model.CapabilityChat] || !metadata.Capabilities[model.CapabilityJSONSchema] {
+		return nil
+	}
+	return BoundedModelPlanner{
+		Provider:        provider,
+		Model:           metadata,
+		Capabilities:    capabilities,
+		Temperature:     cfg.Agent.Leader.Temperature,
+		MaxOutputTokens: cfg.Agent.Leader.MaxOutputTokens,
+		MaxNodes:        cfg.Agent.Planner.MaxNodes,
+	}
 }
 
 func buildConfiguredChatProvider(cfg config.Config) (model.ChatProvider, model.ModelMetadata, error) {
