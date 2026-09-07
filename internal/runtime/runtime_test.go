@@ -5,11 +5,13 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
 	"agent/internal/agent"
 	"agent/internal/browser"
+	"agent/internal/codingagent"
 	"agent/internal/config"
 	"agent/internal/model"
 	"agent/internal/orchestrator"
@@ -344,6 +346,58 @@ func TestWorkflowEngineExecutesRegisteredBrowserReadExecutor(t *testing.T) {
 	}
 }
 
+func TestWorkflowEngineExecutesRegisteredCodingExecutor(t *testing.T) {
+	ctx := context.Background()
+	db := openRuntimeTestDB(t)
+	cfg := configForRuntimeTest()
+	enabled := true
+	cfg.CodingAgents.Backends = map[string]config.CodingAgentBackendConfig{
+		"codex": {
+			Enabled:           &enabled,
+			Adapter:           "codex",
+			Binary:            "codex",
+			ExecutionLocation: "local",
+			InferenceTrust:    "local_private",
+			PrivacyPolicy:     "allow_all",
+			Capabilities:      []string{"coding"},
+			AllowDirectWrites: true,
+		},
+	}
+	rt := NewLocal(cfg, db, &orchestrator.InMemoryEvidenceBus{})
+	rt.Executors.Register("coding.codex", CodingExecutor{
+		Runner: fakeCodingRunner{result: codingagent.Result{
+			BackendID:    "codex",
+			Summary:      "implemented change",
+			Diff:         "diff --git a/file.txt b/file.txt",
+			FilesChanged: []string{"file.txt"},
+			Tests:        []codingagent.CommandEvidence{{Args: []string{"go", "test", "./..."}, ExitCode: 0}},
+		}},
+		Backend:  "codex",
+		Config:   cfg,
+		Evidence: rt.Evidence,
+	})
+	input := `{"repository_path":"/tmp/repo","prompt":"implement change","allow_write":true,"allow_direct_writes":true,"test_commands":[["go","test","./..."]]}`
+	if err := rt.Workflows.Create(ctx, workflow.Run{
+		ID:        "wf-coding",
+		TaskID:    "task-coding",
+		Status:    workflow.StatusPending,
+		InputJSON: `{"input":` + strconv.Quote(input) + `}`,
+	}, []workflow.Node{{WorkflowID: "wf-coding", NodeID: "codex", CapabilityID: "coding.codex", Role: string(agent.RoleTool), Status: workflow.NodePending}}); err != nil {
+		t.Fatalf("workflow Create() error = %v", err)
+	}
+
+	if err := rt.Workflow.RunWorkflow(ctx, "wf-coding"); err != nil {
+		t.Fatalf("RunWorkflow() error = %v", err)
+	}
+	evidence, err := rt.Evidence.ListByTask(ctx, "task-coding")
+	if err != nil {
+		t.Fatalf("ListByTask() error = %v", err)
+	}
+	if len(evidence) != 1 || !strings.Contains(evidence[0].Content, "files_changed: file.txt") || !strings.Contains(evidence[0].Content, "go test ./...") {
+		t.Fatalf("evidence = %#v, want coding diff and test evidence", evidence)
+	}
+}
+
 type queuedChatProvider struct {
 	responses []model.ChatResponse
 	calls     int
@@ -371,6 +425,21 @@ func (t fakeBrowserTool) Execute(ctx context.Context, action browser.Action) (br
 
 func (t fakeBrowserTool) Observe(ctx context.Context, sessionID string) (browser.Observation, error) {
 	return t.observation, ctx.Err()
+}
+
+type fakeCodingRunner struct {
+	result codingagent.Result
+	err    error
+}
+
+func (r fakeCodingRunner) Run(ctx context.Context, req codingagent.Request) (codingagent.Result, error) {
+	if err := ctx.Err(); err != nil {
+		return codingagent.Result{}, err
+	}
+	result := r.result
+	result.TaskID = req.TaskID
+	result.NodeID = req.NodeID
+	return result, r.err
 }
 
 func configForRuntimeTest() config.Config {

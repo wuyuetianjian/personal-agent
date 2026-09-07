@@ -45,6 +45,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `BLOCK-02A` introduces the Runtime capability executor registry and registers governed browser executors for `browser.navigate`, `browser.read`, and `browser.write` when browser support is enabled. Browser read execution stores real browser observation evidence through the Runtime evidence store. Navigate and write actions are routed through the browser session/domain/confirmation policy boundary before any side effect.
 
+`BLOCK-02B` and `BLOCK-02C` register governed coding executors for enabled `coding.<backend>` capabilities such as `coding.codex` and `coding.claude`. The executor accepts structured workflow input, delegates execution to the existing coding agent Runner, preserves worktree/diff/test evidence, and stores the result as Runtime evidence. Disabled backends, privacy-denied repositories, direct-write denial, or insufficient evidence fail closed.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -60,3 +62,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - Runtime workflow tests verify model-backed `reasoning.local` and `synthesis.local` execution with provider usage and final-answer propagation from the synthesis checkpoint.
 - Hybrid RAG tests verify configured embedding/Qdrant wiring and BM25 fallback when Qdrant is unavailable.
 - Workflow tests verify `browser.read` executes through a registered Runtime executor and persists browser evidence instead of returning the missing-executor error.
+- Workflow tests verify `coding.codex` executes through a registered Runtime executor and persists diff/test evidence.

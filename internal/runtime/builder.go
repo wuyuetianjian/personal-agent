@@ -146,6 +146,12 @@ func configureCapabilityExecutors(rt *Runtime) {
 		rt.Executors.Register("browser.read", executor)
 		rt.Executors.Register("browser.write", executor)
 	}
+	for id, backend := range rt.Config.CodingAgents.Backends {
+		if !backend.IsEnabled() {
+			continue
+		}
+		rt.Executors.Register("coding."+id, NewCodingExecutor(rt.Config, id, rt.Evidence))
+	}
 }
 
 func (r *Runtime) Close() error {
