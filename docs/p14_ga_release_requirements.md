@@ -41,6 +41,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `HIGH-01` and `HIGH-02` add model-backed local reasoning and synthesis on top of the same configured private provider. Reasoning receives the task, compressed evidence references, and constraints, and returns claims, a decision summary, confidence, evidence IDs, and provider usage without storing raw chain-of-thought. Synthesis receives verified evidence context and returns the final answer while excluding unsupported claims and surfacing conflicts when evidence is insufficient. If no configured private provider is available, both nodes keep the existing deterministic local fallback.
 
+`HIGH-03` wires hybrid RAG through production config. `rag.vector` uses a configured embedding model with Qdrant search, then fuses vector and BM25 results with RRF before compression. `rag.reranker` uses a configured rerank-capable model when available. Vector and reranker failures do not fail local retrieval; the pipeline keeps BM25 fallback.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -54,3 +56,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - `Runtime.Build()` creates both `Runtime.ChatProvider` and `Runtime.Planner` for the default `qwen3.8:27b-mlx` local planner configuration.
 - Planner tests reject unknown capabilities, disabled capabilities, cycles, and node counts over `agent.planner.max_nodes`.
 - Runtime workflow tests verify model-backed `reasoning.local` and `synthesis.local` execution with provider usage and final-answer propagation from the synthesis checkpoint.
+- Hybrid RAG tests verify configured embedding/Qdrant wiring and BM25 fallback when Qdrant is unavailable.

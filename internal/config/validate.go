@@ -91,6 +91,32 @@ func (c Config) Validate() error {
 			return fmt.Errorf("coding_agents.backends.%s.execution_location is required", id)
 		}
 	}
+	if c.RAG.Vector.Enabled {
+		if c.RAG.Vector.EmbeddingModelID == "" {
+			return errors.New("rag.vector.embedding_model_id is required when vector is enabled")
+		}
+		if c.RAG.Vector.QdrantCollection == "" {
+			return errors.New("rag.vector.qdrant_collection is required when vector is enabled")
+		}
+		if c.RAG.Vector.QdrantBaseURL == "" && c.RAG.Vector.QdrantBaseURLEnv == "" {
+			return errors.New("rag.vector.qdrant_base_url or qdrant_base_url_env is required when vector is enabled")
+		}
+		if len(models) > 0 {
+			if _, ok := models[c.RAG.Vector.EmbeddingModelID]; !ok {
+				return fmt.Errorf("rag.vector.embedding_model_id %q is not defined in models.registry", c.RAG.Vector.EmbeddingModelID)
+			}
+		}
+	}
+	if c.RAG.Reranker.Enabled {
+		if c.RAG.Reranker.ModelID == "" {
+			return errors.New("rag.reranker.model_id is required when reranker is enabled")
+		}
+		if len(models) > 0 {
+			if _, ok := models[c.RAG.Reranker.ModelID]; !ok {
+				return fmt.Errorf("rag.reranker.model_id %q is not defined in models.registry", c.RAG.Reranker.ModelID)
+			}
+		}
+	}
 	if c.Security.API.MaxBodyBytes < 0 {
 		return errors.New("security.api.max_body_bytes must be non-negative")
 	}

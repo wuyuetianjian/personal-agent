@@ -36,6 +36,11 @@ agent:
   planner:
     enabled: true
     max_nodes: 8
+rag:
+  vector:
+    enabled: false
+  reranker:
+    enabled: false
 permissions:
   default: deny
 security:

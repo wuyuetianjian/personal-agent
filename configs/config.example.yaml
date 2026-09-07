@@ -78,6 +78,17 @@ agent:
       max_output_tokens: 2048
       trust_level_required: local_private
 
+rag:
+  vector:
+    enabled: false
+    embedding_model_id: local-embedding
+    qdrant_base_url_env: QDRANT_URL
+    qdrant_collection: pachat
+    qdrant_api_key_env: QDRANT_API_KEY
+  reranker:
+    enabled: false
+    model_id: local-reranker
+
 browser:
   enabled: true
   runtime: chromedp

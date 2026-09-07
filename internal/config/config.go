@@ -10,6 +10,7 @@ type Config struct {
 	Privacy       PrivacyConfig      `yaml:"privacy"`
 	Models        ModelsConfig       `yaml:"models"`
 	Agent         AgentConfig        `yaml:"agent"`
+	RAG           RAGConfig          `yaml:"rag"`
 	Browser       BrowserConfig      `yaml:"browser"`
 	Permissions   PermissionsConfig  `yaml:"permissions"`
 	CodingAgents  CodingAgentsConfig `yaml:"coding_agents"`
@@ -103,6 +104,25 @@ type PlannerConfig struct {
 
 func (c PlannerConfig) IsEnabled() bool {
 	return c.Enabled == nil || *c.Enabled
+}
+
+type RAGConfig struct {
+	Vector   VectorRAGConfig   `yaml:"vector"`
+	Reranker RerankerRAGConfig `yaml:"reranker"`
+}
+
+type VectorRAGConfig struct {
+	Enabled          bool   `yaml:"enabled"`
+	EmbeddingModelID string `yaml:"embedding_model_id"`
+	QdrantBaseURL    string `yaml:"qdrant_base_url"`
+	QdrantBaseURLEnv string `yaml:"qdrant_base_url_env"`
+	QdrantCollection string `yaml:"qdrant_collection"`
+	QdrantAPIKeyEnv  string `yaml:"qdrant_api_key_env"`
+}
+
+type RerankerRAGConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	ModelID string `yaml:"model_id"`
 }
 
 type BrowserConfig struct {

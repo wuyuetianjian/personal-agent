@@ -38,6 +38,11 @@ agent:
   planner:
     enabled: true
     max_nodes: 8
+rag:
+  vector:
+    enabled: false
+  reranker:
+    enabled: false
 browser:
   enabled: true
   runtime: chromedp

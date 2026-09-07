@@ -133,3 +133,45 @@ ORDER BY d.id ASC, c.chunk_index ASC, c.id ASC
 	}
 	return results, rows.Err()
 }
+
+func (s SQLiteStore) ResultByChunkID(ctx context.Context, chunkID string) (Result, error) {
+	row := s.db.QueryRowContext(ctx, `
+SELECT
+  c.id, c.document_id, c.chunk_index, c.text, c.token_count, c.content_hash, c.metadata_json, c.created_at,
+  d.id, d.source_uri, d.title, d.content_hash, d.metadata_json, d.privacy_class, d.created_at, d.updated_at
+FROM document_chunks c
+JOIN documents d ON d.id = c.document_id
+WHERE c.id = ?
+`, chunkID)
+	var result Result
+	var chunkMetadata string
+	var documentMetadata string
+	if err := row.Scan(
+		&result.Chunk.ID,
+		&result.Chunk.DocumentID,
+		&result.Chunk.ChunkIndex,
+		&result.Chunk.Text,
+		&result.Chunk.TokenCount,
+		&result.Chunk.ContentHash,
+		&chunkMetadata,
+		&result.Chunk.CreatedAt,
+		&result.Document.ID,
+		&result.Document.SourceURI,
+		&result.Document.Title,
+		&result.Document.ContentHash,
+		&documentMetadata,
+		&result.Document.PrivacyClass,
+		&result.Document.CreatedAt,
+		&result.Document.UpdatedAt,
+	); err != nil {
+		return Result{}, err
+	}
+	if err := json.Unmarshal([]byte(chunkMetadata), &result.Chunk.Metadata); err != nil {
+		return Result{}, err
+	}
+	if err := json.Unmarshal([]byte(documentMetadata), &result.Document.Metadata); err != nil {
+		return Result{}, err
+	}
+	result.EvidenceID = result.Chunk.ID
+	return result, nil
+}

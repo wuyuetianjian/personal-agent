@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"fmt"
 
 	"agent/internal/audit"
 	"agent/internal/capability"
@@ -61,6 +60,10 @@ func Build(ctx context.Context, cfg config.Config) (*Runtime, error) {
 	rt.ChatProvider = provider
 	rt.ChatModel = metadata
 	rt.Planner = buildConfiguredPlanner(cfg, provider, metadata, rt.Capabilities)
+	if err := configureHybridRAG(cfg, db.SQL, rt); err != nil {
+		db.Close()
+		return nil, err
+	}
 	rt.ownsStorage = true
 	return rt, nil
 }
@@ -97,22 +100,8 @@ func buildConfiguredChatProvider(cfg config.Config) (model.ChatProvider, model.M
 	if !metadata.Provider.Enabled {
 		return nil, metadata, nil
 	}
-	if metadata.Provider.Type != "openai_compatible" {
-		return nil, metadata, fmt.Errorf("chat provider %q has unsupported type %q", metadata.Provider.ID, metadata.Provider.Type)
-	}
-	baseURL := metadata.Provider.BaseURL
-	if baseURL == "" && metadata.Provider.BaseURLEnv != "" {
-		baseURL, _ = config.EnvValue(metadata.Provider.BaseURLEnv)
-	}
-	if baseURL == "" {
-		return nil, metadata, fmt.Errorf("chat provider %q has no base URL", metadata.Provider.ID)
-	}
-	apiKey, _ := config.EnvValue(metadata.Provider.APIKeyEnv)
-	return &model.OpenAICompatibleClient{
-		Provider: metadata.Provider,
-		BaseURL:  baseURL,
-		APIKey:   apiKey,
-	}, metadata, nil
+	provider, err := buildOpenAICompatibleClient(metadata)
+	return provider, metadata, err
 }
 
 func NewLocal(cfg config.Config, db *storage.DB, events orchestrator.EvidenceBus) *Runtime {
