@@ -99,6 +99,12 @@ browser:
     allowed_domains: []
     session_ttl: 8h
 
+mcp:
+  servers: {}
+
+tools:
+  allowlist: []
+
 permissions:
   default: deny
 

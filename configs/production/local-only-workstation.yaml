@@ -47,6 +47,10 @@ browser:
   enabled: true
   runtime: chromedp
   screenshot_dir: ${PACHAT_DATA_DIR}/browser/screenshots
+mcp:
+  servers: {}
+tools:
+  allowlist: []
 permissions:
   default: deny
 coding_agents:

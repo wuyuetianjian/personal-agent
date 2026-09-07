@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"strings"
 )
 
 var (
@@ -115,6 +116,36 @@ func (c Config) Validate() error {
 			if _, ok := models[c.RAG.Reranker.ModelID]; !ok {
 				return fmt.Errorf("rag.reranker.model_id %q is not defined in models.registry", c.RAG.Reranker.ModelID)
 			}
+		}
+	}
+	for id, server := range c.MCP.Servers {
+		if !server.Enabled {
+			continue
+		}
+		if server.Command == "" {
+			return fmt.Errorf("mcp.servers.%s.command is required when enabled", id)
+		}
+		if server.TrustLevel == "" {
+			return fmt.Errorf("mcp.servers.%s.trust_level is required when enabled", id)
+		}
+	}
+	toolIDs := map[string]struct{}{}
+	for _, tool := range c.Tools.Allowlist {
+		if !tool.Enabled {
+			continue
+		}
+		if tool.ID == "" {
+			return errors.New("tools.allowlist[].id is required when enabled")
+		}
+		if !strings.HasPrefix(tool.ID, "tool.") {
+			return fmt.Errorf("tools.allowlist.%s id must start with tool.", tool.ID)
+		}
+		if _, ok := toolIDs[tool.ID]; ok {
+			return fmt.Errorf("duplicate tools.allowlist id %q", tool.ID)
+		}
+		toolIDs[tool.ID] = struct{}{}
+		if tool.Program == "" {
+			return fmt.Errorf("tools.allowlist.%s.program is required when enabled", tool.ID)
 		}
 	}
 	if c.Security.API.MaxBodyBytes < 0 {

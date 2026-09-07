@@ -47,6 +47,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `BLOCK-02B` and `BLOCK-02C` register governed coding executors for enabled `coding.<backend>` capabilities such as `coding.codex` and `coding.claude`. The executor accepts structured workflow input, delegates execution to the existing coding agent Runner, preserves worktree/diff/test evidence, and stores the result as Runtime evidence. Disabled backends, privacy-denied repositories, direct-write denial, or insufficient evidence fail closed.
 
+`BLOCK-02D` and `BLOCK-02E` add governed MCP and local tool executors. MCP servers are configured under `mcp.servers`, exposed as `mcp.<server>.<tool>` capabilities, called through a stdio JSON-RPC transport, and stored as `UNTRUSTED OBSERVATION` evidence. Local tools are configured under `tools.allowlist`; workflow input is never interpolated into the command, and only the configured program/args are executed.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -63,3 +65,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - Hybrid RAG tests verify configured embedding/Qdrant wiring and BM25 fallback when Qdrant is unavailable.
 - Workflow tests verify `browser.read` executes through a registered Runtime executor and persists browser evidence instead of returning the missing-executor error.
 - Workflow tests verify `coding.codex` executes through a registered Runtime executor and persists diff/test evidence.
+- Workflow tests verify `mcp.<server>.<tool>` and `tool.<id>` execution through registered Runtime executors with untrusted MCP output and fixed allowlisted command arguments.

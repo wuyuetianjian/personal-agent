@@ -152,6 +152,23 @@ func configureCapabilityExecutors(rt *Runtime) {
 		}
 		rt.Executors.Register("coding."+id, NewCodingExecutor(rt.Config, id, rt.Evidence))
 	}
+	for id, server := range rt.Config.MCP.Servers {
+		if !server.Enabled {
+			continue
+		}
+		tools := append([]string(nil), server.Tools...)
+		if len(tools) == 0 {
+			tools = []string{"call"}
+		}
+		for _, toolName := range tools {
+			rt.Executors.Register("mcp."+id+"."+toolName, MCPExecutor{ServerID: id, ToolName: toolName, Config: server, Evidence: rt.Evidence})
+		}
+	}
+	for _, tool := range rt.Config.Tools.Allowlist {
+		if tool.Enabled {
+			rt.Executors.Register(tool.ID, ToolExecutor{Config: tool, Evidence: rt.Evidence})
+		}
+	}
 }
 
 func (r *Runtime) Close() error {

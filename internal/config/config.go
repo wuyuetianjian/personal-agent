@@ -12,6 +12,8 @@ type Config struct {
 	Agent         AgentConfig        `yaml:"agent"`
 	RAG           RAGConfig          `yaml:"rag"`
 	Browser       BrowserConfig      `yaml:"browser"`
+	MCP           MCPConfig          `yaml:"mcp"`
+	Tools         ToolsConfig        `yaml:"tools"`
 	Permissions   PermissionsConfig  `yaml:"permissions"`
 	CodingAgents  CodingAgentsConfig `yaml:"coding_agents"`
 	Security      SecurityConfig     `yaml:"security"`
@@ -130,6 +132,33 @@ type BrowserConfig struct {
 	Runtime       string              `yaml:"runtime"`
 	ScreenshotDir string              `yaml:"screenshot_dir"`
 	ProfileReuse  BrowserProfileReuse `yaml:"profile_reuse"`
+}
+
+type MCPConfig struct {
+	Servers map[string]MCPServerConfig `yaml:"servers"`
+}
+
+type MCPServerConfig struct {
+	Enabled        bool     `yaml:"enabled"`
+	Command        string   `yaml:"command"`
+	Args           []string `yaml:"args"`
+	Tools          []string `yaml:"tools"`
+	Timeout        Duration `yaml:"timeout"`
+	TrustLevel     string   `yaml:"trust_level"`
+	PrivacyClasses []string `yaml:"privacy_classes"`
+}
+
+type ToolsConfig struct {
+	Allowlist []ToolConfig `yaml:"allowlist"`
+}
+
+type ToolConfig struct {
+	ID              string   `yaml:"id"`
+	Enabled         bool     `yaml:"enabled"`
+	Program         string   `yaml:"program"`
+	Args            []string `yaml:"args"`
+	Timeout         Duration `yaml:"timeout"`
+	SideEffectLevel string   `yaml:"side_effect_level"`
 }
 
 type BrowserProfileReuse struct {

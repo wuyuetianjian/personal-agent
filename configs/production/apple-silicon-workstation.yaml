@@ -45,5 +45,9 @@ browser:
   enabled: true
   runtime: chromedp
   screenshot_dir: ${HOME}/.local/share/pachat/browser/screenshots
+mcp:
+  servers: {}
+tools:
+  allowlist: []
 permissions:
   default: deny

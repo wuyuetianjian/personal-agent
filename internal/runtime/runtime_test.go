@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"strconv"
@@ -398,6 +399,63 @@ func TestWorkflowEngineExecutesRegisteredCodingExecutor(t *testing.T) {
 	}
 }
 
+func TestWorkflowEngineExecutesRegisteredMCPExecutor(t *testing.T) {
+	ctx := context.Background()
+	db := openRuntimeTestDB(t)
+	cfg := configForRuntimeTest()
+	cfg.MCP.Servers = map[string]config.MCPServerConfig{
+		"local": {Enabled: true, Command: "fake-mcp", Tools: []string{"metrics"}, TrustLevel: "local_private", PrivacyClasses: []string{"private"}},
+	}
+	rt := NewLocal(cfg, db, &orchestrator.InMemoryEvidenceBus{})
+	rt.Executors.Register("mcp.local.metrics", MCPExecutor{
+		ServerID: "local",
+		ToolName: "metrics",
+		Config:   cfg.MCP.Servers["local"],
+		Client:   fakeMCPClient{output: json.RawMessage(`{"value":"ok"}`)},
+		Evidence: rt.Evidence,
+	})
+	if err := rt.Workflows.Create(ctx, workflow.Run{
+		ID: "wf-mcp", TaskID: "task-mcp", Status: workflow.StatusPending, InputJSON: `{"input":"{\"arguments\":{\"scope\":\"local\"}}"}`,
+	}, []workflow.Node{{WorkflowID: "wf-mcp", NodeID: "metrics", CapabilityID: "mcp.local.metrics", Role: string(agent.RoleTool), Status: workflow.NodePending}}); err != nil {
+		t.Fatalf("workflow Create() error = %v", err)
+	}
+
+	if err := rt.Workflow.RunWorkflow(ctx, "wf-mcp"); err != nil {
+		t.Fatalf("RunWorkflow() error = %v", err)
+	}
+	evidence, err := rt.Evidence.ListByTask(ctx, "task-mcp")
+	if err != nil {
+		t.Fatalf("ListByTask() error = %v", err)
+	}
+	if len(evidence) != 1 || !strings.Contains(evidence[0].Content, "UNTRUSTED OBSERVATION") || !strings.Contains(evidence[0].Content, `"value":"ok"`) {
+		t.Fatalf("evidence = %#v, want untrusted MCP evidence", evidence)
+	}
+}
+
+func TestWorkflowEngineExecutesAllowlistedToolExecutor(t *testing.T) {
+	ctx := context.Background()
+	db := openRuntimeTestDB(t)
+	cfg := configForRuntimeTest()
+	cfg.Tools.Allowlist = []config.ToolConfig{{ID: "tool.echo", Enabled: true, Program: "/bin/echo", Args: []string{"allowlisted"}, SideEffectLevel: "read_only"}}
+	rt := NewLocal(cfg, db, &orchestrator.InMemoryEvidenceBus{})
+	if err := rt.Workflows.Create(ctx, workflow.Run{
+		ID: "wf-tool", TaskID: "task-tool", Status: workflow.StatusPending, InputJSON: `{"input":"ignored ; rm -rf /"}`,
+	}, []workflow.Node{{WorkflowID: "wf-tool", NodeID: "echo", CapabilityID: "tool.echo", Role: string(agent.RoleTool), Status: workflow.NodePending}}); err != nil {
+		t.Fatalf("workflow Create() error = %v", err)
+	}
+
+	if err := rt.Workflow.RunWorkflow(ctx, "wf-tool"); err != nil {
+		t.Fatalf("RunWorkflow() error = %v", err)
+	}
+	evidence, err := rt.Evidence.ListByTask(ctx, "task-tool")
+	if err != nil {
+		t.Fatalf("ListByTask() error = %v", err)
+	}
+	if len(evidence) != 1 || !strings.Contains(evidence[0].Content, "allowlisted") || strings.Contains(evidence[0].Content, "rm -rf") {
+		t.Fatalf("evidence = %#v, want fixed allowlisted command output", evidence)
+	}
+}
+
 type queuedChatProvider struct {
 	responses []model.ChatResponse
 	calls     int
@@ -440,6 +498,18 @@ func (r fakeCodingRunner) Run(ctx context.Context, req codingagent.Request) (cod
 	result.TaskID = req.TaskID
 	result.NodeID = req.NodeID
 	return result, r.err
+}
+
+type fakeMCPClient struct {
+	output json.RawMessage
+	err    error
+}
+
+func (c fakeMCPClient) Call(ctx context.Context, serverID string, toolName string, input json.RawMessage) (json.RawMessage, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return c.output, c.err
 }
 
 func configForRuntimeTest() config.Config {

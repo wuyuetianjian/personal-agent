@@ -3,6 +3,7 @@ package runtime
 import (
 	"agent/internal/capability"
 	"agent/internal/config"
+	"agent/internal/mcp"
 )
 
 func buildCapabilities(cfg config.Config) *capability.Registry {
@@ -22,6 +23,31 @@ func buildCapabilities(cfg config.Config) *capability.Registry {
 			privacy = append(privacy, "confidential")
 		}
 		items = append(items, capability.Capability{ID: "coding." + id, Kind: capability.KindCodingAgent, Description: "Governed external coding agent backend", TrustLevel: backend.InferenceTrust, SideEffectLevel: "write", PrivacyClasses: privacy, CostClass: "high", LatencyClass: "high", Enabled: backend.IsEnabled(), Health: capability.HealthUnknown, Tags: append([]string{"coding", backend.Adapter}, backend.Capabilities...)})
+	}
+	for id, server := range cfg.MCP.Servers {
+		if !server.Enabled {
+			continue
+		}
+		reg := mcp.NewRegistry()
+		reg.AddServer(mcp.Server{ID: id, Enabled: true, TrustLevel: server.TrustLevel, PrivacyClasses: server.PrivacyClasses, MaxSideEffect: "unknown"})
+		tools := append([]string(nil), server.Tools...)
+		if len(tools) == 0 {
+			tools = []string{"call"}
+		}
+		for _, toolName := range tools {
+			reg.AddTool(mcp.Tool{ServerID: id, Name: toolName, Description: "Governed MCP stdio tool call", SideEffectLevel: "unknown"})
+		}
+		items = append(items, reg.Capabilities()...)
+	}
+	for _, tool := range cfg.Tools.Allowlist {
+		if !tool.Enabled {
+			continue
+		}
+		sideEffect := tool.SideEffectLevel
+		if sideEffect == "" {
+			sideEffect = "read_only"
+		}
+		items = append(items, capability.Capability{ID: tool.ID, Kind: capability.KindTool, Description: "Allowlisted local tool", TrustLevel: "local_private", SideEffectLevel: sideEffect, PrivacyClasses: []string{"public", "private", "confidential"}, CostClass: "low", LatencyClass: "low", Enabled: true, Health: capability.HealthHealthy, Tags: []string{"tool", "allowlisted"}})
 	}
 	registry, _ := capability.NewRegistry(items...)
 	return registry

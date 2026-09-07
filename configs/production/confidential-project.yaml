@@ -37,6 +37,10 @@ rag:
     enabled: false
   reranker:
     enabled: false
+mcp:
+  servers: {}
+tools:
+  allowlist: []
 permissions:
   default: deny
 coding_agents:
