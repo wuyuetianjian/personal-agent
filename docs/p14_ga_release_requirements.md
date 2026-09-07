@@ -39,6 +39,8 @@ Config
 
 The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.max_nodes`. It remains fail-closed: disabled or unavailable providers leave `Runtime.Planner` unset, unknown capabilities are rejected, disabled capabilities are denied, and invalid DAGs such as cycles fail validation before workflow creation.
 
+`HIGH-01` and `HIGH-02` add model-backed local reasoning and synthesis on top of the same configured private provider. Reasoning receives the task, compressed evidence references, and constraints, and returns claims, a decision summary, confidence, evidence IDs, and provider usage without storing raw chain-of-thought. Synthesis receives verified evidence context and returns the final answer while excluding unsupported claims and surfacing conflicts when evidence is insufficient. If no configured private provider is available, both nodes keep the existing deterministic local fallback.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -51,3 +53,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - README contains English and Chinese P14 release notes.
 - `Runtime.Build()` creates both `Runtime.ChatProvider` and `Runtime.Planner` for the default `qwen3.8:27b-mlx` local planner configuration.
 - Planner tests reject unknown capabilities, disabled capabilities, cycles, and node counts over `agent.planner.max_nodes`.
+- Runtime workflow tests verify model-backed `reasoning.local` and `synthesis.local` execution with provider usage and final-answer propagation from the synthesis checkpoint.

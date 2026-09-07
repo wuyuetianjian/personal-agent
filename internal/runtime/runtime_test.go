@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"agent/internal/config"
+	"agent/internal/model"
 	"agent/internal/orchestrator"
 	"agent/internal/project"
 	"agent/internal/rag"
@@ -231,6 +232,99 @@ func TestRunUsesConfiguredPublicEscalatorUsage(t *testing.T) {
 	if result.RemoteCalls != 1 || result.Usage.RemoteTokens != 8 {
 		t.Fatalf("result=%#v, want one remote call with provider usage", result)
 	}
+}
+
+func TestRunUsesModelBackedReasoningAndSynthesisCheckpoint(t *testing.T) {
+	ctx := context.Background()
+	db := openRuntimeTestDB(t)
+	cfg := configForRuntimeTest()
+	cfg.Agent.Leader.Temperature = 0.2
+	cfg.Agent.Leader.MaxOutputTokens = 2048
+	cfg.Agent.SubAgents = map[string]config.RoleModelConfig{
+		"reasoning": {Temperature: 0.1, MaxOutputTokens: 512},
+		"synthesis": {Temperature: 0.3, MaxOutputTokens: 768},
+	}
+	rt := NewLocal(cfg, db, &orchestrator.InMemoryEvidenceBus{})
+	rt.ChatModel = model.ModelMetadata{ID: "local-planner", Model: "qwen3.8:27b-mlx"}
+	rt.ChatProvider = &queuedChatProvider{responses: []model.ChatResponse{
+		{Content: `{"claims":[{"text":"The local note supports the answer.","confidence":0.88,"evidence_ids":[]}],"decision_summary":"model reasoning summary","confidence":0.88,"evidence_ids":[]}`, Usage: model.Usage{InputTokens: 7, OutputTokens: 11}},
+		{Content: "model-backed final answer", Usage: model.Usage{InputTokens: 13, OutputTokens: 17}},
+	}}
+
+	ragStore := rag.NewSQLiteStore(db.SQL, rag.Chunker{MaxTokens: 32})
+	if _, err := ragStore.Index(ctx, rag.Document{
+		ID:           "doc-model-synthesis",
+		SourceURI:    "local://notes/model-synthesis",
+		Title:        "Model synthesis",
+		Text:         "The local note supports the model-backed synthesis path.",
+		PrivacyClass: "local_private",
+	}); err != nil {
+		t.Fatalf("Index() error = %v", err)
+	}
+	if err := db.CreateTask(ctx, storage.Task{ID: "task-model", Title: "model", Input: "Use the local note", Status: "running", LeaderModelID: "local-planner", PrivacyClass: "local_private"}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := rt.Run(ctx, RunRequest{TaskID: "task-model", Input: "Use the local note", LeaderModelID: "local-planner"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if result.Answer != "model-backed final answer" {
+		t.Fatalf("answer = %q, want model synthesis checkpoint", result.Answer)
+	}
+	if result.Usage.InputTokens != 13 || result.Usage.OutputTokens != 17 || result.Usage.RemoteTokens != 0 {
+		t.Fatalf("usage = %#v, want synthesis provider usage without remote tokens", result.Usage)
+	}
+	evidence, err := rt.Evidence.ListByTask(ctx, "task-model")
+	if err != nil {
+		t.Fatalf("ListByTask() error = %v", err)
+	}
+	foundReasoningEvidence := false
+	for _, item := range evidence {
+		if item.NodeID == "reasoning" && item.SourceType == SourceModel && strings.Contains(item.Content, "model reasoning summary") {
+			foundReasoningEvidence = true
+		}
+	}
+	if !foundReasoningEvidence {
+		t.Fatalf("evidence = %#v, want model reasoning evidence", evidence)
+	}
+	workflows, err := rt.Workflows.List(ctx, 1)
+	if err != nil {
+		t.Fatalf("workflow List() error = %v", err)
+	}
+	checkpoints, err := rt.Workflows.ListCheckpoints(ctx, workflows[0].ID)
+	if err != nil {
+		t.Fatalf("ListCheckpoints() error = %v", err)
+	}
+	var sawReasoning, sawSynthesis bool
+	for _, cp := range checkpoints {
+		if cp.NodeID == "reasoning" {
+			sawReasoning = true
+		}
+		if cp.NodeID == "synthesis" && cp.ResultRef == "model-backed final answer" {
+			sawSynthesis = true
+		}
+	}
+	if !sawReasoning || !sawSynthesis {
+		t.Fatalf("checkpoints = %#v, want reasoning and synthesis checkpoints", checkpoints)
+	}
+}
+
+type queuedChatProvider struct {
+	responses []model.ChatResponse
+	calls     int
+}
+
+func (p *queuedChatProvider) Chat(ctx context.Context, request model.ChatRequest) (model.ChatResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return model.ChatResponse{}, err
+	}
+	if p.calls >= len(p.responses) {
+		return model.ChatResponse{}, errors.New("unexpected chat call")
+	}
+	response := p.responses[p.calls]
+	p.calls++
+	return response, nil
 }
 
 func configForRuntimeTest() config.Config {

@@ -162,6 +162,12 @@ func (r *Runtime) runViaWorkflow(ctx context.Context, req RunRequest) (*RunResul
 		return nil, err
 	}
 	answer, confidence := synthesizeLocalAnswer(req.Input, allEvidence)
+	synthesisUsage := agent.Usage{}
+	if checkpoint, ok := r.latestCompletedCheckpoint(ctx, workflowID, "synthesis"); ok && strings.TrimSpace(checkpoint.ResultRef) != "" {
+		answer = checkpoint.ResultRef
+		confidence = 0.75
+		synthesisUsage = agentUsageFromJSON(checkpoint.UsageJSON)
+	}
 	remoteUsage := modelUsage{}
 	if len(allEvidence) == 0 && r.Escalator != nil {
 		escalated, usage, err := r.Escalator.Escalate(ctx, req.Input, allEvidence)
@@ -199,11 +205,39 @@ func (r *Runtime) runViaWorkflow(ctx context.Context, req RunRequest) (*RunResul
 	}
 	result.Usage.InputTokens = estimateTokens(req.Input)
 	result.Usage.OutputTokens = estimateTokens(answer)
+	if synthesisUsage.InputTokens > 0 || synthesisUsage.OutputTokens > 0 {
+		result.Usage.InputTokens = synthesisUsage.InputTokens
+		result.Usage.OutputTokens = synthesisUsage.OutputTokens
+	}
 	result.Usage.RemoteTokens = remoteUsage.input + remoteUsage.output
 	if result.Usage.RemoteTokens > 0 {
 		result.RemoteCalls = 1
 	}
 	return result, nil
+}
+
+func (r *Runtime) latestCompletedCheckpoint(ctx context.Context, workflowID string, nodeID string) (workflow.Checkpoint, bool) {
+	checkpoints, err := r.Workflows.ListCheckpoints(ctx, workflowID)
+	if err != nil {
+		return workflow.Checkpoint{}, false
+	}
+	for i := len(checkpoints) - 1; i >= 0; i-- {
+		if checkpoints[i].NodeID == nodeID && checkpoints[i].Status == workflow.NodeCompleted {
+			return checkpoints[i], true
+		}
+	}
+	return workflow.Checkpoint{}, false
+}
+
+func agentUsageFromJSON(raw string) agent.Usage {
+	var usage agent.Usage
+	if strings.TrimSpace(raw) == "" {
+		return usage
+	}
+	if err := json.Unmarshal([]byte(raw), &usage); err != nil {
+		return agent.Usage{}
+	}
+	return usage
 }
 
 func (r *Runtime) planWorkflowNodes(ctx context.Context, workflowID string, req RunRequest) ([]workflow.Node, error) {
@@ -217,7 +251,8 @@ func (r *Runtime) planWorkflowNodes(ctx context.Context, workflowID string, req 
 	return []workflow.Node{
 		{WorkflowID: workflowID, NodeID: "memory", CapabilityID: "memory.search", Role: string(agent.RoleMemory), Status: workflow.NodePending, IdempotencyKey: workflowID + ":memory"},
 		{WorkflowID: workflowID, NodeID: "retrieval", CapabilityID: "rag.search", Role: string(agent.RoleRetrieval), Status: workflow.NodePending, IdempotencyKey: workflowID + ":retrieval"},
-		{WorkflowID: workflowID, NodeID: "verification", CapabilityID: "verification.verify", Role: string(agent.RoleVerification), Dependencies: []string{"memory", "retrieval"}, Status: workflow.NodePending, IdempotencyKey: workflowID + ":verification"},
+		{WorkflowID: workflowID, NodeID: "reasoning", CapabilityID: "reasoning.local", Role: string(agent.RoleReasoning), Dependencies: []string{"memory", "retrieval"}, Status: workflow.NodePending, IdempotencyKey: workflowID + ":reasoning"},
+		{WorkflowID: workflowID, NodeID: "verification", CapabilityID: "verification.verify", Role: string(agent.RoleVerification), Dependencies: []string{"reasoning"}, Status: workflow.NodePending, IdempotencyKey: workflowID + ":verification"},
 		{WorkflowID: workflowID, NodeID: "synthesis", CapabilityID: "synthesis.local", Role: string(agent.RoleSynthesis), Dependencies: []string{"verification"}, Status: workflow.NodePending, IdempotencyKey: workflowID + ":synthesis"},
 	}, nil
 }

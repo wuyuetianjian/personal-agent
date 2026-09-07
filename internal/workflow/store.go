@@ -133,6 +133,29 @@ func (s Store) SaveCheckpoint(ctx context.Context, cp Checkpoint) error {
 	return tx.Commit()
 }
 
+func (s Store) ListCheckpoints(ctx context.Context, workflowID string) ([]Checkpoint, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT workflow_id, node_id, status, evidence_ids_json, result_ref, usage_json, created_at FROM workflow_checkpoints WHERE workflow_id = ? ORDER BY created_at ASC`, workflowID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Checkpoint
+	for rows.Next() {
+		var cp Checkpoint
+		var ids string
+		if err := rows.Scan(&cp.WorkflowID, &cp.NodeID, &cp.Status, &ids, &cp.ResultRef, &cp.UsageJSON, &cp.CreatedAt); err != nil {
+			return nil, err
+		}
+		if ids != "" {
+			if err := json.Unmarshal([]byte(ids), &cp.EvidenceIDs); err != nil {
+				return nil, err
+			}
+		}
+		out = append(out, cp)
+	}
+	return out, rows.Err()
+}
+
 func (s Store) Recover(ctx context.Context, workflowID string) ([]Node, error) {
 	rows, err := s.DB.QueryContext(ctx, `SELECT workflow_id, node_id, capability_id, role, dependencies_json, dag_version, status, attempt, idempotency_key, side_effect, started_at, completed_at FROM workflow_nodes WHERE workflow_id = ? AND status NOT IN (?, ?, ?, ?) ORDER BY node_id`, workflowID, NodeCompleted, NodeFailed, NodeSkipped, NodeCancelled)
 	if err != nil {

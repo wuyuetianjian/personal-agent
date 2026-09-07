@@ -268,13 +268,18 @@ func (a workflowSubAgent) executeLocal(ctx context.Context, node agent.TaskNode)
 		}
 		ids := evidenceIDs(evidence)
 		return agent.Result{Text: "verification completed", EvidenceIDs: ids, Usage: agentUsage(node.Input, "verification completed")}, nil
+	case "reasoning.local":
+		evidence, err := a.engine.Runtime.Evidence.ListByTask(ctx, node.TaskID)
+		if err != nil {
+			return agent.Result{ErrorCategory: agent.ErrorRetryable, ErrorMessage: err.Error()}, err
+		}
+		return a.engine.Runtime.runReasoningAgent(ctx, node, evidence, a.input)
 	case "synthesis.local":
 		evidence, err := a.engine.Runtime.Evidence.ListByTask(ctx, node.TaskID)
 		if err != nil {
 			return agent.Result{ErrorCategory: agent.ErrorRetryable, ErrorMessage: err.Error()}, err
 		}
-		answer, _ := synthesizeLocalAnswer(node.Input, evidence)
-		return agent.Result{Text: answer, EvidenceIDs: evidenceIDs(evidence), Usage: agentUsage(node.Input, answer)}, nil
+		return a.engine.Runtime.runSynthesisAgent(ctx, node, evidence, a.input)
 	default:
 		if strings.HasPrefix(node.Type, "browser.") || strings.HasPrefix(node.Type, "coding.") || strings.HasPrefix(node.Type, "mcp.") || strings.HasPrefix(node.Type, "tool.") {
 			msg := "runtime capability requires an enabled governed executor: " + node.Type
@@ -314,6 +319,8 @@ func roleForCapability(capabilityID string, fallback string) agent.Role {
 		return agent.RoleRetrieval
 	case "verification.verify":
 		return agent.RoleVerification
+	case "reasoning.local":
+		return agent.RoleReasoning
 	case "synthesis.local":
 		return agent.RoleSynthesis
 	default:
