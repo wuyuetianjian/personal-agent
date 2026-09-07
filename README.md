@@ -288,6 +288,8 @@ Enabled coding backends are registered as `coding.<backend>` executors, includin
 
 Configured MCP servers are registered as `mcp.<server>.<tool>` executors and called through stdio JSON-RPC. MCP output is persisted as `UNTRUSTED OBSERVATION` evidence. Configured local tools are registered from `tools.allowlist`; only fixed allowlisted program/args execute, and workflow input is not interpolated into shell commands.
 
+Public escalation is wired from enabled `public_remote` chat models in the model registry. If a public provider requires Privacy Gateway, `privacy.hmac_secret_env` must resolve or Runtime build fails closed. Secret-bearing payloads are blocked before provider calls.
+
 P14 documentation lives under `docs/release/` and covers quickstart, user operations, administration, security/threat model, troubleshooting, upgrade, RC E2E scenarios, soak testing, performance baselines, and data-loss recovery drills. The current release package is archive/script based; package manager publishing and Windows binaries are post-v1 work.
 
 ### Validation
@@ -599,6 +601,8 @@ Runtime capability executor 现在通过本地 executor registry 注册。启用
 启用的 coding backend 会注册为 `coding.<backend>` executor，包括 Codex 与 Claude 风格 adapter。Coding workflow node 必须提供结构化 JSON 输入，包含 `repository_path`、`prompt`、写入策略、privacy class 和可选 test commands；执行会委托给受治理的 coding agent Runner，并持久化 diff/test evidence。
 
 配置的 MCP server 会注册为 `mcp.<server>.<tool>` executor，并通过 stdio JSON-RPC 调用。MCP 输出会作为 `UNTRUSTED OBSERVATION` evidence 持久化。配置的本地工具来自 `tools.allowlist`；执行时只使用固定 allowlisted program/args，不会把 workflow input 拼接进 shell 命令。
+
+Public escalation 会从 model registry 中启用的 `public_remote` chat model 接线。如果 public provider 要求 Privacy Gateway，`privacy.hmac_secret_env` 必须能解析，否则 Runtime build 会 fail closed。包含 secret 的 payload 会在调用 provider 前被阻断。
 
 P14 文档位于 `docs/release/`，覆盖 quickstart、用户操作、管理员操作、安全/threat model、troubleshooting、upgrade、RC E2E scenario、soak test、performance baseline 和 data-loss recovery drill。当前发布包采用 archive/script 形式；package manager 发布和 Windows 二进制属于 post-v1 工作。
 

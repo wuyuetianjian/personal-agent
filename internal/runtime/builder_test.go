@@ -2,6 +2,10 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 
@@ -42,6 +46,94 @@ func TestBuildConfiguredChatProvider(t *testing.T) {
 	}
 	if client.BaseURL != "http://127.0.0.1:11434/v1" || metadata.Model != "qwen3.8:27b-mlx" {
 		t.Fatalf("provider = %+v metadata = %+v", client, metadata)
+	}
+}
+
+func TestBuildWiresConfiguredPublicEscalatorWithPrivacyGateway(t *testing.T) {
+	t.Setenv("PACHAT_TEST_PRIVACY_SECRET", "test-secret")
+	publicServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chat/completions" {
+			t.Fatalf("public path = %s, want /chat/completions", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{"message": map[string]any{"content": "public answer"}}},
+			"usage":   map[string]any{"prompt_tokens": 5, "completion_tokens": 7},
+		})
+	}))
+	defer publicServer.Close()
+	cfg := configForBuilderPlannerTest(t)
+	disabled := false
+	local := cfg.Models.Providers["local-ollama"]
+	local.Enabled = &disabled
+	cfg.Models.Providers["local-ollama"] = local
+	cfg.Privacy.HMACSecretEnv = "PACHAT_TEST_PRIVACY_SECRET"
+	cfg.Privacy.FailClosedForPublicModels = true
+	cfg.Models.Providers["public"] = config.ProviderConfig{Enabled: boolPtr(true), Type: "openai_compatible", BaseURL: publicServer.URL, TrustLevel: string(model.TrustPublicRemote), RequirePrivacyGateway: true}
+	cfg.Models.Registry = append(cfg.Models.Registry, config.ModelConfig{ID: "public-chat", Provider: "public", Model: "public-model", TrustLevel: string(model.TrustPublicRemote), Capabilities: []string{string(model.CapabilityChat)}})
+
+	rt, err := Build(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	t.Cleanup(func() { _ = rt.Close() })
+	if rt.Escalator == nil {
+		t.Fatal("Build() Escalator is nil")
+	}
+	answer, usage, err := rt.Escalator.Escalate(context.Background(), "hello alice@example.com", nil)
+	if err != nil {
+		t.Fatalf("Escalate() error = %v", err)
+	}
+	if answer != "public answer" || usage.InputTokens != 5 || usage.OutputTokens != 7 {
+		t.Fatalf("answer=%q usage=%#v", answer, usage)
+	}
+}
+
+func TestBuildPublicEscalatorRequiresPrivacyGateway(t *testing.T) {
+	cfg := configForBuilderPlannerTest(t)
+	disabled := false
+	local := cfg.Models.Providers["local-ollama"]
+	local.Enabled = &disabled
+	cfg.Models.Providers["local-ollama"] = local
+	cfg.Privacy.HMACSecretEnv = "PACHAT_MISSING_SECRET"
+	cfg.Privacy.FailClosedForPublicModels = true
+	cfg.Models.Providers["public"] = config.ProviderConfig{Enabled: boolPtr(true), Type: "openai_compatible", BaseURL: "http://127.0.0.1:1/v1", TrustLevel: string(model.TrustPublicRemote), RequirePrivacyGateway: true}
+	cfg.Models.Registry = append(cfg.Models.Registry, config.ModelConfig{ID: "public-chat", Provider: "public", Model: "public-model", TrustLevel: string(model.TrustPublicRemote), Capabilities: []string{string(model.CapabilityChat)}})
+
+	_, err := Build(context.Background(), cfg)
+	if !errors.Is(err, model.ErrPrivacyGatewayRequired) {
+		t.Fatalf("Build() error = %v, want ErrPrivacyGatewayRequired", err)
+	}
+}
+
+func TestPublicEscalatorPrivacyGatewayBlocksSecretsBeforeProviderCall(t *testing.T) {
+	t.Setenv("PACHAT_TEST_PRIVACY_SECRET", "test-secret")
+	calls := 0
+	publicServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []map[string]any{{"message": map[string]any{"content": "should not happen"}}}})
+	}))
+	defer publicServer.Close()
+	cfg := configForBuilderPlannerTest(t)
+	disabled := false
+	local := cfg.Models.Providers["local-ollama"]
+	local.Enabled = &disabled
+	cfg.Models.Providers["local-ollama"] = local
+	cfg.Privacy.HMACSecretEnv = "PACHAT_TEST_PRIVACY_SECRET"
+	cfg.Privacy.FailClosedForPublicModels = true
+	cfg.Models.Providers["public"] = config.ProviderConfig{Enabled: boolPtr(true), Type: "openai_compatible", BaseURL: publicServer.URL, TrustLevel: string(model.TrustPublicRemote), RequirePrivacyGateway: true}
+	cfg.Models.Registry = append(cfg.Models.Registry, config.ModelConfig{ID: "public-chat", Provider: "public", Model: "public-model", TrustLevel: string(model.TrustPublicRemote), Capabilities: []string{string(model.CapabilityChat)}})
+	rt, err := Build(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	t.Cleanup(func() { _ = rt.Close() })
+
+	_, _, err = rt.Escalator.Escalate(context.Background(), "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----", nil)
+	if !errors.Is(err, model.ErrPrivacyBlocked) {
+		t.Fatalf("Escalate() error = %v, want ErrPrivacyBlocked", err)
+	}
+	if calls != 0 {
+		t.Fatalf("public provider calls = %d, want 0", calls)
 	}
 }
 
@@ -139,4 +231,8 @@ func configForBuilderPlannerTest(t *testing.T) config.Config {
 			Planner: config.PlannerConfig{MaxNodes: 4},
 		},
 	}
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }

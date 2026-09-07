@@ -49,6 +49,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `BLOCK-02D` and `BLOCK-02E` add governed MCP and local tool executors. MCP servers are configured under `mcp.servers`, exposed as `mcp.<server>.<tool>` capabilities, called through a stdio JSON-RPC transport, and stored as `UNTRUSTED OBSERVATION` evidence. Local tools are configured under `tools.allowlist`; workflow input is never interpolated into the command, and only the configured program/args are executed.
 
+`BLOCK-03` composes public escalation from the model registry, public provider metadata, and Privacy Gateway. Enabled `public_remote` chat models become `Runtime.Escalator` only when the required Privacy Gateway can be constructed. Local evidence remains preferred; public escalation is invoked only when local workflow evidence is empty and policy permits it. Secret-bearing payloads are blocked before provider calls.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -66,3 +68,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - Workflow tests verify `browser.read` executes through a registered Runtime executor and persists browser evidence instead of returning the missing-executor error.
 - Workflow tests verify `coding.codex` executes through a registered Runtime executor and persists diff/test evidence.
 - Workflow tests verify `mcp.<server>.<tool>` and `tool.<id>` execution through registered Runtime executors with untrusted MCP output and fixed allowlisted command arguments.
+- Builder tests verify public escalator wiring, missing-gateway fail-closed behavior, and secret blocking before public provider calls.

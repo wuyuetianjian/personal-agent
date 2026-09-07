@@ -10,6 +10,7 @@ import (
 	"agent/internal/model"
 	"agent/internal/observability"
 	"agent/internal/orchestrator"
+	"agent/internal/privacy"
 	"agent/internal/project"
 	"agent/internal/rag"
 	"agent/internal/reliability"
@@ -61,6 +62,12 @@ func Build(ctx context.Context, cfg config.Config) (*Runtime, error) {
 	rt.ChatProvider = provider
 	rt.ChatModel = metadata
 	rt.Planner = buildConfiguredPlanner(cfg, provider, metadata, rt.Capabilities)
+	escalator, err := buildConfiguredPublicEscalator(cfg)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	rt.Escalator = escalator
 	if err := configureHybridRAG(cfg, db.SQL, rt); err != nil {
 		db.Close()
 		return nil, err
@@ -103,6 +110,38 @@ func buildConfiguredChatProvider(cfg config.Config) (model.ChatProvider, model.M
 	}
 	provider, err := buildOpenAICompatibleClient(metadata)
 	return provider, metadata, err
+}
+
+func buildConfiguredPublicEscalator(cfg config.Config) (*PublicEscalator, error) {
+	if len(cfg.Models.Registry) == 0 {
+		return nil, nil
+	}
+	registry, err := model.NewRegistry(cfg.Models)
+	if err != nil {
+		return nil, err
+	}
+	for _, metadata := range registry.Models() {
+		if metadata.Provider.TrustLevel != model.TrustPublicRemote || !metadata.Provider.Enabled || !metadata.Capabilities[model.CapabilityChat] {
+			continue
+		}
+		client, err := buildOpenAICompatibleClient(metadata)
+		if err != nil {
+			return nil, err
+		}
+		if metadata.Provider.RequirePrivacyGateway || cfg.Privacy.FailClosedForPublicModels {
+			secret, ok := config.EnvValue(cfg.Privacy.HMACSecretEnv)
+			if !ok {
+				return nil, model.ErrPrivacyGatewayRequired
+			}
+			gateway, err := privacy.NewGateway(secret)
+			if err != nil {
+				return nil, err
+			}
+			client.Privacy = gateway
+		}
+		return &PublicEscalator{Provider: client, Model: metadata}, nil
+	}
+	return nil, nil
 }
 
 func NewLocal(cfg config.Config, db *storage.DB, events orchestrator.EvidenceBus) *Runtime {
