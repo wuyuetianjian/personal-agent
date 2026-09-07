@@ -265,6 +265,10 @@ Current P13 boundary: P13 now provides local policy boundaries and regression ga
 
 P14 is documented in `docs/p14_ga_release_requirements.md`, `docs/projdocs/P0_P14_EXECUTION_PLAN.md`, and `docs/projdocs/task/P14.md`. This release slice adds a version model (`pachat version`), reproducible release metadata, a required build matrix for `darwin/arm64`, `linux/amd64`, and `linux/arm64`, SHA256 checksum generation, bootstrap install and upgrade scripts, systemd and launchd service examples, safe production config examples, migration compatibility coverage, and release checklist automation through `pachat release check` and `make release-check`.
 
+The default `configs/config.example.yaml` uses the locally available Ollama model `qwen3.8:27b-mlx`. Change `models.registry[].model` in the mountable config file when using a different local model.
+
+Interactive `pachat chat` now sends turns to the configured local OpenAI-compatible provider and uses `agent.leader.model_id` for model selection. Provider connectivity or response errors are returned explicitly.
+
 P14 documentation lives under `docs/release/` and covers quickstart, user operations, administration, security/threat model, troubleshooting, upgrade, RC E2E scenarios, soak testing, performance baselines, and data-loss recovery drills. The current release package is archive/script based; package manager publishing and Windows binaries are post-v1 work.
 
 ### Validation
@@ -553,6 +557,10 @@ P13 剩余 release-gate 基础现已补齐：本地 tracing span、全局 resour
 ### P14 v1.0 GA 发布打包
 
 P14 已记录在 `docs/p14_ga_release_requirements.md`、`docs/projdocs/P0_P14_EXECUTION_PLAN.md` 和 `docs/projdocs/task/P14.md` 中。本发布 slice 增加版本模型（`pachat version`）、可复现发布元数据、`darwin/arm64`、`linux/amd64` 与 `linux/arm64` 的必需构建矩阵、SHA256 checksum 生成、bootstrap install 与 upgrade 脚本、systemd 与 launchd 服务示例、安全 production config 示例、迁移兼容测试，以及通过 `pachat release check` 和 `make release-check` 执行的发布检查自动化。
+
+默认配置 `configs/config.example.yaml` 已使用本地 Ollama 模型 `qwen3.8:27b-mlx`；如本机模型名称不同，请在可挂载配置文件中修改 `models.registry[].model`。
+
+交互式 `pachat chat` 现在会调用配置的本地 OpenAI-compatible provider，并使用 `agent.leader.model_id` 选择模型；provider 连接或响应错误会明确返回。
 
 P14 文档位于 `docs/release/`，覆盖 quickstart、用户操作、管理员操作、安全/threat model、troubleshooting、upgrade、RC E2E scenario、soak test、performance baseline 和 data-loss recovery drill。当前发布包采用 archive/script 形式；package manager 发布和 Windows 二进制属于 post-v1 工作。
 

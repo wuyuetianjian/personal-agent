@@ -3,6 +3,7 @@ package runtime
 import (
 	"time"
 
+	"agent/internal/model"
 	"agent/internal/verification"
 )
 
@@ -71,4 +72,9 @@ type RunResult struct {
 	Verification   verification.Report
 	RemoteCalls    int
 	LocalRouteType RouteType
+}
+
+type ChatResult struct {
+	Answer string
+	Usage  model.Usage
 }

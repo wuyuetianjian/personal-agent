@@ -39,7 +39,7 @@ models:
   registry:
     - id: local-planner
       provider: local-ollama
-      model: qwen2.5:14b
+      model: qwen3.8:27b-mlx
       trust_level: local_private
       context_window: 32768
       capabilities: [chat, tool_calling, json_schema]

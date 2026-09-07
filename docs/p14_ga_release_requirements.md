@@ -10,6 +10,8 @@ P14 turns the local-first Personal Agent into a distributable v1.0 package for m
 - Provide bootstrap install and upgrade scripts that create config/data directories, validate config, back up data, run migrations, and support health checks.
 - Provide systemd and macOS LaunchAgent examples with local data/log paths and conservative service limits.
 - Provide safe production config examples without inline secrets.
+- Set the default local Ollama model in `configs/config.example.yaml` to the locally available `qwen3.8:27b-mlx` model.
+- Wire configured OpenAI-compatible local providers into the Runtime chat path so the interactive CLI uses the selected local model.
 - Provide quickstart, user, administrator, security/threat model, troubleshooting, upgrade, RC E2E, soak, performance, and recovery drill documentation.
 - Provide a release checklist command that verifies tests, vet, build, build matrix, checksums, and required release documents.
 - Add migration compatibility coverage for upgrading from a supported P13/P14-pre schema state to the latest embedded migrations.

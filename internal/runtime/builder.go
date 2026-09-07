@@ -2,11 +2,13 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 
 	"agent/internal/audit"
 	"agent/internal/capability"
 	"agent/internal/config"
 	"agent/internal/memory"
+	"agent/internal/model"
 	"agent/internal/observability"
 	"agent/internal/orchestrator"
 	"agent/internal/project"
@@ -31,6 +33,8 @@ type Runtime struct {
 	Workflow     *WorkflowEngine
 	Planner      Planner
 	Escalator    *PublicEscalator
+	ChatProvider model.ChatProvider
+	ChatModel    model.ModelMetadata
 	Governor     *reliability.Governor
 	Tracer       *observability.Tracer
 	Audit        audit.Store
@@ -49,8 +53,48 @@ func Build(ctx context.Context, cfg config.Config) (*Runtime, error) {
 		return nil, err
 	}
 	rt := NewLocal(cfg, db, &orchestrator.InMemoryEvidenceBus{})
+	provider, metadata, err := buildConfiguredChatProvider(cfg)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	rt.ChatProvider = provider
+	rt.ChatModel = metadata
 	rt.ownsStorage = true
 	return rt, nil
+}
+
+func buildConfiguredChatProvider(cfg config.Config) (model.ChatProvider, model.ModelMetadata, error) {
+	if cfg.Agent.Leader.ModelID == "" || len(cfg.Models.Registry) == 0 {
+		return nil, model.ModelMetadata{}, nil
+	}
+	registry, err := model.NewRegistry(cfg.Models)
+	if err != nil {
+		return nil, model.ModelMetadata{}, err
+	}
+	metadata, err := registry.Model(cfg.Agent.Leader.ModelID)
+	if err != nil {
+		return nil, model.ModelMetadata{}, err
+	}
+	if !metadata.Provider.Enabled {
+		return nil, metadata, nil
+	}
+	if metadata.Provider.Type != "openai_compatible" {
+		return nil, metadata, fmt.Errorf("chat provider %q has unsupported type %q", metadata.Provider.ID, metadata.Provider.Type)
+	}
+	baseURL := metadata.Provider.BaseURL
+	if baseURL == "" && metadata.Provider.BaseURLEnv != "" {
+		baseURL, _ = config.EnvValue(metadata.Provider.BaseURLEnv)
+	}
+	if baseURL == "" {
+		return nil, metadata, fmt.Errorf("chat provider %q has no base URL", metadata.Provider.ID)
+	}
+	apiKey, _ := config.EnvValue(metadata.Provider.APIKeyEnv)
+	return &model.OpenAICompatibleClient{
+		Provider: metadata.Provider,
+		BaseURL:  baseURL,
+		APIKey:   apiKey,
+	}, metadata, nil
 }
 
 func NewLocal(cfg config.Config, db *storage.DB, events orchestrator.EvidenceBus) *Runtime {

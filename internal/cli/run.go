@@ -441,11 +441,15 @@ func chat(ctx context.Context, args []string, ioStreams IO) error {
 		}); err != nil {
 			return err
 		}
-		result, err := rt.Run(ctx, runtime.RunRequest{TaskID: taskID, Input: line, PrivacyClass: "local_private", LeaderModelID: cfg.Agent.Leader.ModelID})
+		chatResult, err := rt.Chat(ctx, line)
 		if err != nil {
+			_ = rt.Storage.FailTask(ctx, taskID, "chat_model_failed", err.Error())
 			return err
 		}
-		response := result.Answer
+		if err := rt.Storage.CompleteTask(ctx, taskID, chatResult.Answer, 0.9); err != nil {
+			return err
+		}
+		response := chatResult.Answer
 		if err := appendMessage(ctx, mem, sessionID, "assistant_message", response); err != nil {
 			return err
 		}
