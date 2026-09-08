@@ -742,6 +742,7 @@ func serveCommand(ctx context.Context, args []string, stdout io.Writer) error {
 	for _, model := range cfg.Models.Registry {
 		server.ModelRegistry = append(server.ModelRegistry, model.ID)
 	}
+	runtime.NewWorkflowWorker(rt.Workflow).Start(ctx)
 	metrics := observability.NewRegistry()
 	mux := http.NewServeMux()
 	mux.Handle("/", metricsMiddleware(metrics, server.Handler()))

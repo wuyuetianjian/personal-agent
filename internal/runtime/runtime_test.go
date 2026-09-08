@@ -633,6 +633,43 @@ func TestRuntimeUsesHighConfidenceReadOnlySkillWithoutPlanner(t *testing.T) {
 	}
 }
 
+func TestWorkflowWorkerRecoversRunnableWorkflowOnStartup(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	db := openRuntimeTestDB(t)
+	rt := NewLocal(configForRuntimeTest(), db, &orchestrator.InMemoryEvidenceBus{})
+	if err := rt.Workflows.Create(ctx, workflow.Run{
+		ID:        "wf-worker",
+		TaskID:    "task-worker",
+		Status:    workflow.StatusPending,
+		InputJSON: `{"input":"worker resume"}`,
+	}, []workflow.Node{{WorkflowID: "wf-worker", NodeID: "memory", CapabilityID: "memory.search", Role: string(agent.RoleMemory), Status: workflow.NodePending}}); err != nil {
+		t.Fatalf("workflow Create() error = %v", err)
+	}
+	worker := NewWorkflowWorker(rt.Workflow)
+	worker.PollInterval = time.Hour
+	worker.Start(ctx)
+
+	deadline := time.After(time.Second)
+	for {
+		run, err := rt.Workflows.Get(ctx, "wf-worker")
+		if err != nil {
+			t.Fatalf("workflow Get() error = %v", err)
+		}
+		if run.Status == workflow.StatusCompleted {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("workflow status = %s, want completed after worker startup recovery", run.Status)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	if got := checkpointCount(t, db.SQL, "wf-worker", "memory"); got != 1 {
+		t.Fatalf("worker checkpoints = %d, want 1", got)
+	}
+}
+
 func TestBrowserExecutorHonorsContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

@@ -84,3 +84,45 @@ func TestWorkflowNodeDependenciesPersistForRecovery(t *testing.T) {
 		t.Fatalf("verify node=%#v, want persisted dependency and dag version", verify)
 	}
 }
+
+func TestListRunnableWorkflows(t *testing.T) {
+	db, err := storage.OpenSQLite(context.Background(), filepath.Join(t.TempDir(), "workflow.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := storage.Migrate(context.Background(), db.SQL); err != nil {
+		t.Fatal(err)
+	}
+	s := Store{DB: db.SQL}
+	for _, run := range []Run{
+		{ID: "wf-pending", Status: StatusPending},
+		{ID: "wf-running", Status: StatusRunning},
+		{ID: "wf-retrying", Status: StatusRetrying},
+		{ID: "wf-paused", Status: StatusPaused},
+		{ID: "wf-waiting", Status: StatusWaitingApproval},
+		{ID: "wf-done", Status: StatusCompleted},
+	} {
+		if err := s.Create(context.Background(), run, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runs, err := s.ListRunnable(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, run := range runs {
+		got[run.ID] = true
+	}
+	for _, id := range []string{"wf-pending", "wf-running", "wf-retrying"} {
+		if !got[id] {
+			t.Fatalf("runnable workflows = %#v, missing %s", runs, id)
+		}
+	}
+	for _, id := range []string{"wf-paused", "wf-waiting", "wf-done"} {
+		if got[id] {
+			t.Fatalf("runnable workflows = %#v, included %s", runs, id)
+		}
+	}
+}

@@ -131,6 +131,8 @@ Cancellation boundary: API/CLI task cancellation propagates through Runtime work
 
 Skill workflow boundary: active high-confidence read-only Skills compile directly into persistent workflows with `skill_id` and `skill_version`, then run through the existing scheduler without calling the Leader planner. Planner-backed and default Runtime workflows remain the fallback when no eligible Skill matches.
 
+Background workflow worker: `pachat serve` starts a Runtime worker that resumes unfinished runnable workflows on startup and polls for more work. `paused` and `waiting_approval` workflows are left for operator or approval actions.
+
 ### P1 Model And Privacy Foundation
 
 P1 adds library-level model and privacy controls:
@@ -453,6 +455,8 @@ bin/pachat storage integrity --config configs/config.example.yaml
 取消边界：API/CLI task cancel 会向 Runtime workflow、scheduler、Sub-Agent execution、配置的 model HTTP 调用、vector HTTP 调用、browser executor、MCP 子进程、allowlisted 本地 tool 子进程，以及 Codex/Claude 风格 coding process runner 传播。
 
 Skill workflow 边界：active、高置信、read-only Skill 会直接编译为带 `skill_id` 和 `skill_version` 的持久化 workflow，并通过现有 scheduler 执行，不调用 Leader planner。没有合格 Skill 命中时继续回退到 planner-backed 或默认 Runtime workflow。
+
+后台 workflow worker：`pachat serve` 会启动 Runtime worker，在服务启动时恢复未完成且可运行的 workflow，并持续轮询后续工作。`paused` 和 `waiting_approval` workflow 会保留给 operator 或 approval 操作处理。
 
 ### P1 模型与隐私基础
 

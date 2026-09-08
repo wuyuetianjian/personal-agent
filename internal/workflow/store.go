@@ -78,6 +78,26 @@ func (s Store) List(ctx context.Context, limit int) ([]Run, error) {
 	return out, rows.Err()
 }
 
+func (s Store) ListRunnable(ctx context.Context, limit int) ([]Run, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, task_id, project_id, skill_id, skill_version, status, input_json, result_json, started_at, updated_at, completed_at FROM workflow_runs WHERE status IN (?, ?, ?) ORDER BY updated_at ASC, id ASC LIMIT ?`, StatusPending, StatusRunning, StatusRetrying, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Run
+	for rows.Next() {
+		var run Run
+		if err := rows.Scan(&run.ID, &run.TaskID, &run.ProjectID, &run.SkillID, &run.SkillVersion, &run.Status, &run.InputJSON, &run.ResultJSON, &run.StartedAt, &run.UpdatedAt, &run.CompletedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, run)
+	}
+	return out, rows.Err()
+}
+
 func (s Store) UpdateStatus(ctx context.Context, id string, status Status) error {
 	if status == StatusCompleted || status == StatusFailed || status == StatusCancelled {
 		return s.finish(ctx, id, status)

@@ -59,6 +59,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `HIGH-04` connects mature read-only Skills to Runtime workflow execution. Active Skills with high match confidence and read-only capability graphs compile directly into persistent workflow nodes with `skill_id` and `skill_version`, then run through the existing scheduler. Leader planning is skipped for those matches; planner/default workflow paths remain the fallback when no eligible Skill matches.
 
+`HIGH-05` adds a persistent background workflow worker for service mode. On startup and each poll, the worker finds unfinished runnable workflows (`pending`, `running`, and `retrying`), dispatches them with bounded concurrency through the existing `WorkflowEngine`, checkpoints through the normal scheduler path, and leaves `paused` or `waiting_approval` workflows untouched until operator action resolves them.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -81,3 +83,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - Runtime tests verify verification-driven early stop cancels pending work and keeps usage limited to completed nodes.
 - Model, RAG, and Runtime tests verify context cancellation is honored by model HTTP calls, vector HTTP calls, browser executors, MCP executors, MCP child processes, and allowlisted tool child processes.
 - Runtime tests verify a high-confidence read-only Skill match compiles into a persistent workflow and does not call the Leader planner.
+- Runtime and workflow tests verify the background workflow worker discovers unfinished runnable workflows and resumes them without a manual `workflow resume` command.
