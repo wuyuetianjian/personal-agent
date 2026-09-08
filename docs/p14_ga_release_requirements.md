@@ -51,6 +51,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `BLOCK-03` composes public escalation from the model registry, public provider metadata, and Privacy Gateway. Enabled `public_remote` chat models become `Runtime.Escalator` only when the required Privacy Gateway can be constructed. Local evidence remains preferred; public escalation is invoked only when local workflow evidence is empty and policy permits it. Secret-bearing payloads are blocked before provider calls.
 
+`BLOCK-04` adds a queryable usage report over workflow checkpoints. Runtime usage reports aggregate node usage into workflow and task totals, mark unknown usage when token/cost counters are unavailable, and use accumulated checkpoint usage during budget checks before launching later nodes. The CLI exposes this through `pachat task usage`.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -69,3 +71,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - Workflow tests verify `coding.codex` executes through a registered Runtime executor and persists diff/test evidence.
 - Workflow tests verify `mcp.<server>.<tool>` and `tool.<id>` execution through registered Runtime executors with untrusted MCP output and fixed allowlisted command arguments.
 - Builder tests verify public escalator wiring, missing-gateway fail-closed behavior, and secret blocking before public provider calls.
+- Runtime and CLI tests verify node/workflow/task usage aggregation, unknown usage reporting, and hard-budget enforcement from accumulated checkpoint usage.

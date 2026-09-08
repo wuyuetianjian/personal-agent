@@ -460,13 +460,15 @@ func chat(ctx context.Context, args []string, ioStreams IO) error {
 
 func taskCommand(ctx context.Context, args []string, stdout io.Writer) error {
 	if len(args) == 0 {
-		return usageError("task requires subcommand list, show, or cancel")
+		return usageError("task requires subcommand list, show, usage, or cancel")
 	}
 	switch args[0] {
 	case "list":
 		return taskList(ctx, args[1:], stdout)
 	case "show":
 		return taskShow(ctx, args[1:], stdout)
+	case "usage":
+		return taskUsage(ctx, args[1:], stdout)
 	case "cancel":
 		return taskCancel(ctx, args[1:], stdout)
 	default:
@@ -531,6 +533,42 @@ func taskShow(ctx context.Context, args []string, stdout io.Writer) error {
 	fmt.Fprintf(stdout, "id=%s\nstatus=%s\ntitle=%s\ninput=%s\n", task.ID, task.Status, task.Title, task.Input)
 	if task.FinalAnswer != nil {
 		fmt.Fprintf(stdout, "answer=%s\n", *task.FinalAnswer)
+	}
+	return nil
+}
+
+func taskUsage(ctx context.Context, args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("task usage", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	configPath := fs.String("config", "", "config file path")
+	taskID := fs.String("id", "", "task id")
+	jsonOutput := fs.Bool("json", false, "print JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *configPath == "" || *taskID == "" {
+		return usageError("task usage requires --config and --id")
+	}
+	cfg, db, err := openConfiguredDB(ctx, *configPath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	rt := runtime.NewLocal(cfg, db, nil)
+	report, err := rt.UsageForTask(ctx, *taskID)
+	if err != nil {
+		return err
+	}
+	if *jsonOutput {
+		return writePrettyJSON(stdout, report)
+	}
+	fmt.Fprintf(stdout, "task_id=%s\ninput_tokens=%d\noutput_tokens=%d\nbillable_units=%.2f\nestimated_cost_usd=%.6f\nunknown_usage=%t\n",
+		report.TaskID, report.Total.InputTokens, report.Total.OutputTokens, report.Total.BillableUnits, report.Total.EstimatedCostUSD, report.UnknownUsage)
+	for _, workflow := range report.Workflows {
+		fmt.Fprintf(stdout, "workflow_id=%s input_tokens=%d output_tokens=%d estimated_cost_usd=%.6f\n", workflow.WorkflowID, workflow.Total.InputTokens, workflow.Total.OutputTokens, workflow.Total.EstimatedCostUSD)
+		for _, node := range workflow.Nodes {
+			fmt.Fprintf(stdout, "node_id=%s status=%s input_tokens=%d output_tokens=%d estimated_cost_usd=%.6f unknown=%t\n", node.NodeID, node.Status, node.Usage.InputTokens, node.Usage.OutputTokens, node.Usage.EstimatedCostUSD, node.Unknown)
+		}
 	}
 	return nil
 }

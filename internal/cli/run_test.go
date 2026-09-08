@@ -77,6 +77,39 @@ func TestRunLongTaskCommands(t *testing.T) {
 	}
 }
 
+func TestTaskUsageCommand(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	dbPath := filepath.Join(dir, "agent.db")
+	writeConfig(t, configPath, dbPath)
+	db, err := storage.OpenSQLite(context.Background(), dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := storage.Migrate(context.Background(), db.SQL); err != nil {
+		t.Fatal(err)
+	}
+	store := workflow.Store{DB: db.SQL}
+	if err := store.Create(context.Background(), workflow.Run{ID: "wf-usage-cli", TaskID: "task-usage-cli", Status: workflow.StatusPending}, []workflow.Node{{WorkflowID: "wf-usage-cli", NodeID: "synthesis", CapabilityID: "synthesis.local", Status: workflow.NodePending}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveCheckpoint(context.Background(), workflow.Checkpoint{WorkflowID: "wf-usage-cli", NodeID: "synthesis", Status: workflow.NodeCompleted, UsageJSON: `{"InputTokens":4,"OutputTokens":6,"EstimatedCostUSD":0.125}`}); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	var out bytes.Buffer
+	if err := Run(context.Background(), []string{"task", "usage", "--config", configPath, "--id", "task-usage-cli"}, &out); err != nil {
+		t.Fatalf("task usage error = %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{"task_id=task-usage-cli", "input_tokens=4", "output_tokens=6", "estimated_cost_usd=0.125000", "node_id=synthesis"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("task usage output = %q, want %s", got, want)
+		}
+	}
+}
+
 func TestChatStoresMemory(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")

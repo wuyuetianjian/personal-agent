@@ -456,6 +456,62 @@ func TestWorkflowEngineExecutesAllowlistedToolExecutor(t *testing.T) {
 	}
 }
 
+func TestUsageForTaskAggregatesWorkflowCheckpoints(t *testing.T) {
+	ctx := context.Background()
+	db := openRuntimeTestDB(t)
+	rt := NewLocal(configForRuntimeTest(), db, nil)
+	if err := rt.Workflows.Create(ctx, workflow.Run{
+		ID: "wf-usage", TaskID: "task-usage", Status: workflow.StatusPending,
+	}, []workflow.Node{
+		{WorkflowID: "wf-usage", NodeID: "one", CapabilityID: "memory.search", Status: workflow.NodePending},
+		{WorkflowID: "wf-usage", NodeID: "two", CapabilityID: "synthesis.local", Status: workflow.NodePending},
+	}); err != nil {
+		t.Fatalf("workflow Create() error = %v", err)
+	}
+	if err := rt.Workflows.SaveCheckpoint(ctx, workflow.Checkpoint{WorkflowID: "wf-usage", NodeID: "one", Status: workflow.NodeCompleted, UsageJSON: `{"InputTokens":3,"OutputTokens":5}`}); err != nil {
+		t.Fatalf("SaveCheckpoint one error = %v", err)
+	}
+	if err := rt.Workflows.SaveCheckpoint(ctx, workflow.Checkpoint{WorkflowID: "wf-usage", NodeID: "two", Status: workflow.NodeCompleted, UsageJSON: `{"InputTokens":7,"OutputTokens":11,"EstimatedCostUSD":0.25}`}); err != nil {
+		t.Fatalf("SaveCheckpoint two error = %v", err)
+	}
+
+	report, err := rt.UsageForTask(ctx, "task-usage")
+	if err != nil {
+		t.Fatalf("UsageForTask() error = %v", err)
+	}
+	if report.Total.InputTokens != 10 || report.Total.OutputTokens != 16 || report.Total.EstimatedCostUSD != 0.25 {
+		t.Fatalf("report total = %#v", report.Total)
+	}
+	if len(report.Workflows) != 1 || len(report.Workflows[0].Nodes) != 2 {
+		t.Fatalf("report = %#v", report)
+	}
+}
+
+func TestWorkflowBudgetUsesAccumulatedCheckpointUsage(t *testing.T) {
+	ctx := context.Background()
+	db := openRuntimeTestDB(t)
+	rt := NewLocal(configForRuntimeTest(), db, nil)
+	if err := rt.Workflows.Create(ctx, workflow.Run{
+		ID:        "wf-budget",
+		TaskID:    "task-budget",
+		Status:    workflow.StatusPending,
+		InputJSON: `{"input":"budget check","max_input_tokens":2}`,
+	}, []workflow.Node{
+		{WorkflowID: "wf-budget", NodeID: "done", CapabilityID: "memory.search", Status: workflow.NodePending},
+		{WorkflowID: "wf-budget", NodeID: "next", CapabilityID: "rag.search", Status: workflow.NodePending},
+	}); err != nil {
+		t.Fatalf("workflow Create() error = %v", err)
+	}
+	if err := rt.Workflows.SaveCheckpoint(ctx, workflow.Checkpoint{WorkflowID: "wf-budget", NodeID: "done", Status: workflow.NodeCompleted, UsageJSON: `{"InputTokens":2}`}); err != nil {
+		t.Fatalf("SaveCheckpoint() error = %v", err)
+	}
+
+	err := rt.Workflow.RunWorkflow(ctx, "wf-budget")
+	if !errors.Is(err, ErrWorkflowBudgetExceeded) {
+		t.Fatalf("RunWorkflow() error = %v, want ErrWorkflowBudgetExceeded", err)
+	}
+}
+
 type queuedChatProvider struct {
 	responses []model.ChatResponse
 	calls     int

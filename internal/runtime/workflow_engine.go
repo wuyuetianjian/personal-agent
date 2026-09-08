@@ -124,6 +124,11 @@ func (e *WorkflowEngine) RunWorkflow(ctx context.Context, workflowID string) err
 	}
 	if len(result.Failed) > 0 {
 		_ = e.Workflows.UpdateStatus(ctx, workflowID, workflow.StatusFailed)
+		for _, nodeResult := range result.Results {
+			if nodeResult.ErrorCategory == agent.ErrorBudgetExceeded {
+				return ErrWorkflowBudgetExceeded
+			}
+		}
 		return fmt.Errorf("workflow %s failed", workflowID)
 	}
 	if len(result.Cancelled) > 0 {
@@ -191,7 +196,7 @@ func (a workflowSubAgent) Execute(ctx context.Context, node agent.TaskNode) (age
 		InputTokens:  estimateTokens(node.Input),
 		OutputTokens: 0,
 	}
-	if check := a.engine.CostEnforcer.Check(a.budget(), usage); check.Status == cost.LimitHardHit {
+	if check := a.engine.CostEnforcer.Check(a.budget(ctx), usage); check.Status == cost.LimitHardHit {
 		result := agent.Result{
 			TaskID:        node.TaskID,
 			NodeID:        node.ID,
@@ -233,12 +238,11 @@ func (a workflowSubAgent) Execute(ctx context.Context, node agent.TaskNode) (age
 	return result, err
 }
 
-func (a workflowSubAgent) budget() cost.Budget {
-	return cost.Budget{
-		MaxInputTokens:  a.input.MaxInputTokens,
-		MaxOutputTokens: a.input.MaxOutputTokens,
-		HardLimitUSD:    a.input.MaxCostUSD,
+func (a workflowSubAgent) budget(ctx context.Context) cost.Budget {
+	if a.engine != nil && a.engine.Runtime != nil {
+		return a.engine.Runtime.workflowBudget(ctx, a.workflowID, a.input)
 	}
+	return cost.Budget{}
 }
 
 func (a workflowSubAgent) executeLocal(ctx context.Context, node agent.TaskNode) (agent.Result, error) {
