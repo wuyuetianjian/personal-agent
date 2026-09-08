@@ -55,6 +55,9 @@ permissions:
   default: deny
 coding_agents:
   default_backend: ""
+  cross_review:
+    enabled: false
+    large_diff_bytes: 20000
   backends: {}
 security:
   api:

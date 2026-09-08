@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -19,21 +20,25 @@ type CodingRunner interface {
 }
 
 type CodingExecutor struct {
-	Runner   CodingRunner
-	Backend  string
-	Config   config.Config
-	Evidence EvidenceStore
+	Runner       CodingRunner
+	ReviewRunner CodingRunner
+	Backend      string
+	Config       config.Config
+	Evidence     EvidenceStore
 }
 
 type codingNodeInput struct {
-	RepositoryPath    string     `json:"repository_path"`
-	WorkspacePath     string     `json:"workspace_path"`
-	Prompt            string     `json:"prompt"`
-	Privacy           string     `json:"privacy"`
-	Required          []string   `json:"required"`
-	AllowWrite        bool       `json:"allow_write"`
-	AllowDirectWrites bool       `json:"allow_direct_writes"`
-	TestCommands      [][]string `json:"test_commands"`
+	RepositoryPath     string     `json:"repository_path"`
+	WorkspacePath      string     `json:"workspace_path"`
+	Prompt             string     `json:"prompt"`
+	Privacy            string     `json:"privacy"`
+	Required           []string   `json:"required"`
+	AllowWrite         bool       `json:"allow_write"`
+	AllowDirectWrites  bool       `json:"allow_direct_writes"`
+	TestCommands       [][]string `json:"test_commands"`
+	SecuritySensitive  bool       `json:"security_sensitive"`
+	CriticalProject    bool       `json:"critical_project"`
+	VerificationFailed bool       `json:"verification_failed"`
 }
 
 func NewCodingExecutor(cfg config.Config, backend string, evidence EvidenceStore) CodingExecutor {
@@ -75,6 +80,15 @@ func (e CodingExecutor) Execute(ctx context.Context, node agent.TaskNode, input 
 		}
 		return agent.Result{ErrorCategory: category, ErrorMessage: err.Error(), Usage: codingUsage(result)}, err
 	}
+	review, reviewed, err := e.crossReview(ctx, node, req, result)
+	if err != nil {
+		return agent.Result{ErrorCategory: agent.ErrorBlockedMissingInput, ErrorMessage: err.Error(), Usage: codingUsage(result)}, err
+	}
+	if reviewed {
+		result.Summary = strings.TrimSpace(result.Summary + "\nCross review: " + review.Summary)
+		result.Tests = append(result.Tests, review.Tests...)
+		result.Commands = append(result.Commands, review.Commands...)
+	}
 	content := codingEvidenceText(result)
 	if e.Evidence == nil {
 		err := errors.New("coding executor evidence store is required")
@@ -97,6 +111,71 @@ func (e CodingExecutor) Execute(ctx context.Context, node agent.TaskNode, input 
 		return agent.Result{ErrorCategory: agent.ErrorRetryable, ErrorMessage: err.Error(), Usage: codingUsage(result)}, err
 	}
 	return agent.Result{Text: result.Summary, EvidenceIDs: []string{evidence.ID}, Usage: codingUsage(result)}, nil
+}
+
+func (e CodingExecutor) crossReview(ctx context.Context, node agent.TaskNode, req codingagent.Request, result codingagent.Result) (codingagent.Result, bool, error) {
+	if !e.shouldCrossReview(node, result) {
+		return codingagent.Result{}, false, nil
+	}
+	backend := e.reviewBackend(result.BackendID)
+	if backend == "" {
+		return codingagent.Result{}, false, errors.New("coding cross review requires a different enabled code_review backend")
+	}
+	runner := e.ReviewRunner
+	if runner == nil {
+		runner = codingagent.Runner{
+			Registry:  codingagent.RegistryFromConfig(e.Config.CodingAgents, nil),
+			Workspace: codingagent.WorkspaceManager{Root: filepath.Join(e.Config.App.DataDir, "coding-worktrees")},
+			Executor:  codingagent.ProcessExecutor{},
+			Preferred: []string{backend},
+		}
+	}
+	reviewReq := req
+	reviewReq.NodeID = node.ID + "-review"
+	reviewReq.Prompt = "Review the implementation for correctness, security, and regressions.\n\n" + result.Diff
+	reviewReq.Required = []codingagent.Capability{codingagent.CapabilityCodeReview}
+	reviewReq.AllowWrite = false
+	reviewReq.AllowDirectWrites = false
+	review, err := runner.Run(ctx, reviewReq)
+	return review, true, err
+}
+
+func (e CodingExecutor) shouldCrossReview(node agent.TaskNode, result codingagent.Result) bool {
+	if !e.Config.CodingAgents.CrossReview.Enabled {
+		return false
+	}
+	var input codingNodeInput
+	_ = json.Unmarshal([]byte(node.Input), &input)
+	if input.SecuritySensitive || input.CriticalProject || input.VerificationFailed {
+		return true
+	}
+	threshold := e.Config.CodingAgents.CrossReview.LargeDiffBytes
+	return threshold > 0 && len(result.Diff) >= threshold
+}
+
+func (e CodingExecutor) reviewBackend(primary string) string {
+	ids := make([]string, 0, len(e.Config.CodingAgents.Backends))
+	for id := range e.Config.CodingAgents.Backends {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		backend := e.Config.CodingAgents.Backends[id]
+		if id == primary || !backend.IsEnabled() || !hasCodingCapability(backend.Capabilities, string(codingagent.CapabilityCodeReview)) {
+			continue
+		}
+		return id
+	}
+	return ""
+}
+
+func hasCodingCapability(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func codingRequestFromNode(node agent.TaskNode, backend string) (codingagent.Request, error) {

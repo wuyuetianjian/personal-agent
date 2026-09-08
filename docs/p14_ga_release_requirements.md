@@ -65,6 +65,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `HIGH-07` applies Project Policy across Runtime workflow execution. Project allowlists now cover Skill matching, Leader model selection, memory/RAG capability execution, public escalation, browser/MCP/tool dispatch, and Codex/Claude backend selection. CLI runs can pass `--project`, and API task creation accepts `project_id` so persisted workflows carry the project boundary.
 
+`HIGH-08` adds optional Coding Cross Review. When `coding_agents.cross_review.enabled` is true, Runtime coding execution asks a different enabled backend for `code_review` only when policy triggers are present: security-sensitive work, critical project work, verification failure, or diff size above `large_diff_bytes`. Simple coding tasks still run a single backend by default.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -90,3 +92,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - Runtime and workflow tests verify the background workflow worker discovers unfinished runnable workflows and resumes them without a manual `workflow resume` command.
 - Runtime and storage tests verify side-effect idempotency keys are persisted and block duplicate executor calls after retries or recovery.
 - Runtime and project tests verify project policy denies disallowed capabilities, disallowed Leader models, disallowed Skill matches, disallowed coding backends, and confidential public escalation.
+- Runtime tests verify Coding Cross Review runs only when configured policy triggers require it and uses a different enabled backend.

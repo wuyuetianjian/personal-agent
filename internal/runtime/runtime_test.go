@@ -484,6 +484,79 @@ func TestWorkflowEngineExecutesRegisteredCodingExecutor(t *testing.T) {
 	}
 }
 
+func TestCodingExecutorSkipsCrossReviewForSimpleTask(t *testing.T) {
+	ctx := context.Background()
+	db := openRuntimeTestDB(t)
+	cfg := configForRuntimeTest()
+	cfg.CodingAgents.CrossReview.Enabled = true
+	cfg.CodingAgents.CrossReview.LargeDiffBytes = 1000
+	cfg.CodingAgents.Backends = codingBackendsForReviewTest()
+	rt := NewLocal(cfg, db, nil)
+	reviewer := &recordingCodingRunner{result: codingagent.Result{BackendID: "claude", Summary: "reviewed", Tests: []codingagent.CommandEvidence{{Args: []string{"review"}, ExitCode: 0}}}}
+	executor := CodingExecutor{
+		Runner:       fakeCodingRunner{result: codingagent.Result{BackendID: "codex", Summary: "implemented", Diff: "small", FilesChanged: []string{"main.go"}}},
+		ReviewRunner: reviewer,
+		Backend:      "codex",
+		Config:       cfg,
+		Evidence:     rt.Evidence,
+	}
+	input := `{"repository_path":"/tmp/repo","prompt":"change","allow_write":true,"allow_direct_writes":true}`
+
+	result, err := executor.Execute(ctx, agent.TaskNode{TaskID: "task-review-skip", ID: "codex", Type: "coding.codex", Role: agent.RoleTool, Input: input}, workflowInput{})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if reviewer.calls != 0 {
+		t.Fatalf("reviewer calls = %d, want 0", reviewer.calls)
+	}
+	if strings.Contains(result.Text, "Cross review") {
+		t.Fatalf("result text = %q, want no cross review", result.Text)
+	}
+}
+
+func TestCodingExecutorRunsCrossReviewWhenPolicyRequires(t *testing.T) {
+	ctx := context.Background()
+	db := openRuntimeTestDB(t)
+	cfg := configForRuntimeTest()
+	cfg.CodingAgents.CrossReview.Enabled = true
+	cfg.CodingAgents.CrossReview.LargeDiffBytes = 1000
+	cfg.CodingAgents.Backends = codingBackendsForReviewTest()
+	rt := NewLocal(cfg, db, nil)
+	reviewer := &recordingCodingRunner{result: codingagent.Result{BackendID: "claude", Summary: "review passed", Tests: []codingagent.CommandEvidence{{Args: []string{"review"}, ExitCode: 0}}}}
+	executor := CodingExecutor{
+		Runner:       fakeCodingRunner{result: codingagent.Result{BackendID: "codex", Summary: "implemented", Diff: "diff --git a/main.go b/main.go", FilesChanged: []string{"main.go"}}},
+		ReviewRunner: reviewer,
+		Backend:      "codex",
+		Config:       cfg,
+		Evidence:     rt.Evidence,
+	}
+	input := `{"repository_path":"/tmp/repo","prompt":"change auth","allow_write":true,"allow_direct_writes":true,"security_sensitive":true}`
+
+	result, err := executor.Execute(ctx, agent.TaskNode{TaskID: "task-review-run", ID: "codex", Type: "coding.codex", Role: agent.RoleTool, Input: input}, workflowInput{})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if reviewer.calls != 1 {
+		t.Fatalf("reviewer calls = %d, want 1", reviewer.calls)
+	}
+	if len(reviewer.requests) != 1 || len(reviewer.requests[0].Required) != 1 || reviewer.requests[0].Required[0] != codingagent.CapabilityCodeReview {
+		t.Fatalf("review request = %#v, want code_review", reviewer.requests)
+	}
+	if reviewer.requests[0].AllowWrite || reviewer.requests[0].AllowDirectWrites {
+		t.Fatalf("review request allows writes: %#v", reviewer.requests[0])
+	}
+	if !strings.Contains(result.Text, "Cross review: review passed") {
+		t.Fatalf("result text = %q, want review summary", result.Text)
+	}
+	evidence, err := rt.Evidence.ListByTask(ctx, "task-review-run")
+	if err != nil {
+		t.Fatalf("ListByTask() error = %v", err)
+	}
+	if len(evidence) != 1 || !strings.Contains(evidence[0].Content, "review") {
+		t.Fatalf("evidence = %#v, want review evidence", evidence)
+	}
+}
+
 func TestWorkflowEngineExecutesRegisteredMCPExecutor(t *testing.T) {
 	ctx := context.Background()
 	db := openRuntimeTestDB(t)
@@ -1055,6 +1128,44 @@ func (r fakeCodingRunner) Run(ctx context.Context, req codingagent.Request) (cod
 	result.TaskID = req.TaskID
 	result.NodeID = req.NodeID
 	return result, r.err
+}
+
+type recordingCodingRunner struct {
+	result   codingagent.Result
+	err      error
+	calls    int
+	requests []codingagent.Request
+}
+
+func (r *recordingCodingRunner) Run(ctx context.Context, req codingagent.Request) (codingagent.Result, error) {
+	r.calls++
+	r.requests = append(r.requests, req)
+	result := r.result
+	result.TaskID = req.TaskID
+	result.NodeID = req.NodeID
+	return result, r.err
+}
+
+func codingBackendsForReviewTest() map[string]config.CodingAgentBackendConfig {
+	enabled := true
+	return map[string]config.CodingAgentBackendConfig{
+		"codex": {
+			Enabled:           &enabled,
+			Adapter:           "codex",
+			ExecutionLocation: "local",
+			InferenceTrust:    "local_private",
+			Capabilities:      []string{"coding"},
+			AllowDirectWrites: true,
+		},
+		"claude": {
+			Enabled:           &enabled,
+			Adapter:           "claude",
+			ExecutionLocation: "local",
+			InferenceTrust:    "local_private",
+			Capabilities:      []string{"code_review"},
+			AllowDirectWrites: true,
+		},
+	}
 }
 
 type fakeMCPClient struct {

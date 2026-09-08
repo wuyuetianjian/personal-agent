@@ -110,6 +110,9 @@ permissions:
 
 coding_agents:
   default_backend: codex
+  cross_review:
+    enabled: false
+    large_diff_bytes: 20000
   backends:
     codex:
       enabled: false

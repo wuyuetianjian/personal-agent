@@ -138,6 +138,8 @@ Side-effect idempotency: non-read-only workflow capabilities claim a persisted i
 
 Project policy boundary: Runtime workflow execution applies project policy to Skill matching, Leader model selection, memory/RAG capabilities, public escalation, browser/MCP/tool dispatch, and Codex/Claude backend allowlists. CLI task runs can select a project with `--project`; API task creation accepts `project_id`.
 
+Coding Cross Review: set `coding_agents.cross_review.enabled: true` and configure `large_diff_bytes` to require a second enabled coding backend for security-sensitive, critical-project, verification-failed, or large-diff coding tasks. Ordinary coding tasks still use one backend.
+
 ### P1 Model And Privacy Foundation
 
 P1 adds library-level model and privacy controls:
@@ -467,6 +469,8 @@ Skill workflow 边界：active、高置信、read-only Skill 会直接编译为�
 Side-effect idempotency：非 read-only workflow capability 在执行前会持久化认领 idempotency key。duplicate event、retry 或 crash recovery 触发的 replay 不会重复执行已认领的 browser write、MCP/tool mutation、coding push、PR create、deploy 或 message send 类 side effect。
 
 Project policy 边界：Runtime workflow execution 会把 project policy 统一应用到 Skill matching、Leader model selection、memory/RAG capability、public escalation、browser/MCP/tool dispatch，以及 Codex/Claude backend allowlist。CLI task run 可用 `--project` 选择 project；API task create 接受 `project_id`。
+
+Coding Cross Review：设置 `coding_agents.cross_review.enabled: true` 并配置 `large_diff_bytes` 后，security-sensitive、critical-project、verification-failed 或 large-diff coding task 会要求第二个已启用 coding backend 做审查。普通 coding task 仍只使用一个 backend。
 
 ### P1 模型与隐私基础
 

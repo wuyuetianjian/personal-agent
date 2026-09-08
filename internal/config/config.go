@@ -182,6 +182,12 @@ type PermissionRuleConfig struct {
 type CodingAgentsConfig struct {
 	DefaultBackend string                              `yaml:"default_backend"`
 	Backends       map[string]CodingAgentBackendConfig `yaml:"backends"`
+	CrossReview    CodingCrossReviewConfig             `yaml:"cross_review"`
+}
+
+type CodingCrossReviewConfig struct {
+	Enabled        bool `yaml:"enabled"`
+	LargeDiffBytes int  `yaml:"large_diff_bytes"`
 }
 
 type CodingAgentBackendConfig struct {

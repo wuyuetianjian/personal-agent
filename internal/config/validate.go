@@ -81,6 +81,9 @@ func (c Config) Validate() error {
 			return fmt.Errorf("coding_agents.default_backend %q is not defined", c.CodingAgents.DefaultBackend)
 		}
 	}
+	if c.CodingAgents.CrossReview.LargeDiffBytes < 0 {
+		return errors.New("coding_agents.cross_review.large_diff_bytes must be non-negative")
+	}
 	for id, backend := range c.CodingAgents.Backends {
 		if backend.Adapter == "" {
 			return fmt.Errorf("coding_agents.backends.%s.adapter is required", id)
