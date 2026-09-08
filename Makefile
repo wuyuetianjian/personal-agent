@@ -1,12 +1,21 @@
 VERSION ?= 1.0.0
+
+ifeq ($(OS),Windows_NT)
+COMMIT ?= $(shell git rev-parse --short HEAD 2>NUL)
+BUILD_DATE ?= $(shell powershell -NoProfile -Command "[DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')")
+else
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-LDFLAGS := -X agent/internal/version.Version=$(VERSION) -X agent/internal/version.Commit=$(COMMIT) -X agent/internal/version.BuildDate=$(BUILD_DATE)
+endif
+
+LDFLAGS := -X agent/internal/version.Version=$(VERSION) \
+           -X agent/internal/version.Commit=$(COMMIT) \
+           -X agent/internal/version.BuildDate=$(BUILD_DATE)
 
 .PHONY: build test smoke release-build checksums release-check clean
 
 build:
-	go build -ldflags "$(LDFLAGS)" -o bin/pachat ./cmd/pachat
+	go build -ldflags "$(LDFLAGS)" -o bin/pachat ./cmd/pachathat
 
 test:
 	go test ./...
