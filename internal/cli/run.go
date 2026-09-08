@@ -72,6 +72,8 @@ func RunWithIO(ctx context.Context, args []string, ioStreams IO) error {
 		return notificationCommand(ctx, args[1:], ioStreams.Stdout)
 	case "model":
 		return modelCommand(ctx, args[1:], ioStreams.Stdout)
+	case "mcp":
+		return mcpCommand(ctx, args[1:], ioStreams.Stdout)
 	case "watcher":
 		return watcherCommand(ctx, args[1:], ioStreams.Stdout)
 	case "trigger":

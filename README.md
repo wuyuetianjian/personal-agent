@@ -112,6 +112,9 @@ bin/pachat project create --config configs/config.example.yaml --name "Local Pro
 bin/pachat skill import --config configs/config.example.yaml --path ./skill.yaml
 bin/pachat skill list --config configs/config.example.yaml
 bin/pachat skill run --config configs/config.example.yaml --id <skill_id> --input "local task"
+bin/pachat mcp list --config configs/config.example.yaml
+bin/pachat mcp health --config configs/config.example.yaml
+bin/pachat mcp tools --config configs/config.example.yaml
 bin/pachat workflow events --config configs/config.example.yaml --id <workflow_id>
 bin/pachat trigger create --config configs/config.example.yaml --type manual --id local-trigger
 bin/pachat trigger run-now --config configs/config.example.yaml --id local-trigger
@@ -317,6 +320,8 @@ Enabled coding backends are registered as `coding.<backend>` executors, includin
 
 Configured MCP servers are registered as `mcp.<server>.<tool>` executors and called through stdio JSON-RPC. MCP output is persisted as `UNTRUSTED OBSERVATION` evidence. Configured local tools are registered from `tools.allowlist`; only fixed allowlisted program/args execute, and workflow input is not interpolated into shell commands.
 
+`OP-02` adds MCP operator commands: list configured servers, check command availability, enumerate MCP tool capabilities, and smoke-test a configured tool through Runtime workflow execution with `pachat mcp test`.
+
 Public escalation is wired from enabled `public_remote` chat models in the model registry. If a public provider requires Privacy Gateway, `privacy.hmac_secret_env` must resolve or Runtime build fails closed. Secret-bearing payloads are blocked before provider calls.
 
 Task usage can be queried with `pachat task usage --config <path> --id <task_id>`. Usage is aggregated from workflow checkpoints at node, workflow, and task levels. Model providers with reliable usage use provider token counts; external CLI/tool usage remains marked as unknown when token counts are unavailable.
@@ -463,6 +468,9 @@ bin/pachat project create --config configs/config.example.yaml --name "Local Pro
 bin/pachat skill import --config configs/config.example.yaml --path ./skill.yaml
 bin/pachat skill list --config configs/config.example.yaml
 bin/pachat skill run --config configs/config.example.yaml --id <skill_id> --input "local task"
+bin/pachat mcp list --config configs/config.example.yaml
+bin/pachat mcp health --config configs/config.example.yaml
+bin/pachat mcp tools --config configs/config.example.yaml
 bin/pachat workflow events --config configs/config.example.yaml --id <workflow_id>
 bin/pachat trigger create --config configs/config.example.yaml --type manual --id local-trigger
 bin/pachat trigger run-now --config configs/config.example.yaml --id local-trigger
@@ -667,6 +675,8 @@ Runtime capability executor 现在通过本地 executor registry 注册。启用
 启用的 coding backend 会注册为 `coding.<backend>` executor，包括 Codex 与 Claude 风格 adapter。Coding workflow node 必须提供结构化 JSON 输入，包含 `repository_path`、`prompt`、写入策略、privacy class 和可选 test commands；执行会委托给受治理的 coding agent Runner，并持久化 diff/test evidence。
 
 配置的 MCP server 会注册为 `mcp.<server>.<tool>` executor，并通过 stdio JSON-RPC 调用。MCP 输出会作为 `UNTRUSTED OBSERVATION` evidence 持久化。配置的本地工具来自 `tools.allowlist`；执行时只使用固定 allowlisted program/args，不会把 workflow input 拼接进 shell 命令。
+
+`OP-02` 增加 MCP operator 命令：列出已配置 server、检查 command 可用性、枚举 MCP tool capability，并通过 `pachat mcp test` 走 Runtime workflow execution 对配置的 tool 做 smoke test。
 
 Public escalation 会从 model registry 中启用的 `public_remote` chat model 接线。如果 public provider 要求 Privacy Gateway，`privacy.hmac_secret_env` 必须能解析，否则 Runtime build 会 fail closed。包含 secret 的 payload 会在调用 provider 前被阻断。
 

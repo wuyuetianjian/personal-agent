@@ -79,6 +79,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `OP-01` adds persistent Skill operator commands. `pachat skill` can validate manifests, import versions into SQLite, list/show/version Skills, enable or disable active versions, and run an enabled Skill through the existing Runtime workflow path.
 
+`OP-02` adds MCP operator commands. `pachat mcp` can list configured servers, report command availability health, enumerate configured MCP tool capabilities, and run a configured tool through the Runtime MCP workflow path for local smoke testing.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -111,3 +113,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - Goal tests verify persisted goals, milestone dependencies, workflow linkage, pause/resume, and bounded re-evaluation.
 - Serve, trigger, and Runtime tests verify the proactive daemon starts from `pachat serve` configuration, recovers/ticks on startup, creates workflow-backed trigger work, and shuts down through context cancellation.
 - CLI and storage tests verify `pachat skill list/show/import/validate/enable/disable/run/versions` against persisted Skill records and Runtime-backed Skill execution.
+- CLI tests verify `pachat mcp list/health/tools/test` for configured MCP stdio servers and Runtime-backed tool execution.

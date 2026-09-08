@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -331,6 +332,70 @@ workflow:
 	if !strings.Contains(disableOut.String(), "status=disabled") {
 		t.Fatalf("disable output = %q", disableOut.String())
 	}
+}
+
+func TestMCPCommands(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	dbPath := filepath.Join(dir, "agent.db")
+	writeConfig(t, configPath, dbPath)
+	serverPath := filepath.Join(dir, "fake-mcp")
+	writeFakeMCPServer(t, serverPath)
+	f, err := os.OpenFile(configPath, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(`
+mcp:
+  servers:
+    local:
+      enabled: true
+      command: ` + serverPath + `
+      tools:
+        - ping
+      trust_level: local_private
+      privacy_classes:
+        - private
+`); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"list", []string{"mcp", "list", "--config", configPath}, "local"},
+		{"health", []string{"mcp", "health", "--config", configPath}, "healthy"},
+		{"tools", []string{"mcp", "tools", "--config", configPath}, "mcp.local.ping"},
+		{"test", []string{"mcp", "test", "--config", configPath, "--server", "local", "--tool", "ping", "--arguments", `{"message":"hello"}`}, "status=OK"},
+	} {
+		var out bytes.Buffer
+		if err := Run(context.Background(), tc.args, &out); err != nil {
+			t.Fatalf("%s error = %v", tc.name, err)
+		}
+		if !strings.Contains(out.String(), tc.want) {
+			t.Fatalf("%s output = %q, want %s", tc.name, out.String(), tc.want)
+		}
+	}
+}
+
+func writeFakeMCPServer(t *testing.T, path string) {
+	t.Helper()
+	frames := mcpFrame(`{"jsonrpc":"2.0","id":1,"result":{}}`) +
+		mcpFrame(`{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"ping"}]}}`) +
+		mcpFrame(`{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"pong"}]}}`)
+	script := "#!/bin/sh\ncat <<'EOF'\n" + frames + "\nEOF\nsleep 1\n"
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+}
+
+func mcpFrame(payload string) string {
+	return "Content-Length: " + strconv.Itoa(len(payload)) + "\r\n\r\n" + payload
 }
 
 func TestP12ExtraCommands(t *testing.T) {
