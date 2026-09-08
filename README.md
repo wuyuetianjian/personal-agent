@@ -322,6 +322,8 @@ Configured MCP servers are registered as `mcp.<server>.<tool>` executors and cal
 
 `OP-02` adds MCP operator commands: list configured servers, check command availability, enumerate MCP tool capabilities, and smoke-test a configured tool through Runtime workflow execution with `pachat mcp test`.
 
+`OP-03` replaces the dashboard stub with a minimal operator console at `/dashboard`, including Chat/Run, Tasks, Workflows, Approvals, Notifications, Projects, Skills, Capabilities Health, and Triggers views.
+
 Public escalation is wired from enabled `public_remote` chat models in the model registry. If a public provider requires Privacy Gateway, `privacy.hmac_secret_env` must resolve or Runtime build fails closed. Secret-bearing payloads are blocked before provider calls.
 
 Task usage can be queried with `pachat task usage --config <path> --id <task_id>`. Usage is aggregated from workflow checkpoints at node, workflow, and task levels. Model providers with reliable usage use provider token counts; external CLI/tool usage remains marked as unknown when token counts are unavailable.
@@ -677,6 +679,8 @@ Runtime capability executor 现在通过本地 executor registry 注册。启用
 配置的 MCP server 会注册为 `mcp.<server>.<tool>` executor，并通过 stdio JSON-RPC 调用。MCP 输出会作为 `UNTRUSTED OBSERVATION` evidence 持久化。配置的本地工具来自 `tools.allowlist`；执行时只使用固定 allowlisted program/args，不会把 workflow input 拼接进 shell 命令。
 
 `OP-02` 增加 MCP operator 命令：列出已配置 server、检查 command 可用性、枚举 MCP tool capability，并通过 `pachat mcp test` 走 Runtime workflow execution 对配置的 tool 做 smoke test。
+
+`OP-03` 将 `/dashboard` 从 stub 替换为最小 operator console，包含 Chat/Run、Tasks、Workflows、Approvals、Notifications、Projects、Skills、Capabilities Health 和 Triggers 视图。
 
 Public escalation 会从 model registry 中启用的 `public_remote` chat model 接线。如果 public provider 要求 Privacy Gateway，`privacy.hmac_secret_env` 必须能解析，否则 Runtime build 会 fail closed。包含 secret 的 payload 会在调用 provider 前被阻断。
 

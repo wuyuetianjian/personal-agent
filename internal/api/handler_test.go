@@ -16,9 +16,12 @@ import (
 	"agent/internal/notification"
 	"agent/internal/orchestrator"
 	"agent/internal/permission"
+	"agent/internal/project"
 	"agent/internal/runtime"
+	"agent/internal/skill"
 	"agent/internal/storage"
 	"agent/internal/trigger"
+	"agent/internal/workflow"
 )
 
 func TestTaskLifecycleEndpoints(t *testing.T) {
@@ -241,6 +244,54 @@ func TestTriggerAndEventEndpoints(t *testing.T) {
 	handler.ServeHTTP(models, httptest.NewRequest(http.MethodGet, "/models/discover", nil))
 	if models.Code != http.StatusOK || !strings.Contains(models.Body.String(), "local-planner") {
 		t.Fatalf("models status=%d body=%s", models.Code, models.Body.String())
+	}
+}
+
+func TestDashboardUIIncludesOperatorSections(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	runner := runtime.NewLocal(configForAPITest(), db, &orchestrator.InMemoryEvidenceBus{})
+	confirmations := permission.SQLiteConfirmationStore{DB: db.SQL}
+	server := NewServerWithRunner(db, nil, confirmations, "local-planner", runner)
+	server.Triggers = trigger.Store{DB: db.SQL}
+	server.Notifications = notification.Store{DB: db.SQL}
+	server.ModelRegistry = []string{"local-planner"}
+
+	if err := db.CreateTask(ctx, storage.Task{ID: "task-dashboard", Title: "Dashboard task", Input: "inspect dashboard", Status: "running", LeaderModelID: "local-planner", PrivacyClass: "local_private"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := (workflow.Store{DB: db.SQL}).Create(ctx, workflow.Run{ID: "wf-dashboard", TaskID: "task-dashboard", Status: workflow.StatusPending}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := (project.Store{DB: db.SQL}).Save(ctx, project.Project{ID: "proj-dashboard", Name: "Dashboard Project", PrivacyClass: "local_private"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := (skill.Store{DB: db.SQL}).Import(ctx, skill.Manifest{ID: "skill.dashboard", Version: "1.0.0", Name: "Dashboard Skill", Description: "dashboard", Status: skill.StatusActive}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := confirmations.Request(ctx, permission.Request{ID: "confirm-dashboard", TaskID: "task-dashboard", Action: permission.ActionExternalSideEffect, Risk: permission.RiskMedium, Target: "dashboard", ProposedEffect: "approve dashboard"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Notifications.Put(ctx, notification.Notification{ID: "note-dashboard", Title: "Dashboard Notification", Severity: "info"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Triggers.Put(ctx, trigger.Trigger{ID: "trigger-dashboard", ProjectID: "proj-dashboard", Type: trigger.TypeManual, Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := httptest.NewRecorder()
+	server.Handler().ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/dashboard", nil))
+	if resp.Code != http.StatusOK {
+		t.Fatalf("dashboard status=%d body=%s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Header().Get("Content-Type"), "text/html") {
+		t.Fatalf("dashboard content-type=%q", resp.Header().Get("Content-Type"))
+	}
+	body := resp.Body.String()
+	for _, want := range []string{"Operator Console", "Chat / Run", "Tasks", "Workflows", "Approvals", "Notifications", "Projects", "Skills", "Capabilities Health", "Dashboard task", "Dashboard Project", "Dashboard Skill", "trigger-dashboard"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("dashboard missing %q in body", want)
+		}
 	}
 }
 

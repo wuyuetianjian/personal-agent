@@ -338,31 +338,6 @@ func (s Server) createEvent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"id": event.ID, "status": "accepted"})
 }
 
-func (s Server) dashboard(w http.ResponseWriter, r *http.Request) {
-	taskCount := 0
-	if counter, ok := s.Tasks.(interface {
-		TaskCount(context.Context) (int, error)
-	}); ok {
-		if got, err := counter.TaskCount(r.Context()); err == nil {
-			taskCount = got
-		}
-	}
-	triggerCount := 0
-	if s.Triggers.DB != nil {
-		if items, err := s.Triggers.List(r.Context()); err == nil {
-			triggerCount = len(items)
-		}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "tasks": taskCount, "triggers": triggerCount})
-}
-
-func (s Server) dashboardEvents(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("event: ready\ndata: {\"status\":\"ok\"}\n\n"))
-}
-
 func (s Server) discoverModels(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"models": append([]string(nil), s.ModelRegistry...)})
 }

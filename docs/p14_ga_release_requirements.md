@@ -81,6 +81,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `OP-02` adds MCP operator commands. `pachat mcp` can list configured servers, report command availability health, enumerate configured MCP tool capabilities, and run a configured tool through the Runtime MCP workflow path for local smoke testing.
 
+`OP-03` replaces the dashboard JSON stub with a minimal operator UI. `GET /dashboard` renders a responsive HTML console with Chat/Run, Tasks, Workflows, Approvals, Notifications, Projects, Skills, Capabilities Health, and Triggers views backed by existing local APIs and SQLite stores.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -114,3 +116,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - Serve, trigger, and Runtime tests verify the proactive daemon starts from `pachat serve` configuration, recovers/ticks on startup, creates workflow-backed trigger work, and shuts down through context cancellation.
 - CLI and storage tests verify `pachat skill list/show/import/validate/enable/disable/run/versions` against persisted Skill records and Runtime-backed Skill execution.
 - CLI tests verify `pachat mcp list/health/tools/test` for configured MCP stdio servers and Runtime-backed tool execution.
+- API tests verify `GET /dashboard` returns the operator HTML UI with the required minimum sections and real local data.
