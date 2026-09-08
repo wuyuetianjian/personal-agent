@@ -73,6 +73,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `HIGH-11` closes notification policy behavior. Notifications carry severity and delivery state, deduplicate by `dedup_key`, and can be written through quiet-hours policy so delivery is suppressed until the configured window ends.
 
+`HIGH-12` persists bounded Goal runtime state. Goals and milestones now store status, dependencies, workflow linkage, completion criteria, budget policy, and re-evaluation timestamps, with pause/resume transitions and planner-driven re-evaluation remaining bounded by the existing iteration limit.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -102,3 +104,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - Opt-in coding E2E tests are available for real Codex and Claude CLI binaries and skip cleanly unless explicitly enabled.
 - Trigger tests verify condition-watch state persists check, transition, notification, and cooldown fields.
 - Notification tests verify deduplication, severity, delivery state, and quiet-hours suppression.
+- Goal tests verify persisted goals, milestone dependencies, workflow linkage, pause/resume, and bounded re-evaluation.

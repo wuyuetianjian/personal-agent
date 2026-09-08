@@ -146,6 +146,8 @@ Condition watcher state: proactive condition-watch triggers persist previous/cur
 
 Notification policy: local notifications deduplicate by `dedup_key`, carry severity and delivery state, and support quiet-hours suppression through notification policy.
 
+Goal persistence: bounded goals and milestones persist status, dependencies, workflow linkage, completion criteria, budget policy, pause/resume state, and re-evaluation timestamps.
+
 ### P1 Model And Privacy Foundation
 
 P1 adds library-level model and privacy controls:
@@ -483,6 +485,8 @@ Coding Cross Review：设置 `coding_agents.cross_review.enabled: true` 并配�
 Condition watcher state：proactive condition-watch trigger 会持久化 previous/current state、last transition、last check、last notification 和 cooldown state，daemon 重启后会保留 watcher 上下文。
 
 Notification policy：本地 notification 会按 `dedup_key` 去重，记录 severity 和 delivery state，并支持通过 notification policy 做 quiet-hours suppression。
+
+Goal persistence：bounded goal 和 milestone 会持久化 status、dependencies、workflow linkage、completion criteria、budget policy、pause/resume state 和 re-evaluation timestamp。
 
 ### P1 模型与隐私基础
 

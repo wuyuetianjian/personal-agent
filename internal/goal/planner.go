@@ -3,23 +3,37 @@ package goal
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 var ErrGoalIterationLimit = errors.New("goal iteration limit reached")
 
 type Goal struct {
-	ID            string
-	ProjectID     string
-	Title         string
-	Status        string
-	MaxIterations int
+	ID                 string
+	ProjectID          string
+	Title              string
+	Status             string
+	MaxIterations      int
+	WorkflowID         string
+	CompletionCriteria string
+	BudgetPolicy       string
+	LastEvaluatedAt    *time.Time
+	StateJSON          string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type Milestone struct {
-	ID     string
-	GoalID string
-	Title  string
-	Order  int
+	ID                 string
+	GoalID             string
+	Title              string
+	Status             string
+	Dependencies       []string
+	WorkflowID         string
+	CompletionCriteria string
+	Order              int
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type Planner struct {
