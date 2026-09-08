@@ -85,6 +85,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `OP-04` productizes dashboard SSE events. `GET /dashboard/events` emits typed Task, Workflow, Approval, Notification, Trigger, and ready events, supports `Last-Event-ID` snapshot filtering for reconnect recovery, and keeps long-lived clients alive with heartbeat events.
 
+`OP-05` adds an evidence viewer. `GET /evidence` and `GET /evidence/{id}` expose claim, redacted evidence preview, source type, trust, privacy, timestamp, and verification status, and the dashboard includes an Evidence view backed by the same API.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -120,3 +122,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - CLI tests verify `pachat mcp list/health/tools/test` for configured MCP stdio servers and Runtime-backed tool execution.
 - API tests verify `GET /dashboard` returns the operator HTML UI with the required minimum sections and real local data.
 - API tests verify dashboard SSE emits typed snapshots and honors `Last-Event-ID` recovery filtering.
+- API tests verify evidence viewer responses include claim/source/trust/privacy/timestamp/verification fields and redact sensitive evidence previews by default.

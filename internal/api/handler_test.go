@@ -288,10 +288,50 @@ func TestDashboardUIIncludesOperatorSections(t *testing.T) {
 		t.Fatalf("dashboard content-type=%q", resp.Header().Get("Content-Type"))
 	}
 	body := resp.Body.String()
-	for _, want := range []string{"Operator Console", "Chat / Run", "Tasks", "Workflows", "Approvals", "Notifications", "Projects", "Skills", "Capabilities Health", "Dashboard task", "Dashboard Project", "Dashboard Skill", "trigger-dashboard"} {
+	for _, want := range []string{"Operator Console", "Chat / Run", "Tasks", "Workflows", "Evidence", "Approvals", "Notifications", "Projects", "Skills", "Capabilities Health", "Dashboard task", "Dashboard Project", "Dashboard Skill", "trigger-dashboard"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("dashboard missing %q in body", want)
 		}
+	}
+}
+
+func TestEvidenceViewerRedactsSensitivePreview(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	server := NewServer(db, nil, permission.NewInMemoryConfirmationStore(), "local-planner")
+	now := time.Date(2026, 9, 8, 13, 0, 0, 0, time.UTC)
+	if err := db.CreateTask(ctx, storage.Task{ID: "task-evidence", Title: "Evidence task", Input: "evidence", Status: "completed", CreatedAt: now, UpdatedAt: now, LeaderModelID: "local-planner", PrivacyClass: "local_private"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL.ExecContext(ctx, `INSERT INTO evidence (id, task_id, node_id, type, source, uri, content_text, content_hash, metadata_json, privacy_class, created_at) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`, "ev-sensitive", "task-evidence", "node-1", "browser", "browser.read", "token=secret visible evidence", "hash", `{"claim":"Sensitive claim","trust":0.77}`, "local_private", now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL.ExecContext(ctx, `INSERT INTO claims (id, task_id, node_id, claim_text, claim_type, confidence, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, "claim-sensitive", "task-evidence", "node-1", "Sensitive claim", "fact", 0.9, "verified", now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL.ExecContext(ctx, `INSERT INTO claim_evidence (claim_id, evidence_id, support_type, score) VALUES (?, ?, ?, ?)`, "claim-sensitive", "ev-sensitive", "supports", 1.0); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := httptest.NewRecorder()
+	server.Handler().ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/evidence?task_id=task-evidence", nil))
+	if resp.Code != http.StatusOK {
+		t.Fatalf("evidence status=%d body=%s", resp.Code, resp.Body.String())
+	}
+	body := resp.Body.String()
+	for _, want := range []string{`"claim":"Sensitive claim"`, `"source_type":"browser"`, `"trust":0.77`, `"privacy":"local_private"`, `"verification_status":"verified"`, `"redacted":true`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("evidence response missing %s: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "secret") || strings.Contains(body, "token=") {
+		t.Fatalf("evidence response leaked sensitive content: %s", body)
+	}
+
+	get := httptest.NewRecorder()
+	server.Handler().ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/evidence/ev-sensitive", nil))
+	if get.Code != http.StatusOK || strings.Contains(get.Body.String(), "secret") {
+		t.Fatalf("get evidence status=%d body=%s", get.Code, get.Body.String())
 	}
 }
 

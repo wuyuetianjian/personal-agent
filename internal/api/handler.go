@@ -61,6 +61,8 @@ func (s Server) Handler() http.Handler {
 	mux.HandleFunc("POST /tasks/{id}/cancel", s.cancelTask)
 	mux.HandleFunc("GET /tasks/{id}/events", s.listEvents)
 	mux.HandleFunc("POST /events", s.createEvent)
+	mux.HandleFunc("GET /evidence", s.listEvidence)
+	mux.HandleFunc("GET /evidence/{id}", s.getEvidence)
 	mux.HandleFunc("GET /dashboard", s.dashboard)
 	mux.HandleFunc("GET /dashboard/events", s.dashboardEvents)
 	mux.HandleFunc("GET /models/discover", s.discoverModels)

@@ -32,6 +32,7 @@ type dashboardData struct {
 	Skills        []skill.Record          `json:"skills"`
 	Capabilities  []capability.Capability `json:"capabilities"`
 	Triggers      []dashboardTrigger      `json:"triggers"`
+	Evidence      []evidenceResponse      `json:"evidence"`
 	Summary       map[string]int          `json:"summary"`
 }
 
@@ -102,6 +103,10 @@ func (s Server) collectDashboardData(ctx context.Context) dashboardData {
 		if skills, err := (skill.Store{DB: db}).List(ctx); err == nil {
 			data.Skills = skills
 			data.Summary["skills"] = len(skills)
+		}
+		if evidence, err := listEvidenceRows(ctx, db, "", 20); err == nil {
+			data.Evidence = evidence
+			data.Summary["evidence"] = len(evidence)
 		}
 	}
 	if lister, ok := s.Confirmations.(interface {
@@ -283,18 +288,18 @@ var dashboardTemplate = template.Must(template.New("dashboard").Parse(`<!doctype
 <script id="dashboard-data" type="application/json">{{.Data}}</script>
 <script>
 let data=JSON.parse(document.getElementById("dashboard-data").textContent);let current="run";
-const views=[["run","Chat / Run"],["tasks","Tasks"],["workflows","Workflows"],["projects","Projects"],["skills","Skills"],["capabilities","Capabilities Health"],["triggers","Triggers"]];
+const views=[["run","Chat / Run"],["tasks","Tasks"],["workflows","Workflows"],["evidence","Evidence"],["projects","Projects"],["skills","Skills"],["capabilities","Capabilities Health"],["triggers","Triggers"]];
 const el=(id)=>document.getElementById(id);const esc=(v)=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
 function tag(v){let c=["failed","denied","unavailable"].includes(String(v))?"danger":["pending","running","waiting_approval","unknown"].includes(String(v))?"warn":"ok";return "<span class=\"tag "+c+"\">"+esc(v||"ok")+"</span>"}
 function drawNav(){el("nav").innerHTML=views.map(([id,label])=>"<button data-view=\""+id+"\" class=\""+(id===current?"active":"")+"\">"+label+"</button>").join("");document.querySelectorAll("[data-view]").forEach(b=>b.onclick=()=>{current=b.dataset.view;render()})}
 function drawStats(){let s=data.summary||{};let stats=[["Tasks",s.tasks||0],["Running",s.tasks_running||0],["Workflows",s.workflows||0],["Approvals",s.approvals||0],["Skills",s.skills||0],["Triggers",s.triggers||0]];el("stats").innerHTML=stats.map(([k,v])=>"<div class=\"stat\"><span>"+k+"</span><strong>"+v+"</strong></div>").join("")}
 function table(cols,rows){if(!rows||!rows.length)return "<div class=\"empty\">No records</div>";return "<table class=\"table\"><thead><tr>"+cols.map(c=>"<th>"+c[0]+"</th>").join("")+"</tr></thead><tbody>"+rows.map(r=>"<tr>"+cols.map(c=>"<td>"+(c[2]?c[2](r):esc(r[c[1]]))+"</td>").join("")+"</tr>").join("")+"</tbody></table>"}
 function runView(){return "<form class=\"run\" id=\"run-form\"><textarea name=\"input\" placeholder=\"Ask the local agent\"></textarea><div class=\"row\"><input name=\"project_id\" placeholder=\"project_id\"><button class=\"primary\">Run</button></div><div class=\"toast\" id=\"run-result\"></div></form>"}
-function renderView(){let v=current;if(v==="run")return runView();if(v==="tasks")return table([["ID","id",r=>"<span class=\"mono\">"+esc(r.id)+"</span>"],["Title","title"],["Status","status",r=>tag(r.status)],["Model","leader_model_id"],["Updated","updated_at"]],data.tasks);if(v==="workflows")return table([["ID","id",r=>"<span class=\"mono\">"+esc(r.id)+"</span>"],["Task","task_id"],["Status","status",r=>tag(r.status)],["Skill","skill_id"],["Updated","updated_at"]],data.workflows);if(v==="projects")return table([["ID","id"],["Name","name"],["Privacy","privacy_class"],["Budget","budget_policy"]],data.projects);if(v==="skills")return table([["ID","id"],["Version","active_version"],["Status","status",r=>tag(r.status)],["Name","name"]],data.skills);if(v==="capabilities")return table([["ID","id"],["Kind","kind"],["Health","health",r=>tag(r.health)],["Enabled","enabled",r=>tag(r.enabled?"enabled":"disabled")]],data.capabilities);if(v==="triggers")return table([["ID","id"],["Type","type"],["Enabled","enabled",r=>tag(r.enabled?"enabled":"disabled")],["Project","project_id"],["Skill","skill_id"]],data.triggers);return ""}
+function renderView(){let v=current;if(v==="run")return runView();if(v==="tasks")return table([["ID","id",r=>"<span class=\"mono\">"+esc(r.id)+"</span>"],["Title","title"],["Status","status",r=>tag(r.status)],["Model","leader_model_id"],["Updated","updated_at"]],data.tasks);if(v==="workflows")return table([["ID","id",r=>"<span class=\"mono\">"+esc(r.id)+"</span>"],["Task","task_id"],["Status","status",r=>tag(r.status)],["Skill","skill_id"],["Updated","updated_at"]],data.workflows);if(v==="evidence")return table([["Claim","claim"],["Evidence","evidence"],["Source Type","source_type"],["Trust","trust"],["Privacy","privacy"],["Timestamp","timestamp"],["Verification Status","verification_status",r=>tag(r.verification_status)]],data.evidence);if(v==="projects")return table([["ID","id"],["Name","name"],["Privacy","privacy_class"],["Budget","budget_policy"]],data.projects);if(v==="skills")return table([["ID","id"],["Version","active_version"],["Status","status",r=>tag(r.status)],["Name","name"]],data.skills);if(v==="capabilities")return table([["ID","id"],["Kind","kind"],["Health","health",r=>tag(r.health)],["Enabled","enabled",r=>tag(r.enabled?"enabled":"disabled")]],data.capabilities);if(v==="triggers")return table([["ID","id"],["Type","type"],["Enabled","enabled",r=>tag(r.enabled?"enabled":"disabled")],["Project","project_id"],["Skill","skill_id"]],data.triggers);return ""}
 function side(){el("approval-count").textContent=(data.approvals||[]).length;el("notification-count").textContent=(data.notifications||[]).length;el("approvals").innerHTML=table([["ID","id"],["Action","action"],["Risk","risk",r=>tag(r.risk)]],data.approvals);el("notifications").innerHTML=table([["Title","title"],["Severity","severity",r=>tag(r.severity)],["State","delivery_state"]],data.notifications)}
 function render(){drawNav();drawStats();let active=views.find(v=>v[0]===current)||views[0];el("view-title").textContent=active[1];el("view").innerHTML=renderView();el("view-count").textContent=current==="run"?"ready":((data[current]||[]).length+" rows");el("subtitle").textContent="leader="+(data.leader_model||"local")+" models="+((data.models||[]).join(",")||"none");side();let form=el("run-form");if(form)form.onsubmit=submitRun}
 async function submitRun(e){e.preventDefault();let fd=new FormData(e.currentTarget);let body={input:fd.get("input"),project_id:fd.get("project_id")};el("run-result").textContent="running";let res=await fetch("/tasks",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});let out=await res.json();el("run-result").textContent=res.ok?("task "+out.id+" "+out.status):("error "+(out.error||res.status));await refresh()}
-async function refresh(){for(let item of [["tasks","/tasks?limit=20"],["notifications","/notifications"],["triggers","/triggers"],["models","/models/discover"]]){try{let res=await fetch(item[1]);if(res.ok){let json=await res.json();data[item[0]]=json[item[0]]||data[item[0]]}}catch(e){}}render()}
+async function refresh(){for(let item of [["tasks","/tasks?limit=20"],["notifications","/notifications"],["triggers","/triggers"],["models","/models/discover"],["evidence","/evidence?limit=20"]]){try{let res=await fetch(item[1]);if(res.ok){let json=await res.json();data[item[0]]=json[item[0]]||data[item[0]]}}catch(e){}}render()}
 function connectEvents(){if(!window.EventSource)return;let source=new EventSource("/dashboard/events");source.onopen=()=>{el("event-state").textContent="live"};source.onerror=()=>{el("event-state").textContent="retrying"};["task","workflow","approval","notification","trigger","ready"].forEach(name=>source.addEventListener(name,e=>{el("event-log").textContent=name+" "+(e.lastEventId||"");try{if(name==="task")refresh()}catch(err){}}))}
 el("refresh").onclick=refresh;render();connectEvents();
 </script>
