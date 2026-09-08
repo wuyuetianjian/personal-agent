@@ -77,6 +77,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `HIGH-13` wires proactive triggers into the long-running service path. `pachat serve` starts the proactive daemon when `proactive.enabled` is true, recovers trigger and watcher state on startup, processes due schedules and condition-watch transitions on each poll, dispatches triggered work as pending Runtime workflows, and stops through the server context during shutdown.
 
+`OP-01` adds persistent Skill operator commands. `pachat skill` can validate manifests, import versions into SQLite, list/show/version Skills, enable or disable active versions, and run an enabled Skill through the existing Runtime workflow path.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -108,3 +110,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - Notification tests verify deduplication, severity, delivery state, and quiet-hours suppression.
 - Goal tests verify persisted goals, milestone dependencies, workflow linkage, pause/resume, and bounded re-evaluation.
 - Serve, trigger, and Runtime tests verify the proactive daemon starts from `pachat serve` configuration, recovers/ticks on startup, creates workflow-backed trigger work, and shuts down through context cancellation.
+- CLI and storage tests verify `pachat skill list/show/import/validate/enable/disable/run/versions` against persisted Skill records and Runtime-backed Skill execution.

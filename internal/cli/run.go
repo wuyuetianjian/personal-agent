@@ -58,6 +58,8 @@ func RunWithIO(ctx context.Context, args []string, ioStreams IO) error {
 		return taskCommand(ctx, args[1:], ioStreams.Stdout)
 	case "capability":
 		return capabilityCommand(ctx, args[1:], ioStreams.Stdout)
+	case "skill":
+		return skillCommand(ctx, args[1:], ioStreams.Stdout)
 	case "workflow":
 		return workflowCommand(ctx, args[1:], ioStreams.Stdout)
 	case "knowledge":

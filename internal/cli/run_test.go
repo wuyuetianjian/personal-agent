@@ -251,6 +251,88 @@ func TestTriggerCommands(t *testing.T) {
 	}
 }
 
+func TestSkillCommands(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	dbPath := filepath.Join(dir, "agent.db")
+	writeConfig(t, configPath, dbPath)
+	manifestPath := filepath.Join(dir, "skill.yaml")
+	manifest := `id: skill.summary
+version: 1.0.0
+name: summarize
+description: summarize local memory
+status: draft
+permissions:
+  max_level: read_only
+privacy:
+  max_external_trust: local_private
+requires:
+  capabilities:
+    - memory.search
+workflow:
+  nodes:
+    - id: memory
+      capability: memory.search
+      role: memory
+`
+	if err := os.WriteFile(manifestPath, []byte(manifest), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	var validateOut bytes.Buffer
+	if err := Run(context.Background(), []string{"skill", "validate", "--config", configPath, "--path", manifestPath}, &validateOut); err != nil {
+		t.Fatalf("skill validate error = %v", err)
+	}
+	if !strings.Contains(validateOut.String(), "status=OK") {
+		t.Fatalf("validate output = %q", validateOut.String())
+	}
+	var importOut bytes.Buffer
+	if err := Run(context.Background(), []string{"skill", "import", "--config", configPath, "--path", manifestPath}, &importOut); err != nil {
+		t.Fatalf("skill import error = %v", err)
+	}
+	if !strings.Contains(importOut.String(), "skill_id=skill.summary") {
+		t.Fatalf("import output = %q", importOut.String())
+	}
+	var enableOut bytes.Buffer
+	if err := Run(context.Background(), []string{"skill", "enable", "--config", configPath, "--id", "skill.summary", "--version", "1.0.0"}, &enableOut); err != nil {
+		t.Fatalf("skill enable error = %v", err)
+	}
+	if !strings.Contains(enableOut.String(), "status=enabled") {
+		t.Fatalf("enable output = %q", enableOut.String())
+	}
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"list", []string{"skill", "list", "--config", configPath}, "skill.summary"},
+		{"show", []string{"skill", "show", "--config", configPath, "--id", "skill.summary"}, "version=1.0.0"},
+		{"versions", []string{"skill", "versions", "--config", configPath, "--id", "skill.summary"}, "1.0.0"},
+	} {
+		var out bytes.Buffer
+		if err := Run(context.Background(), tc.args, &out); err != nil {
+			t.Fatalf("%s error = %v", tc.name, err)
+		}
+		if !strings.Contains(out.String(), tc.want) {
+			t.Fatalf("%s output = %q, want %s", tc.name, out.String(), tc.want)
+		}
+	}
+	var runOut bytes.Buffer
+	if err := Run(context.Background(), []string{"skill", "run", "--config", configPath, "--id", "skill.summary", "--input", "local context"}, &runOut); err != nil {
+		t.Fatalf("skill run error = %v", err)
+	}
+	if !strings.Contains(runOut.String(), "skill_id=skill.summary") || !strings.Contains(runOut.String(), "status=completed") {
+		t.Fatalf("run output = %q", runOut.String())
+	}
+	var disableOut bytes.Buffer
+	if err := Run(context.Background(), []string{"skill", "disable", "--config", configPath, "--id", "skill.summary"}, &disableOut); err != nil {
+		t.Fatalf("skill disable error = %v", err)
+	}
+	if !strings.Contains(disableOut.String(), "status=disabled") {
+		t.Fatalf("disable output = %q", disableOut.String())
+	}
+}
+
 func TestP12ExtraCommands(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")

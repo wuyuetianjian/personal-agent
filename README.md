@@ -109,6 +109,9 @@ bin/pachat doctor --config configs/config.example.yaml
 bin/pachat knowledge add --config configs/config.example.yaml ./notes.txt
 bin/pachat knowledge list --config configs/config.example.yaml --json
 bin/pachat project create --config configs/config.example.yaml --name "Local Project"
+bin/pachat skill import --config configs/config.example.yaml --path ./skill.yaml
+bin/pachat skill list --config configs/config.example.yaml
+bin/pachat skill run --config configs/config.example.yaml --id <skill_id> --input "local task"
 bin/pachat workflow events --config configs/config.example.yaml --id <workflow_id>
 bin/pachat trigger create --config configs/config.example.yaml --type manual --id local-trigger
 bin/pachat trigger run-now --config configs/config.example.yaml --id local-trigger
@@ -131,6 +134,8 @@ Current CLI boundary: default task execution is workflow-backed and local-first.
 Cancellation boundary: API/CLI task cancellation propagates through Runtime workflows, the scheduler, Sub-Agent execution, configured model HTTP calls, vector HTTP calls, browser executors, MCP child processes, allowlisted local tool child processes, and Codex/Claude-style coding process runners.
 
 Skill workflow boundary: active high-confidence read-only Skills compile directly into persistent workflows with `skill_id` and `skill_version`, then run through the existing scheduler without calling the Leader planner. Planner-backed and default Runtime workflows remain the fallback when no eligible Skill matches.
+
+Skill operator CLI: `pachat skill validate/import/list/show/versions/enable/disable/run` manages Skill manifests persisted in SQLite and executes enabled Skills through the existing Runtime workflow path.
 
 Background workflow worker: `pachat serve` starts a Runtime worker that resumes unfinished runnable workflows on startup and polls for more work. `paused` and `waiting_approval` workflows are left for operator or approval actions.
 
@@ -320,6 +325,8 @@ Verification-driven early stop is enabled in the workflow engine. Once completed
 
 `HIGH-13` wires proactive triggers into the long-running service path. `pachat serve` uses `proactive.enabled` and `proactive.poll_interval` to recover trigger/watch state, process due work, enqueue Runtime workflows, and stop through context cancellation.
 
+`OP-01` adds the persistent Skill operator CLI: validate/import/list/show/version manifests, enable or disable active versions, and run enabled Skills through Runtime workflows.
+
 P14 documentation lives under `docs/release/` and covers quickstart, user operations, administration, security/threat model, troubleshooting, upgrade, RC E2E scenarios, soak testing, performance baselines, and data-loss recovery drills. The current release package is archive/script based; package manager publishing and Windows binaries are post-v1 work.
 
 ### Validation
@@ -453,6 +460,9 @@ bin/pachat doctor --config configs/config.example.yaml
 bin/pachat knowledge add --config configs/config.example.yaml ./notes.txt
 bin/pachat knowledge list --config configs/config.example.yaml --json
 bin/pachat project create --config configs/config.example.yaml --name "Local Project"
+bin/pachat skill import --config configs/config.example.yaml --path ./skill.yaml
+bin/pachat skill list --config configs/config.example.yaml
+bin/pachat skill run --config configs/config.example.yaml --id <skill_id> --input "local task"
 bin/pachat workflow events --config configs/config.example.yaml --id <workflow_id>
 bin/pachat trigger create --config configs/config.example.yaml --type manual --id local-trigger
 bin/pachat trigger run-now --config configs/config.example.yaml --id local-trigger
@@ -475,6 +485,8 @@ bin/pachat storage integrity --config configs/config.example.yaml
 取消边界：API/CLI task cancel 会向 Runtime workflow、scheduler、Sub-Agent execution、配置的 model HTTP 调用、vector HTTP 调用、browser executor、MCP 子进程、allowlisted 本地 tool 子进程，以及 Codex/Claude 风格 coding process runner 传播。
 
 Skill workflow 边界：active、高置信、read-only Skill 会直接编译为带 `skill_id` 和 `skill_version` 的持久化 workflow，并通过现有 scheduler 执行，不调用 Leader planner。没有合格 Skill 命中时继续回退到 planner-backed 或默认 Runtime workflow。
+
+Skill operator CLI：`pachat skill validate/import/list/show/versions/enable/disable/run` 会管理持久化在 SQLite 中的 Skill manifest，并通过现有 Runtime workflow 路径执行已启用 Skill。
 
 后台 workflow worker：`pachat serve` 会启动 Runtime worker，在服务启动时恢复未完成且可运行的 workflow，并持续轮询后续工作。`paused` 和 `waiting_approval` workflow 会保留给 operator 或 approval 操作处理。
 
@@ -663,6 +675,8 @@ Public escalation 会从 model registry 中启用的 `public_remote` chat model 
 Workflow engine 已启用 verification-driven early stop。当已完成节点的 claims 通过持久化 evidence 验证、满足 verification policy 且没有冲突时，scheduler 会取消剩余 pending work，usage 不会继续增长到被取消的节点之后。
 
 `HIGH-13` 将 proactive trigger 接入长运行服务路径。`pachat serve` 使用 `proactive.enabled` 与 `proactive.poll_interval` 恢复 trigger/watch state、处理到期工作、入队 Runtime workflow，并通过 context cancellation 停止。
+
+`OP-01` 增加持久化 Skill operator CLI：validate/import/list/show/version manifest，enable 或 disable active version，并通过 Runtime workflow 运行已启用 Skill。
 
 P14 文档位于 `docs/release/`，覆盖 quickstart、用户操作、管理员操作、安全/threat model、troubleshooting、upgrade、RC E2E scenario、soak test、performance baseline 和 data-loss recovery drill。当前发布包采用 archive/script 形式；package manager 发布和 Windows 二进制属于 post-v1 工作。
 
