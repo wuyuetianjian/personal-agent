@@ -328,6 +328,8 @@ Configured MCP servers are registered as `mcp.<server>.<tool>` executors and cal
 
 `OP-05` adds `/evidence` and `/evidence/{id}` plus a dashboard Evidence view for claim, redacted preview, source type, trust, privacy, timestamp, and verification status.
 
+`OP-06` completes full backup restore execution with temporary database validation, migration compatibility checks, SQLite integrity checks, existing database pre-restore copies, and rollback on failed final validation.
+
 Public escalation is wired from enabled `public_remote` chat models in the model registry. If a public provider requires Privacy Gateway, `privacy.hmac_secret_env` must resolve or Runtime build fails closed. Secret-bearing payloads are blocked before provider calls.
 
 Task usage can be queried with `pachat task usage --config <path> --id <task_id>`. Usage is aggregated from workflow checkpoints at node, workflow, and task levels. Model providers with reliable usage use provider token counts; external CLI/tool usage remains marked as unknown when token counts are unavailable.
@@ -689,6 +691,8 @@ Runtime capability executor 现在通过本地 executor registry 注册。启用
 `OP-04` 将 `/dashboard/events` 产品化为 typed SSE，覆盖 Task、Workflow、Approval、Notification、Trigger 和 ready event，并支持 `Last-Event-ID` reconnect filtering 与 heartbeat keepalive。
 
 `OP-05` 增加 `/evidence`、`/evidence/{id}` 和 dashboard Evidence 视图，用于查看 claim、脱敏 preview、source type、trust、privacy、timestamp 和 verification status。
+
+`OP-06` 完成完整 backup restore 执行：临时数据库校验、migration compatibility check、SQLite integrity check、现有数据库 pre-restore copy，以及最终校验失败时 rollback。
 
 Public escalation 会从 model registry 中启用的 `public_remote` chat model 接线。如果 public provider 要求 Privacy Gateway，`privacy.hmac_secret_env` 必须能解析，否则 Runtime build 会 fail closed。包含 secret 的 payload 会在调用 provider 前被阻断。
 

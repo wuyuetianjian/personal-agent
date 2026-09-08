@@ -87,6 +87,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `OP-05` adds an evidence viewer. `GET /evidence` and `GET /evidence/{id}` expose claim, redacted evidence preview, source type, trust, privacy, timestamp, and verification status, and the dashboard includes an Evidence view backed by the same API.
 
+`OP-06` completes full restore behavior. `pachat backup restore --dry-run=false --force` extracts the archived database to a temporary path, runs migrations and SQLite integrity checks before and after replacement, protects existing data with a timestamped pre-restore copy, and rolls back the original database if final validation fails.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -123,3 +125,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - API tests verify `GET /dashboard` returns the operator HTML UI with the required minimum sections and real local data.
 - API tests verify dashboard SSE emits typed snapshots and honors `Last-Event-ID` recovery filtering.
 - API tests verify evidence viewer responses include claim/source/trust/privacy/timestamp/verification fields and redact sensitive evidence previews by default.
+- CLI restore tests verify dry-run validation, schema compatibility through migrations, integrity checks, existing database protection, force restore, restored data reads, and pre-restore backup creation.

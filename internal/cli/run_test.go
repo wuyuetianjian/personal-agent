@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"agent/internal/project"
 	"agent/internal/storage"
 	"agent/internal/workflow"
 	"bytes"
@@ -549,6 +550,51 @@ func TestP12KnowledgeProjectAndBackupCommands(t *testing.T) {
 	}
 	if !strings.Contains(restoreOut.String(), "restore=dry-run") {
 		t.Fatalf("restore output = %q", restoreOut.String())
+	}
+
+	restoreConfig := filepath.Join(dir, "restore.yaml")
+	restoreDBPath := filepath.Join(dir, "restore.db")
+	writeConfig(t, restoreConfig, restoreDBPath)
+	existing, err := storage.OpenSQLite(context.Background(), restoreDBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := storage.Migrate(context.Background(), existing.SQL); err != nil {
+		t.Fatal(err)
+	}
+	if err := existing.CreateTask(context.Background(), storage.Task{ID: "existing-task", Title: "existing", Input: "existing", Status: "running", LeaderModelID: "local-planner", PrivacyClass: "local_private"}); err != nil {
+		t.Fatal(err)
+	}
+	existing.Close()
+	var protectedOut bytes.Buffer
+	if err := Run(context.Background(), []string{"backup", "restore", "--config", restoreConfig, "--input", backupPath, "--dry-run=false"}, &protectedOut); err == nil {
+		t.Fatal("backup restore overwrote existing database without --force")
+	}
+	var actualRestoreOut bytes.Buffer
+	if err := Run(context.Background(), []string{"backup", "restore", "--config", restoreConfig, "--input", backupPath, "--dry-run=false", "--force"}, &actualRestoreOut); err != nil {
+		t.Fatalf("backup restore error = %v", err)
+	}
+	if !strings.Contains(actualRestoreOut.String(), "status=ok") || !strings.Contains(actualRestoreOut.String(), "integrity=ok") {
+		t.Fatalf("actual restore output = %q", actualRestoreOut.String())
+	}
+	restored, err := storage.OpenSQLite(context.Background(), restoreDBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored.Close()
+	gotProject, err := (project.Store{DB: restored.SQL}).Get(context.Background(), "proj-1")
+	if err != nil {
+		t.Fatalf("restored project missing: %v", err)
+	}
+	if gotProject.Name != "Test Project" {
+		t.Fatalf("restored project = %#v", gotProject)
+	}
+	backups, err := filepath.Glob(restoreDBPath + ".pre-restore-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(backups) != 1 {
+		t.Fatalf("pre-restore backups = %#v, want one", backups)
 	}
 }
 

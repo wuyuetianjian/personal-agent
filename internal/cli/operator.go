@@ -961,18 +961,21 @@ func backupRestore(ctx context.Context, args []string, stdout io.Writer) error {
 		return err
 	}
 	defer reader.Close()
-	hasDB := false
-	for _, file := range reader.File {
-		if file.Name == "personal-agent.db" {
-			hasDB = true
-			break
-		}
+	tempDir, err := os.MkdirTemp("", "pachat-restore-*")
+	if err != nil {
+		return err
 	}
-	if !hasDB {
-		return errors.New("backup missing personal-agent.db")
+	defer os.RemoveAll(tempDir)
+	extractedDB := filepath.Join(tempDir, "personal-agent.db")
+	if err := extractBackupDB(&reader.Reader, extractedDB); err != nil {
+		return err
+	}
+	integrity, err := validateRestoreDB(ctx, extractedDB)
+	if err != nil {
+		return err
 	}
 	if *dryRun {
-		fmt.Fprintln(stdout, "restore=dry-run status=ok")
+		fmt.Fprintf(stdout, "restore=dry-run status=ok integrity=%s\n", integrity)
 		return nil
 	}
 	if !*force {
@@ -980,6 +983,14 @@ func backupRestore(ctx context.Context, args []string, stdout io.Writer) error {
 			return errors.New("database exists; rerun with --force to restore")
 		}
 	}
+	if err := restoreSQLiteDB(ctx, extractedDB, cfg.Storage.SQLite.Path, *force); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "restore=%s status=ok integrity=%s\n", cfg.Storage.SQLite.Path, integrity)
+	return nil
+}
+
+func extractBackupDB(reader *zip.Reader, output string) error {
 	for _, file := range reader.File {
 		if file.Name != "personal-agent.db" {
 			continue
@@ -989,10 +1000,7 @@ func backupRestore(ctx context.Context, args []string, stdout io.Writer) error {
 			return err
 		}
 		defer rc.Close()
-		if err := os.MkdirAll(filepath.Dir(cfg.Storage.SQLite.Path), 0o755); err != nil {
-			return err
-		}
-		out, err := os.Create(cfg.Storage.SQLite.Path)
+		out, err := os.Create(output)
 		if err != nil {
 			return err
 		}
@@ -1000,12 +1008,87 @@ func backupRestore(ctx context.Context, args []string, stdout io.Writer) error {
 			out.Close()
 			return err
 		}
-		if err := out.Close(); err != nil {
+		return out.Close()
+	}
+	return errors.New("backup missing personal-agent.db")
+}
+
+func validateRestoreDB(ctx context.Context, path string) (string, error) {
+	db, err := storage.OpenSQLite(ctx, path)
+	if err != nil {
+		return "", err
+	}
+	defer db.Close()
+	if err := storage.Migrate(ctx, db.SQL); err != nil {
+		return "", err
+	}
+	integrity, err := storage.IntegrityCheck(ctx, db.SQL)
+	if err != nil {
+		return "", err
+	}
+	if integrity != "ok" {
+		return integrity, fmt.Errorf("restored database integrity check failed: %s", integrity)
+	}
+	return integrity, nil
+}
+
+func restoreSQLiteDB(ctx context.Context, source string, target string, force bool) error {
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	restoreTmp := target + ".restore-tmp"
+	_ = os.Remove(restoreTmp)
+	if err := copyFile(source, restoreTmp); err != nil {
+		return err
+	}
+	if _, err := validateRestoreDB(ctx, restoreTmp); err != nil {
+		_ = os.Remove(restoreTmp)
+		return err
+	}
+	preRestore := ""
+	if _, err := os.Stat(target); err == nil {
+		if !force {
+			_ = os.Remove(restoreTmp)
+			return errors.New("database exists; rerun with --force to restore")
+		}
+		preRestore = target + ".pre-restore-" + time.Now().UTC().Format("20060102T150405Z")
+		if err := os.Rename(target, preRestore); err != nil {
+			_ = os.Remove(restoreTmp)
 			return err
 		}
 	}
-	fmt.Fprintf(stdout, "restore=%s status=ok\n", cfg.Storage.SQLite.Path)
+	if err := os.Rename(restoreTmp, target); err != nil {
+		if preRestore != "" {
+			_ = os.Rename(preRestore, target)
+		}
+		_ = os.Remove(restoreTmp)
+		return err
+	}
+	if _, err := validateRestoreDB(ctx, target); err != nil {
+		_ = os.Remove(target)
+		if preRestore != "" {
+			_ = os.Rename(preRestore, target)
+		}
+		return err
+	}
 	return nil
+}
+
+func copyFile(source string, target string) error {
+	in, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(target)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 func retentionCommand(ctx context.Context, args []string, stdout io.Writer) error {
