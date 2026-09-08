@@ -11,6 +11,7 @@ import (
 	"agent/internal/agent"
 	"agent/internal/observability"
 	"agent/internal/orchestrator"
+	"agent/internal/skill"
 	"agent/internal/verification"
 	"agent/internal/workflow"
 )
@@ -136,7 +137,7 @@ func (r *Runtime) runViaWorkflow(ctx context.Context, req RunRequest) (*RunResul
 	if err != nil {
 		return nil, err
 	}
-	nodes, err := r.planWorkflowNodes(ctx, workflowID, req)
+	plan, err := r.planWorkflow(ctx, workflowID, req)
 	if err != nil {
 		_ = r.Storage.FailTask(ctx, req.TaskID, "planning_failed", err.Error())
 		return nil, err
@@ -146,9 +147,9 @@ func (r *Runtime) runViaWorkflow(ctx context.Context, req RunRequest) (*RunResul
 		TaskID:       req.TaskID,
 		Status:       workflow.StatusPending,
 		InputJSON:    string(input),
-		SkillID:      "runtime.default",
-		SkillVersion: "v1",
-	}, nodes); err != nil {
+		SkillID:      plan.SkillID,
+		SkillVersion: plan.SkillVersion,
+	}, plan.Nodes); err != nil {
 		_ = r.Storage.FailTask(ctx, req.TaskID, "workflow_create_failed", err.Error())
 		return nil, err
 	}
@@ -240,6 +241,90 @@ func agentUsageFromJSON(raw string) agent.Usage {
 		return agent.Usage{}
 	}
 	return usage
+}
+
+type workflowPlan struct {
+	Nodes        []workflow.Node
+	SkillID      string
+	SkillVersion string
+}
+
+func (r *Runtime) planWorkflow(ctx context.Context, workflowID string, req RunRequest) (workflowPlan, error) {
+	if plan, matched, err := r.planSkillWorkflow(ctx, workflowID, req); matched || err != nil {
+		return plan, err
+	}
+	nodes, err := r.planWorkflowNodes(ctx, workflowID, req)
+	if err != nil {
+		return workflowPlan{}, err
+	}
+	return workflowPlan{Nodes: nodes, SkillID: "runtime.default", SkillVersion: "v1"}, nil
+}
+
+const highConfidenceSkillMatch = 1.0
+
+func (r *Runtime) planSkillWorkflow(ctx context.Context, workflowID string, req RunRequest) (workflowPlan, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return workflowPlan{}, false, err
+	}
+	if r.Skills == nil || r.Capabilities == nil {
+		return workflowPlan{}, false, nil
+	}
+	matches := r.Skills.Match(skill.MatchRequest{
+		Intent:       req.Input,
+		PrivacyClass: defaultPrivacyClass(req.PrivacyClass),
+	})
+	for _, match := range matches {
+		if match.Score < highConfidenceSkillMatch || !r.skillIsReadOnly(match.Manifest) {
+			continue
+		}
+		nodes, err := r.compileSkillWorkflow(workflowID, match.Manifest)
+		if err != nil {
+			return workflowPlan{}, true, err
+		}
+		return workflowPlan{Nodes: nodes, SkillID: match.Manifest.ID, SkillVersion: match.Manifest.Version}, true, nil
+	}
+	return workflowPlan{}, false, nil
+}
+
+func (r *Runtime) skillIsReadOnly(manifest skill.Manifest) bool {
+	if manifest.Permissions.MaxLevel != "" && manifest.Permissions.MaxLevel != "read_only" {
+		return false
+	}
+	if len(manifest.Workflow.Nodes) == 0 {
+		return false
+	}
+	for _, node := range manifest.Workflow.Nodes {
+		if node.Capability == "" {
+			return false
+		}
+		capDef, ok := r.Capabilities.Lookup(node.Capability)
+		if !ok || !capDef.Enabled || capDef.Health == "unavailable" {
+			return false
+		}
+		if capDef.SideEffectLevel != "" && capDef.SideEffectLevel != "read_only" {
+			return false
+		}
+	}
+	return true
+}
+
+func (r *Runtime) compileSkillWorkflow(workflowID string, manifest skill.Manifest) ([]workflow.Node, error) {
+	if err := skill.Validate(manifest, r.Capabilities); err != nil {
+		return nil, err
+	}
+	nodes := make([]workflow.Node, 0, len(manifest.Workflow.Nodes))
+	for _, node := range manifest.Workflow.Nodes {
+		nodes = append(nodes, workflow.Node{
+			WorkflowID:     workflowID,
+			NodeID:         node.ID,
+			CapabilityID:   node.Capability,
+			Role:           node.Role,
+			Dependencies:   append([]string(nil), node.DependsOn...),
+			Status:         workflow.NodePending,
+			IdempotencyKey: workflowID + ":" + node.ID,
+		})
+	}
+	return nodes, nil
 }
 
 func (r *Runtime) planWorkflowNodes(ctx context.Context, workflowID string, req RunRequest) ([]workflow.Node, error) {

@@ -57,6 +57,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `BLOCK-06` verifies unified cancellation conformance across the Runtime backend boundary. Cancellation now has tests from model HTTP calls through vector HTTP, browser, MCP, and allowlisted tool executors, including MCP/tool child process cancellation. The existing coding agent process runner keeps context-backed subprocess cancellation for Codex/Claude-style backends.
 
+`HIGH-04` connects mature read-only Skills to Runtime workflow execution. Active Skills with high match confidence and read-only capability graphs compile directly into persistent workflow nodes with `skill_id` and `skill_version`, then run through the existing scheduler. Leader planning is skipped for those matches; planner/default workflow paths remain the fallback when no eligible Skill matches.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -78,3 +80,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - Runtime and CLI tests verify node/workflow/task usage aggregation, unknown usage reporting, and hard-budget enforcement from accumulated checkpoint usage.
 - Runtime tests verify verification-driven early stop cancels pending work and keeps usage limited to completed nodes.
 - Model, RAG, and Runtime tests verify context cancellation is honored by model HTTP calls, vector HTTP calls, browser executors, MCP executors, MCP child processes, and allowlisted tool child processes.
+- Runtime tests verify a high-confidence read-only Skill match compiles into a persistent workflow and does not call the Leader planner.

@@ -19,6 +19,7 @@ import (
 	"agent/internal/orchestrator"
 	"agent/internal/project"
 	"agent/internal/rag"
+	"agent/internal/skill"
 	"agent/internal/storage"
 	"agent/internal/workflow"
 )
@@ -576,6 +577,62 @@ func TestWorkflowVerificationEarlyStopCancelsRemainingWork(t *testing.T) {
 	}
 }
 
+func TestRuntimeUsesHighConfidenceReadOnlySkillWithoutPlanner(t *testing.T) {
+	ctx := context.Background()
+	db := openRuntimeTestDB(t)
+	rt := NewLocal(configForRuntimeTest(), db, &orchestrator.InMemoryEvidenceBus{})
+	planner := &countingPlanner{}
+	rt.Planner = planner
+	if err := rt.Skills.Add(skill.Manifest{
+		ID:          "skill.summary",
+		Version:     "1.0.0",
+		Name:        "summarize",
+		Description: "summarize local memory",
+		Status:      skill.StatusActive,
+		Permissions: skill.PermissionPolicy{
+			MaxLevel: "read_only",
+		},
+		Requires: skill.Requirements{Capabilities: []string{"memory.search"}},
+		Privacy:  skill.PrivacyPolicy{MaxExternalTrust: "local_private"},
+		Workflow: skill.Workflow{Nodes: []skill.Node{
+			{ID: "memory", Capability: "memory.search", Role: string(agent.RoleMemory)},
+		}},
+	}, rt.Capabilities); err != nil {
+		t.Fatalf("skill Add() error = %v", err)
+	}
+	if err := db.CreateTask(ctx, storage.Task{
+		ID:            "task-skill",
+		Title:         "skill",
+		Input:         "summarize",
+		Status:        "running",
+		LeaderModelID: "local-planner",
+		PrivacyClass:  "local_private",
+	}); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	if _, err := rt.Run(ctx, RunRequest{TaskID: "task-skill", Input: "summarize", PrivacyClass: "local_private"}); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if planner.calls != 0 {
+		t.Fatalf("planner calls = %d, want 0 for high-confidence skill match", planner.calls)
+	}
+	runs, err := rt.Workflows.List(ctx, 1)
+	if err != nil {
+		t.Fatalf("workflow List() error = %v", err)
+	}
+	if len(runs) != 1 || runs[0].SkillID != "skill.summary" || runs[0].SkillVersion != "1.0.0" {
+		t.Fatalf("workflow run = %#v, want skill metadata", runs)
+	}
+	checkpoints, err := rt.Workflows.ListCheckpoints(ctx, runs[0].ID)
+	if err != nil {
+		t.Fatalf("ListCheckpoints() error = %v", err)
+	}
+	if len(checkpoints) != 1 || checkpoints[0].NodeID != "memory" {
+		t.Fatalf("checkpoints = %#v, want compiled skill workflow node", checkpoints)
+	}
+}
+
 func TestBrowserExecutorHonorsContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -663,6 +720,15 @@ func (p *queuedChatProvider) Chat(ctx context.Context, request model.ChatRequest
 	response := p.responses[p.calls]
 	p.calls++
 	return response, nil
+}
+
+type countingPlanner struct {
+	calls int
+}
+
+func (p *countingPlanner) Plan(ctx context.Context, req RunRequest) ([]agent.TaskNode, model.Usage, error) {
+	p.calls++
+	return nil, model.Usage{}, errors.New("planner should not be called")
 }
 
 type fakeBrowserTool struct {

@@ -129,6 +129,8 @@ Current CLI boundary: default task execution is workflow-backed and local-first.
 
 Cancellation boundary: API/CLI task cancellation propagates through Runtime workflows, the scheduler, Sub-Agent execution, configured model HTTP calls, vector HTTP calls, browser executors, MCP child processes, allowlisted local tool child processes, and Codex/Claude-style coding process runners.
 
+Skill workflow boundary: active high-confidence read-only Skills compile directly into persistent workflows with `skill_id` and `skill_version`, then run through the existing scheduler without calling the Leader planner. Planner-backed and default Runtime workflows remain the fallback when no eligible Skill matches.
+
 ### P1 Model And Privacy Foundation
 
 P1 adds library-level model and privacy controls:
@@ -449,6 +451,8 @@ bin/pachat storage integrity --config configs/config.example.yaml
 当前 CLI 边界：默认 task execution 已通过 workflow 和 scheduler 执行，并保持本地优先。Browser、Coding、MCP 和 public model 路径必须显式配置 executor/provider，否则按治理策略 fail closed。
 
 取消边界：API/CLI task cancel 会向 Runtime workflow、scheduler、Sub-Agent execution、配置的 model HTTP 调用、vector HTTP 调用、browser executor、MCP 子进程、allowlisted 本地 tool 子进程，以及 Codex/Claude 风格 coding process runner 传播。
+
+Skill workflow 边界：active、高置信、read-only Skill 会直接编译为带 `skill_id` 和 `skill_version` 的持久化 workflow，并通过现有 scheduler 执行，不调用 Leader planner。没有合格 Skill 命中时继续回退到 planner-backed 或默认 Runtime workflow。
 
 ### P1 模型与隐私基础
 

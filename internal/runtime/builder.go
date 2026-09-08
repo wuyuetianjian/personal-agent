@@ -14,6 +14,7 @@ import (
 	"agent/internal/project"
 	"agent/internal/rag"
 	"agent/internal/reliability"
+	"agent/internal/skill"
 	"agent/internal/storage"
 	"agent/internal/verification"
 	"agent/internal/workflow"
@@ -28,6 +29,7 @@ type Runtime struct {
 	Evidence     EvidenceStore
 	Verifier     verification.Verifier
 	Capabilities *capability.Registry
+	Skills       *skill.Registry
 	Workflows    workflow.Store
 	Projects     project.Store
 	Workflow     *WorkflowEngine
@@ -160,6 +162,7 @@ func NewLocal(cfg config.Config, db *storage.DB, events orchestrator.EvidenceBus
 		Evidence:     SQLiteEvidenceStore{DB: db.SQL},
 		Verifier:     verification.Verifier{Policy: verification.DefaultPolicy()},
 		Capabilities: buildCapabilities(cfg),
+		Skills:       skill.NewRegistry(),
 		Workflows:    workflow.Store{DB: db.SQL},
 		Projects:     project.Store{DB: db.SQL},
 		Executors:    NewCapabilityExecutorRegistry(),
