@@ -295,6 +295,50 @@ func TestDashboardUIIncludesOperatorSections(t *testing.T) {
 	}
 }
 
+func TestDashboardEventsIncludeTypedSnapshotsAndResume(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	confirmations := permission.SQLiteConfirmationStore{DB: db.SQL}
+	server := NewServer(db, nil, confirmations, "local-planner")
+	server.Triggers = trigger.Store{DB: db.SQL}
+	server.Notifications = notification.Store{DB: db.SQL}
+	now := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	if err := db.CreateTask(ctx, storage.Task{ID: "task-sse", Title: "SSE task", Input: "events", Status: "running", CreatedAt: now, UpdatedAt: now, LeaderModelID: "local-planner", PrivacyClass: "local_private"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := (workflow.Store{DB: db.SQL}).Create(ctx, workflow.Run{ID: "wf-sse", TaskID: "task-sse", Status: workflow.StatusPending, UpdatedAt: now.Add(time.Second)}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := confirmations.Request(ctx, permission.Request{ID: "confirm-sse", TaskID: "task-sse", Action: permission.ActionBrowserWrite, Risk: permission.RiskMedium, Target: "browser", ProposedEffect: "write", RequestedAt: now.Add(2 * time.Second)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Notifications.Put(ctx, notification.Notification{ID: "note-sse", Title: "SSE note", CreatedAt: now.Add(3 * time.Second)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Triggers.Put(ctx, trigger.Trigger{ID: "trigger-sse", ProjectID: "proj-sse", Type: trigger.TypeManual, Enabled: true, CreatedAt: now.Add(4 * time.Second)}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := httptest.NewRecorder()
+	server.Handler().ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/dashboard/events?once=1", nil))
+	if resp.Code != http.StatusOK {
+		t.Fatalf("events status=%d body=%s", resp.Code, resp.Body.String())
+	}
+	body := resp.Body.String()
+	for _, want := range []string{"event: task", "event: workflow", "event: approval", "event: notification", "event: trigger", "event: ready"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("events missing %q in %s", want, body)
+		}
+	}
+	req := httptest.NewRequest(http.MethodGet, "/dashboard/events?once=1", nil)
+	req.Header.Set("Last-Event-ID", eventCursor(now.Add(10*time.Second), "zz", "zz"))
+	resumed := httptest.NewRecorder()
+	server.Handler().ServeHTTP(resumed, req)
+	if strings.Contains(resumed.Body.String(), "event: task") || !strings.Contains(resumed.Body.String(), "event: ready") {
+		t.Fatalf("resume body=%s", resumed.Body.String())
+	}
+}
+
 func TestSecurityPolicyMiddleware(t *testing.T) {
 	db := openTestDB(t)
 	server := NewServer(db, nil, permission.NewInMemoryConfirmationStore(), "local-planner")

@@ -324,6 +324,8 @@ Configured MCP servers are registered as `mcp.<server>.<tool>` executors and cal
 
 `OP-03` replaces the dashboard stub with a minimal operator console at `/dashboard`, including Chat/Run, Tasks, Workflows, Approvals, Notifications, Projects, Skills, Capabilities Health, and Triggers views.
 
+`OP-04` productizes `/dashboard/events` as typed SSE for Task, Workflow, Approval, Notification, Trigger, and ready events with `Last-Event-ID` reconnect filtering and heartbeat keepalive.
+
 Public escalation is wired from enabled `public_remote` chat models in the model registry. If a public provider requires Privacy Gateway, `privacy.hmac_secret_env` must resolve or Runtime build fails closed. Secret-bearing payloads are blocked before provider calls.
 
 Task usage can be queried with `pachat task usage --config <path> --id <task_id>`. Usage is aggregated from workflow checkpoints at node, workflow, and task levels. Model providers with reliable usage use provider token counts; external CLI/tool usage remains marked as unknown when token counts are unavailable.
@@ -681,6 +683,8 @@ Runtime capability executor 现在通过本地 executor registry 注册。启用
 `OP-02` 增加 MCP operator 命令：列出已配置 server、检查 command 可用性、枚举 MCP tool capability，并通过 `pachat mcp test` 走 Runtime workflow execution 对配置的 tool 做 smoke test。
 
 `OP-03` 将 `/dashboard` 从 stub 替换为最小 operator console，包含 Chat/Run、Tasks、Workflows、Approvals、Notifications、Projects、Skills、Capabilities Health 和 Triggers 视图。
+
+`OP-04` 将 `/dashboard/events` 产品化为 typed SSE，覆盖 Task、Workflow、Approval、Notification、Trigger 和 ready event，并支持 `Last-Event-ID` reconnect filtering 与 heartbeat keepalive。
 
 Public escalation 会从 model registry 中启用的 `public_remote` chat model 接线。如果 public provider 要求 Privacy Gateway，`privacy.hmac_secret_env` 必须能解析，否则 Runtime build 会 fail closed。包含 secret 的 payload 会在调用 provider 前被阻断。
 

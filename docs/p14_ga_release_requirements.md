@@ -83,6 +83,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `OP-03` replaces the dashboard JSON stub with a minimal operator UI. `GET /dashboard` renders a responsive HTML console with Chat/Run, Tasks, Workflows, Approvals, Notifications, Projects, Skills, Capabilities Health, and Triggers views backed by existing local APIs and SQLite stores.
 
+`OP-04` productizes dashboard SSE events. `GET /dashboard/events` emits typed Task, Workflow, Approval, Notification, Trigger, and ready events, supports `Last-Event-ID` snapshot filtering for reconnect recovery, and keeps long-lived clients alive with heartbeat events.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -117,3 +119,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - CLI and storage tests verify `pachat skill list/show/import/validate/enable/disable/run/versions` against persisted Skill records and Runtime-backed Skill execution.
 - CLI tests verify `pachat mcp list/health/tools/test` for configured MCP stdio servers and Runtime-backed tool execution.
 - API tests verify `GET /dashboard` returns the operator HTML UI with the required minimum sections and real local data.
+- API tests verify dashboard SSE emits typed snapshots and honors `Last-Event-ID` recovery filtering.

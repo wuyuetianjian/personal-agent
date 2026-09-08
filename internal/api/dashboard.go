@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"html/template"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -48,6 +50,12 @@ type dashboardTrigger struct {
 	Type      string `json:"type"`
 	Enabled   bool   `json:"enabled"`
 	SkillID   string `json:"skill_id"`
+}
+
+type dashboardSSEEvent struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
+	Data any    `json:"data"`
 }
 
 func (s Server) dashboard(w http.ResponseWriter, r *http.Request) {
@@ -150,8 +158,98 @@ func (s Server) sqlDB() *sql.DB {
 func (s Server) dashboardEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("event: ready\ndata: {\"status\":\"ok\"}\n\n"))
+	flusher, _ := w.(http.Flusher)
+	lastID := r.Header.Get("Last-Event-ID")
+	for _, event := range s.collectDashboardEvents(r.Context(), lastID) {
+		writeDashboardSSE(w, event)
+	}
+	writeDashboardSSE(w, dashboardSSEEvent{ID: eventCursor(time.Now().UTC(), "ready", "ready"), Type: "ready", Data: map[string]string{"status": "ok"}})
+	if flusher != nil {
+		flusher.Flush()
+	}
+	if r.URL.Query().Get("once") == "1" {
+		return
+	}
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case now := <-ticker.C:
+			writeDashboardSSE(w, dashboardSSEEvent{ID: eventCursor(now.UTC(), "ready", "heartbeat"), Type: "ready", Data: map[string]string{"status": "heartbeat"}})
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+	}
+}
+
+func (s Server) collectDashboardEvents(ctx context.Context, lastID string) []dashboardSSEEvent {
+	events := []dashboardSSEEvent{}
+	add := func(at time.Time, kind string, id string, data any) {
+		cursor := eventCursor(at, kind, id)
+		if lastID != "" && cursor <= lastID {
+			return
+		}
+		events = append(events, dashboardSSEEvent{ID: cursor, Type: kind, Data: data})
+	}
+	if tasks, err := s.Tasks.ListTasks(ctx, 50); err == nil {
+		for _, item := range tasks {
+			add(item.UpdatedAt, "task", item.ID, taskToResponse(item))
+		}
+	}
+	if db := s.sqlDB(); db != nil {
+		if runs, err := (workflow.Store{DB: db}).List(ctx, 50); err == nil {
+			for _, item := range runs {
+				add(item.UpdatedAt, "workflow", item.ID, item)
+			}
+		}
+	}
+	if lister, ok := s.Confirmations.(interface {
+		List(context.Context, string, int) ([]permission.Request, error)
+	}); ok {
+		if approvals, err := lister.List(ctx, "", 50); err == nil {
+			for _, item := range approvals {
+				status := "pending"
+				if statuses, ok := s.Confirmations.(ConfirmationStatusStore); ok {
+					if got, err := statuses.Status(ctx, item.ID); err == nil && got != "" {
+						status = got
+					}
+				}
+				add(item.RequestedAt, "approval", item.ID, confirmationToResponse(item, status))
+			}
+		}
+	}
+	if s.Notifications.DB != nil {
+		if notifications, err := s.Notifications.List(ctx, 50); err == nil {
+			for _, item := range notifications {
+				add(item.CreatedAt, "notification", item.ID, dashboardNotification{ID: item.ID, Title: item.Title, Severity: item.Severity, Status: item.Status, DeliveryState: item.DeliveryState, CreatedAt: item.CreatedAt.Format(time.RFC3339)})
+			}
+		}
+	}
+	if s.Triggers.DB != nil {
+		if triggers, err := s.Triggers.List(ctx); err == nil {
+			for _, item := range triggers {
+				add(item.UpdatedAt, "trigger", item.ID, dashboardTrigger{ID: item.ID, ProjectID: item.ProjectID, Type: string(item.Type), Enabled: item.Enabled, SkillID: item.SkillID})
+			}
+		}
+	}
+	return events
+}
+
+func writeDashboardSSE(w io.Writer, event dashboardSSEEvent) {
+	raw, _ := json.Marshal(event.Data)
+	_, _ = fmt.Fprintf(w, "id: %s\nevent: %s\ndata: %s\n\n", event.ID, event.Type, raw)
+}
+
+func eventCursor(at time.Time, kind string, id string) string {
+	if at.IsZero() {
+		at = time.Unix(0, 0).UTC()
+	}
+	return fmt.Sprintf("%020d:%s:%s", at.UTC().UnixNano(), kind, id)
 }
 
 var dashboardTemplate = template.Must(template.New("dashboard").Parse(`<!doctype html>
@@ -175,6 +273,7 @@ var dashboardTemplate = template.Must(template.New("dashboard").Parse(`<!doctype
 <section class="workbench">
 <div class="panel"><header><h2 id="view-title">Chat / Run</h2><span class="tag" id="view-count">ready</span></header><div class="content" id="view"></div></div>
 <aside class="grid">
+<div class="panel"><header><h2>Events</h2><span class="tag" id="event-state">connecting</span></header><div class="content"><div class="toast mono" id="event-log">waiting</div></div></div>
 <div class="panel"><header><h2>Approvals</h2><span class="tag warn" id="approval-count">0</span></header><div class="content" id="approvals"></div></div>
 <div class="panel"><header><h2>Notifications</h2><span class="tag" id="notification-count">0</span></header><div class="content" id="notifications"></div></div>
 </aside>
@@ -196,7 +295,8 @@ function side(){el("approval-count").textContent=(data.approvals||[]).length;el(
 function render(){drawNav();drawStats();let active=views.find(v=>v[0]===current)||views[0];el("view-title").textContent=active[1];el("view").innerHTML=renderView();el("view-count").textContent=current==="run"?"ready":((data[current]||[]).length+" rows");el("subtitle").textContent="leader="+(data.leader_model||"local")+" models="+((data.models||[]).join(",")||"none");side();let form=el("run-form");if(form)form.onsubmit=submitRun}
 async function submitRun(e){e.preventDefault();let fd=new FormData(e.currentTarget);let body={input:fd.get("input"),project_id:fd.get("project_id")};el("run-result").textContent="running";let res=await fetch("/tasks",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});let out=await res.json();el("run-result").textContent=res.ok?("task "+out.id+" "+out.status):("error "+(out.error||res.status));await refresh()}
 async function refresh(){for(let item of [["tasks","/tasks?limit=20"],["notifications","/notifications"],["triggers","/triggers"],["models","/models/discover"]]){try{let res=await fetch(item[1]);if(res.ok){let json=await res.json();data[item[0]]=json[item[0]]||data[item[0]]}}catch(e){}}render()}
-el("refresh").onclick=refresh;render();
+function connectEvents(){if(!window.EventSource)return;let source=new EventSource("/dashboard/events");source.onopen=()=>{el("event-state").textContent="live"};source.onerror=()=>{el("event-state").textContent="retrying"};["task","workflow","approval","notification","trigger","ready"].forEach(name=>source.addEventListener(name,e=>{el("event-log").textContent=name+" "+(e.lastEventId||"");try{if(name==="task")refresh()}catch(err){}}))}
+el("refresh").onclick=refresh;render();connectEvents();
 </script>
 </body>
 </html>`))
