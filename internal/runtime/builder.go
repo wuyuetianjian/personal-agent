@@ -27,6 +27,7 @@ type Runtime struct {
 	RAG          Pipeline
 	Memory       MemoryService
 	Evidence     EvidenceStore
+	SideEffects  SideEffectStore
 	Verifier     verification.Verifier
 	Capabilities *capability.Registry
 	Skills       *skill.Registry
@@ -160,6 +161,7 @@ func NewLocal(cfg config.Config, db *storage.DB, events orchestrator.EvidenceBus
 		RAG:          pipeline,
 		Memory:       SQLiteMemoryService{Episodic: memory.NewStore(db.SQL), Semantic: memory.NewSemanticStore(db.SQL, ragStore)},
 		Evidence:     SQLiteEvidenceStore{DB: db.SQL},
+		SideEffects:  SQLiteSideEffectStore{DB: db.SQL},
 		Verifier:     verification.Verifier{Policy: verification.DefaultPolicy()},
 		Capabilities: buildCapabilities(cfg),
 		Skills:       skill.NewRegistry(),

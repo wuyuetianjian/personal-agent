@@ -670,6 +670,94 @@ func TestWorkflowWorkerRecoversRunnableWorkflowOnStartup(t *testing.T) {
 	}
 }
 
+func TestSideEffectIdempotencySkipsCompletedDuplicate(t *testing.T) {
+	ctx := context.Background()
+	db := openRuntimeTestDB(t)
+	cfg := configForRuntimeTest()
+	cfg.Browser.Enabled = true
+	rt := NewLocal(cfg, db, &orchestrator.InMemoryEvidenceBus{})
+	executor := &countingCapabilityExecutor{text: "submitted"}
+	rt.Executors.Register("browser.write", executor)
+
+	for _, workflowID := range []string{"wf-submit-a", "wf-submit-b"} {
+		if err := rt.Workflows.Create(ctx, workflow.Run{
+			ID:        workflowID,
+			TaskID:    "task-submit",
+			Status:    workflow.StatusPending,
+			InputJSON: `{"input":"submit form"}`,
+		}, []workflow.Node{{
+			WorkflowID:     workflowID,
+			NodeID:         "submit",
+			CapabilityID:   "browser.write",
+			Role:           string(agent.RoleBrowser),
+			Status:         workflow.NodePending,
+			IdempotencyKey: "submit-once",
+		}}); err != nil {
+			t.Fatalf("workflow Create(%s) error = %v", workflowID, err)
+		}
+		if err := rt.Workflow.RunWorkflow(ctx, workflowID); err != nil {
+			t.Fatalf("RunWorkflow(%s) error = %v", workflowID, err)
+		}
+	}
+	if executor.calls != 1 {
+		t.Fatalf("executor calls = %d, want 1", executor.calls)
+	}
+	record, err := rt.SideEffects.(SQLiteSideEffectStore).Get(ctx, "submit-once")
+	if err != nil {
+		t.Fatalf("side effect Get() error = %v", err)
+	}
+	if record.Status != "completed" || record.ResultRef != "submitted" {
+		t.Fatalf("side effect record = %#v, want completed submitted", record)
+	}
+}
+
+func TestSideEffectIdempotencyBlocksRecoveryDuplicate(t *testing.T) {
+	ctx := context.Background()
+	db := openRuntimeTestDB(t)
+	cfg := configForRuntimeTest()
+	cfg.Browser.Enabled = true
+	rt := NewLocal(cfg, db, &orchestrator.InMemoryEvidenceBus{})
+	executor := &countingCapabilityExecutor{text: "should not run"}
+	rt.Executors.Register("browser.write", executor)
+	if _, claimed, err := rt.SideEffects.Claim(ctx, SideEffectRecord{
+		IdempotencyKey: "crash-submit",
+		WorkflowID:     "wf-before-crash",
+		NodeID:         "submit",
+		CapabilityID:   "browser.write",
+	}); err != nil || !claimed {
+		t.Fatalf("Claim() claimed=%t error=%v", claimed, err)
+	}
+	if err := rt.Workflows.Create(ctx, workflow.Run{
+		ID:        "wf-after-crash",
+		TaskID:    "task-submit",
+		Status:    workflow.StatusRunning,
+		InputJSON: `{"input":"submit form"}`,
+	}, []workflow.Node{{
+		WorkflowID:     "wf-after-crash",
+		NodeID:         "submit",
+		CapabilityID:   "browser.write",
+		Role:           string(agent.RoleBrowser),
+		Status:         workflow.NodePending,
+		IdempotencyKey: "crash-submit",
+	}}); err != nil {
+		t.Fatalf("workflow Create() error = %v", err)
+	}
+	err := rt.Workflow.RunWorkflow(ctx, "wf-after-crash")
+	if !errors.Is(err, ErrSideEffectAlreadyClaimed) {
+		t.Fatalf("RunWorkflow() error = %v, want ErrSideEffectAlreadyClaimed", err)
+	}
+	if executor.calls != 0 {
+		t.Fatalf("executor calls = %d, want 0", executor.calls)
+	}
+	run, err := rt.Workflows.Get(ctx, "wf-after-crash")
+	if err != nil {
+		t.Fatalf("workflow Get() error = %v", err)
+	}
+	if run.Status != workflow.StatusFailed {
+		t.Fatalf("workflow status = %s, want failed", run.Status)
+	}
+}
+
 func TestBrowserExecutorHonorsContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -766,6 +854,22 @@ type countingPlanner struct {
 func (p *countingPlanner) Plan(ctx context.Context, req RunRequest) ([]agent.TaskNode, model.Usage, error) {
 	p.calls++
 	return nil, model.Usage{}, errors.New("planner should not be called")
+}
+
+type countingCapabilityExecutor struct {
+	text  string
+	calls int
+}
+
+func (e *countingCapabilityExecutor) Execute(ctx context.Context, node agent.TaskNode, input workflowInput) (agent.Result, error) {
+	e.calls++
+	return agent.Result{
+		TaskID: node.TaskID,
+		NodeID: node.ID,
+		Role:   node.Role,
+		Text:   e.text,
+		Usage:  agentUsage(node.Input, e.text),
+	}, ctx.Err()
 }
 
 type fakeBrowserTool struct {

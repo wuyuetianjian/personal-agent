@@ -133,6 +133,8 @@ Skill workflow boundary: active high-confidence read-only Skills compile directl
 
 Background workflow worker: `pachat serve` starts a Runtime worker that resumes unfinished runnable workflows on startup and polls for more work. `paused` and `waiting_approval` workflows are left for operator or approval actions.
 
+Side-effect idempotency: non-read-only workflow capabilities claim a persisted idempotency key before execution. Replays from duplicate events, retries, or crash recovery do not re-run already claimed browser writes, MCP/tool mutations, coding pushes, PR creation, deploy, or message-send style effects.
+
 ### P1 Model And Privacy Foundation
 
 P1 adds library-level model and privacy controls:
@@ -457,6 +459,8 @@ bin/pachat storage integrity --config configs/config.example.yaml
 Skill workflow 边界：active、高置信、read-only Skill 会直接编译为带 `skill_id` 和 `skill_version` 的持久化 workflow，并通过现有 scheduler 执行，不调用 Leader planner。没有合格 Skill 命中时继续回退到 planner-backed 或默认 Runtime workflow。
 
 后台 workflow worker：`pachat serve` 会启动 Runtime worker，在服务启动时恢复未完成且可运行的 workflow，并持续轮询后续工作。`paused` 和 `waiting_approval` workflow 会保留给 operator 或 approval 操作处理。
+
+Side-effect idempotency：非 read-only workflow capability 在执行前会持久化认领 idempotency key。duplicate event、retry 或 crash recovery 触发的 replay 不会重复执行已认领的 browser write、MCP/tool mutation、coding push、PR create、deploy 或 message send 类 side effect。
 
 ### P1 模型与隐私基础
 

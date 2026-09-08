@@ -132,6 +132,9 @@ func (e *WorkflowEngine) RunWorkflow(ctx context.Context, workflowID string) err
 			if nodeResult.ErrorCategory == agent.ErrorBudgetExceeded {
 				return ErrWorkflowBudgetExceeded
 			}
+			if nodeResult.ErrorMessage == ErrSideEffectAlreadyClaimed.Error() {
+				return ErrSideEffectAlreadyClaimed
+			}
 		}
 		return fmt.Errorf("workflow %s failed", workflowID)
 	}
@@ -244,6 +247,33 @@ func (a workflowSubAgent) Execute(ctx context.Context, node agent.TaskNode) (age
 		return result, ErrWorkflowBudgetExceeded
 	}
 
+	sideEffectKey := ""
+	if a.requiresSideEffectClaim(node) {
+		sideEffectKey = node.Metadata["idempotency_key"]
+		record, claimed, claimErr := a.engine.Runtime.SideEffects.Claim(ctx, SideEffectRecord{
+			IdempotencyKey: sideEffectKey,
+			WorkflowID:     a.workflowID,
+			NodeID:         node.ID,
+			CapabilityID:   node.Type,
+		})
+		if claimErr != nil {
+			result := agent.Result{TaskID: node.TaskID, NodeID: node.ID, Role: node.Role, ErrorCategory: agent.ErrorBlockedMissingInput, ErrorMessage: claimErr.Error(), Usage: agentUsage(node.Input, "")}
+			_ = a.engine.Workflows.SaveCheckpoint(ctx, workflow.Checkpoint{WorkflowID: a.workflowID, NodeID: node.ID, Status: workflow.NodeFailed, UsageJSON: usageJSON(result), ResultRef: result.ErrorMessage})
+			return result, claimErr
+		}
+		if !claimed {
+			result := duplicateSideEffectResult(node, record)
+			status := workflow.NodeCompleted
+			err := error(nil)
+			if result.ErrorCategory != "" {
+				status = workflow.NodeFailed
+				err = ErrSideEffectAlreadyClaimed
+			}
+			_ = a.engine.Workflows.SaveCheckpoint(ctx, workflow.Checkpoint{WorkflowID: a.workflowID, NodeID: node.ID, Status: status, UsageJSON: usageJSON(result), ResultRef: result.Text})
+			return result, err
+		}
+	}
+
 	result, err := a.executeLocal(ctx, node)
 	if result.TaskID == "" {
 		result.TaskID = node.TaskID
@@ -270,7 +300,27 @@ func (a workflowSubAgent) Execute(ctx context.Context, node agent.TaskNode) (age
 	}); cpErr != nil && err == nil {
 		return result, cpErr
 	}
+	if sideEffectKey != "" && err == nil && result.ErrorCategory == "" {
+		if completeErr := a.engine.Runtime.SideEffects.Complete(ctx, sideEffectKey, resultRef); completeErr != nil {
+			return result, completeErr
+		}
+	}
 	return result, err
+}
+
+func (a workflowSubAgent) requiresSideEffectClaim(node agent.TaskNode) bool {
+	if a.engine == nil || a.engine.Runtime == nil || a.engine.Runtime.SideEffects == nil || a.engine.Runtime.Capabilities == nil {
+		return false
+	}
+	key := node.Metadata["idempotency_key"]
+	if strings.TrimSpace(key) == "" {
+		return false
+	}
+	capDef, ok := a.engine.Runtime.Capabilities.Lookup(node.Type)
+	if !ok {
+		return false
+	}
+	return capDef.SideEffectLevel != "" && capDef.SideEffectLevel != "read_only"
 }
 
 func (a workflowSubAgent) budget(ctx context.Context) cost.Budget {
