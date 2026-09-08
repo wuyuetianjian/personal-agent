@@ -11,6 +11,7 @@ import (
 	"agent/internal/agent"
 	"agent/internal/observability"
 	"agent/internal/orchestrator"
+	"agent/internal/project"
 	"agent/internal/skill"
 	"agent/internal/verification"
 	"agent/internal/workflow"
@@ -70,6 +71,10 @@ func (r *Runtime) Run(ctx context.Context, req RunRequest) (*RunResult, error) {
 	answer, confidence := synthesizeLocalAnswer(req.Input, allEvidence)
 	remoteUsage := modelUsage{}
 	if len(allEvidence) == 0 && r.Escalator != nil {
+		if err := r.validateProjectEscalation(ctx, req); err != nil {
+			_ = r.Storage.FailTask(ctx, req.TaskID, "project_policy_denied", err.Error())
+			return nil, err
+		}
 		escalated, usage, err := r.Escalator.Escalate(ctx, req.Input, allEvidence)
 		if err != nil {
 			_ = r.Storage.FailTask(ctx, req.TaskID, "public_escalation_failed", err.Error())
@@ -145,6 +150,7 @@ func (r *Runtime) runViaWorkflow(ctx context.Context, req RunRequest) (*RunResul
 	if err := r.Workflows.Create(ctx, workflow.Run{
 		ID:           workflowID,
 		TaskID:       req.TaskID,
+		ProjectID:    req.ProjectID,
 		Status:       workflow.StatusPending,
 		InputJSON:    string(input),
 		SkillID:      plan.SkillID,
@@ -172,6 +178,10 @@ func (r *Runtime) runViaWorkflow(ctx context.Context, req RunRequest) (*RunResul
 	}
 	remoteUsage := modelUsage{}
 	if len(allEvidence) == 0 && r.Escalator != nil {
+		if err := r.validateProjectEscalation(ctx, req); err != nil {
+			_ = r.Storage.FailTask(ctx, req.TaskID, "project_policy_denied", err.Error())
+			return nil, err
+		}
 		escalated, usage, err := r.Escalator.Escalate(ctx, req.Input, allEvidence)
 		if err != nil {
 			_ = r.Storage.FailTask(ctx, req.TaskID, "public_escalation_failed", err.Error())
@@ -250,7 +260,14 @@ type workflowPlan struct {
 }
 
 func (r *Runtime) planWorkflow(ctx context.Context, workflowID string, req RunRequest) (workflowPlan, error) {
-	if plan, matched, err := r.planSkillWorkflow(ctx, workflowID, req); matched || err != nil {
+	proj, err := r.projectForRun(ctx, req.ProjectID)
+	if err != nil {
+		return workflowPlan{}, err
+	}
+	if err := r.validateProjectModel(proj, req); err != nil {
+		return workflowPlan{}, err
+	}
+	if plan, matched, err := r.planSkillWorkflow(ctx, workflowID, req, proj); matched || err != nil {
 		return plan, err
 	}
 	nodes, err := r.planWorkflowNodes(ctx, workflowID, req)
@@ -262,7 +279,7 @@ func (r *Runtime) planWorkflow(ctx context.Context, workflowID string, req RunRe
 
 const highConfidenceSkillMatch = 1.0
 
-func (r *Runtime) planSkillWorkflow(ctx context.Context, workflowID string, req RunRequest) (workflowPlan, bool, error) {
+func (r *Runtime) planSkillWorkflow(ctx context.Context, workflowID string, req RunRequest, proj project.Project) (workflowPlan, bool, error) {
 	if err := ctx.Err(); err != nil {
 		return workflowPlan{}, false, err
 	}
@@ -270,10 +287,14 @@ func (r *Runtime) planSkillWorkflow(ctx context.Context, workflowID string, req 
 		return workflowPlan{}, false, nil
 	}
 	matches := r.Skills.Match(skill.MatchRequest{
-		Intent:       req.Input,
-		PrivacyClass: defaultPrivacyClass(req.PrivacyClass),
+		Intent:          req.Input,
+		PrivacyClass:    defaultPrivacyClass(req.PrivacyClass),
+		AllowedSkillIDs: proj.AllowedSkills,
 	})
 	for _, match := range matches {
+		if proj.ID != "" && !proj.AllowsSkill(match.Manifest.ID) {
+			return workflowPlan{}, true, fmt.Errorf("%w: skill %s not allowed by project %s", ErrWorkflowProjectDenied, match.Manifest.ID, proj.ID)
+		}
 		if match.Score < highConfidenceSkillMatch || !r.skillIsReadOnly(match.Manifest) {
 			continue
 		}
@@ -306,6 +327,52 @@ func (r *Runtime) skillIsReadOnly(manifest skill.Manifest) bool {
 		}
 	}
 	return true
+}
+
+func (r *Runtime) projectForRun(ctx context.Context, projectID string) (project.Project, error) {
+	if strings.TrimSpace(projectID) == "" {
+		return project.Project{}, nil
+	}
+	proj, err := r.Projects.Get(ctx, projectID)
+	if err != nil {
+		return project.Project{}, err
+	}
+	return proj, nil
+}
+
+func (r *Runtime) validateProjectModel(proj project.Project, req RunRequest) error {
+	if proj.ID == "" {
+		return nil
+	}
+	modelID := req.LeaderModelID
+	if modelID == "" {
+		modelID = r.LeaderModel
+	}
+	if strings.TrimSpace(modelID) == "" {
+		return nil
+	}
+	if !proj.AllowsModel(modelID) {
+		return fmt.Errorf("%w: leader model %s not allowed by project %s", ErrWorkflowProjectDenied, modelID, proj.ID)
+	}
+	return nil
+}
+
+func (r *Runtime) validateProjectEscalation(ctx context.Context, req RunRequest) error {
+	proj, err := r.projectForRun(ctx, req.ProjectID)
+	if err != nil {
+		return err
+	}
+	if proj.ID == "" || r.Escalator == nil {
+		return nil
+	}
+	if proj.PrivacyClass == "confidential" {
+		return fmt.Errorf("%w: public escalation denied for confidential project %s", ErrWorkflowProjectDenied, proj.ID)
+	}
+	modelID := r.Escalator.Model.ID
+	if modelID != "" && !proj.AllowsModel(modelID) {
+		return fmt.Errorf("%w: public escalation model %s not allowed by project %s", ErrWorkflowProjectDenied, modelID, proj.ID)
+	}
+	return nil
 }
 
 func (r *Runtime) compileSkillWorkflow(workflowID string, manifest skill.Manifest) ([]workflow.Node, error) {

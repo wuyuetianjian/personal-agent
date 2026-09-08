@@ -14,7 +14,7 @@ func TestProjectRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := Store{DB: db.SQL}
-	want := Project{ID: "p1", Name: "Private", PrivacyClass: "confidential", AllowedSkills: []string{"s1"}, AllowedCapabilities: []string{"memory.search"}}
+	want := Project{ID: "p1", Name: "Private", PrivacyClass: "confidential", AllowedSkills: []string{"s1"}, AllowedCapabilities: []string{"memory.search"}, AllowedModels: []string{"local-planner"}}
 	if err := s.Save(context.Background(), want); err != nil {
 		t.Fatal(err)
 	}
@@ -22,7 +22,7 @@ func TestProjectRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got.AllowsSkill("s1") || got.AllowsSkill("s2") || got.PrivacyClass != "confidential" {
+	if !got.AllowsSkill("s1") || got.AllowsSkill("s2") || !got.AllowsModel("local-planner") || got.AllowsModel("remote") || got.PrivacyClass != "confidential" {
 		t.Fatalf("got=%#v", got)
 	}
 }

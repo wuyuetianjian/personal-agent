@@ -82,6 +82,7 @@ func (s Server) Handler() http.Handler {
 type createTaskRequest struct {
 	Title        string `json:"title"`
 	Input        string `json:"input"`
+	ProjectID    string `json:"project_id"`
 	LeaderModel  string `json:"leader_model_id"`
 	PrivacyClass string `json:"privacy_class"`
 	Long         bool   `json:"long"`
@@ -201,6 +202,7 @@ func (s Server) createTask(w http.ResponseWriter, r *http.Request) {
 	runReq := runtime.RunRequest{
 		TaskID:        id,
 		Input:         request.Input,
+		ProjectID:     strings.TrimSpace(request.ProjectID),
 		LeaderModelID: modelID,
 		PrivacyClass:  privacyClass,
 	}

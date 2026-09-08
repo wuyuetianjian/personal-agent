@@ -298,6 +298,7 @@ func runTask(ctx context.Context, args []string, stdout io.Writer) error {
 	fs.SetOutput(io.Discard)
 	configPath := fs.String("config", "", "config file path")
 	taskInput := fs.String("task", "", "task input")
+	projectID := fs.String("project", "", "project id")
 	longTask := fs.Bool("long", false, "persist task as running for long-task tracking")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -351,6 +352,7 @@ func runTask(ctx context.Context, args []string, stdout io.Writer) error {
 	result, err := rt.Run(ctx, runtime.RunRequest{
 		TaskID:        taskID,
 		Input:         *taskInput,
+		ProjectID:     strings.TrimSpace(*projectID),
 		PrivacyClass:  "local_private",
 		LeaderModelID: cfg.Agent.Leader.ModelID,
 	})

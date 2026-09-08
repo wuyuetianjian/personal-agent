@@ -15,20 +15,21 @@ func (s Store) Save(ctx context.Context, p Project) error {
 	skills, _ := json.Marshal(p.AllowedSkills)
 	caps, _ := json.Marshal(p.AllowedCapabilities)
 	agents, _ := json.Marshal(p.AllowedCodingAgents)
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO projects (id,name,privacy_class,repository_refs_json,knowledge_scopes_json,memory_scope,allowed_skills_json,allowed_capabilities_json,allowed_coding_agents_json,budget_policy) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, privacy_class=excluded.privacy_class, repository_refs_json=excluded.repository_refs_json, knowledge_scopes_json=excluded.knowledge_scopes_json, memory_scope=excluded.memory_scope, allowed_skills_json=excluded.allowed_skills_json, allowed_capabilities_json=excluded.allowed_capabilities_json, allowed_coding_agents_json=excluded.allowed_coding_agents_json, budget_policy=excluded.budget_policy`, p.ID, p.Name, p.PrivacyClass, string(repos), string(scopes), p.MemoryScope, string(skills), string(caps), string(agents), p.BudgetPolicy)
+	models, _ := json.Marshal(p.AllowedModels)
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO projects (id,name,privacy_class,repository_refs_json,knowledge_scopes_json,memory_scope,allowed_skills_json,allowed_capabilities_json,allowed_coding_agents_json,allowed_models_json,budget_policy) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, privacy_class=excluded.privacy_class, repository_refs_json=excluded.repository_refs_json, knowledge_scopes_json=excluded.knowledge_scopes_json, memory_scope=excluded.memory_scope, allowed_skills_json=excluded.allowed_skills_json, allowed_capabilities_json=excluded.allowed_capabilities_json, allowed_coding_agents_json=excluded.allowed_coding_agents_json, allowed_models_json=excluded.allowed_models_json, budget_policy=excluded.budget_policy`, p.ID, p.Name, p.PrivacyClass, string(repos), string(scopes), p.MemoryScope, string(skills), string(caps), string(agents), string(models), p.BudgetPolicy)
 	return err
 }
 func (s Store) Get(ctx context.Context, id string) (Project, error) {
 	var p Project
-	var repos, scopes, skills, caps, agents string
-	err := s.DB.QueryRowContext(ctx, `SELECT id,name,privacy_class,repository_refs_json,knowledge_scopes_json,memory_scope,allowed_skills_json,allowed_capabilities_json,allowed_coding_agents_json,budget_policy FROM projects WHERE id=?`, id).Scan(&p.ID, &p.Name, &p.PrivacyClass, &repos, &scopes, &p.MemoryScope, &skills, &caps, &agents, &p.BudgetPolicy)
+	var repos, scopes, skills, caps, agents, models string
+	err := s.DB.QueryRowContext(ctx, `SELECT id,name,privacy_class,repository_refs_json,knowledge_scopes_json,memory_scope,allowed_skills_json,allowed_capabilities_json,allowed_coding_agents_json,allowed_models_json,budget_policy FROM projects WHERE id=?`, id).Scan(&p.ID, &p.Name, &p.PrivacyClass, &repos, &scopes, &p.MemoryScope, &skills, &caps, &agents, &models, &p.BudgetPolicy)
 	if err != nil {
 		return p, err
 	}
 	for _, item := range []struct {
 		raw string
 		dst any
-	}{{repos, &p.RepositoryRefs}, {scopes, &p.KnowledgeScopes}, {skills, &p.AllowedSkills}, {caps, &p.AllowedCapabilities}, {agents, &p.AllowedCodingAgents}} {
+	}{{repos, &p.RepositoryRefs}, {scopes, &p.KnowledgeScopes}, {skills, &p.AllowedSkills}, {caps, &p.AllowedCapabilities}, {agents, &p.AllowedCodingAgents}, {models, &p.AllowedModels}} {
 		if err := json.Unmarshal([]byte(item.raw), item.dst); err != nil {
 			return p, err
 		}
@@ -40,7 +41,7 @@ func (s Store) List(ctx context.Context, limit int) ([]Project, error) {
 	if limit <= 0 {
 		limit = 20
 	}
-	rows, err := s.DB.QueryContext(ctx, `SELECT id,name,privacy_class,repository_refs_json,knowledge_scopes_json,memory_scope,allowed_skills_json,allowed_capabilities_json,allowed_coding_agents_json,budget_policy FROM projects ORDER BY name ASC LIMIT ?`, limit)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id,name,privacy_class,repository_refs_json,knowledge_scopes_json,memory_scope,allowed_skills_json,allowed_capabilities_json,allowed_coding_agents_json,allowed_models_json,budget_policy FROM projects ORDER BY name ASC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -48,14 +49,14 @@ func (s Store) List(ctx context.Context, limit int) ([]Project, error) {
 	var out []Project
 	for rows.Next() {
 		var p Project
-		var repos, scopes, skills, caps, agents string
-		if err := rows.Scan(&p.ID, &p.Name, &p.PrivacyClass, &repos, &scopes, &p.MemoryScope, &skills, &caps, &agents, &p.BudgetPolicy); err != nil {
+		var repos, scopes, skills, caps, agents, models string
+		if err := rows.Scan(&p.ID, &p.Name, &p.PrivacyClass, &repos, &scopes, &p.MemoryScope, &skills, &caps, &agents, &models, &p.BudgetPolicy); err != nil {
 			return nil, err
 		}
 		for _, item := range []struct {
 			raw string
 			dst any
-		}{{repos, &p.RepositoryRefs}, {scopes, &p.KnowledgeScopes}, {skills, &p.AllowedSkills}, {caps, &p.AllowedCapabilities}, {agents, &p.AllowedCodingAgents}} {
+		}{{repos, &p.RepositoryRefs}, {scopes, &p.KnowledgeScopes}, {skills, &p.AllowedSkills}, {caps, &p.AllowedCapabilities}, {agents, &p.AllowedCodingAgents}, {models, &p.AllowedModels}} {
 			if err := json.Unmarshal([]byte(item.raw), item.dst); err != nil {
 				return nil, err
 			}

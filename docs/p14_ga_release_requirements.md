@@ -63,6 +63,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `HIGH-06` adds a persistent side-effect idempotency ledger. Non-read-only capabilities such as browser writes, MCP/tool mutations, coding pushes, PR creation, deploys, and message sends must claim their workflow node idempotency key before execution. Duplicate events, retries, and crash recovery see the existing claim and do not invoke the side-effect executor again.
 
+`HIGH-07` applies Project Policy across Runtime workflow execution. Project allowlists now cover Skill matching, Leader model selection, memory/RAG capability execution, public escalation, browser/MCP/tool dispatch, and Codex/Claude backend selection. CLI runs can pass `--project`, and API task creation accepts `project_id` so persisted workflows carry the project boundary.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -87,3 +89,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - Runtime tests verify a high-confidence read-only Skill match compiles into a persistent workflow and does not call the Leader planner.
 - Runtime and workflow tests verify the background workflow worker discovers unfinished runnable workflows and resumes them without a manual `workflow resume` command.
 - Runtime and storage tests verify side-effect idempotency keys are persisted and block duplicate executor calls after retries or recovery.
+- Runtime and project tests verify project policy denies disallowed capabilities, disallowed Leader models, disallowed Skill matches, disallowed coding backends, and confidential public escalation.

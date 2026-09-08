@@ -48,6 +48,7 @@ type Evidence struct {
 type RunRequest struct {
 	TaskID        string
 	Input         string
+	ProjectID     string
 	PrivacyClass  string
 	LeaderModelID string
 	MaxIterations int

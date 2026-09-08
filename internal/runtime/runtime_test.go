@@ -211,8 +211,8 @@ func TestWorkflowEngineRejectsProjectDeniedCapability(t *testing.T) {
 	}
 
 	err := rt.Workflow.RunWorkflow(ctx, "wf-denied")
-	if !errors.Is(err, ErrWorkflowCapabilityDenied) {
-		t.Fatalf("RunWorkflow() error = %v, want ErrWorkflowCapabilityDenied", err)
+	if !errors.Is(err, ErrWorkflowProjectDenied) {
+		t.Fatalf("RunWorkflow() error = %v, want ErrWorkflowProjectDenied", err)
 	}
 	run, getErr := rt.Workflows.Get(ctx, "wf-denied")
 	if getErr != nil {
@@ -220,6 +220,64 @@ func TestWorkflowEngineRejectsProjectDeniedCapability(t *testing.T) {
 	}
 	if run.Status != workflow.StatusFailed {
 		t.Fatalf("workflow status = %s, want failed", run.Status)
+	}
+}
+
+func TestRuntimeRejectsProjectDeniedLeaderModel(t *testing.T) {
+	ctx := context.Background()
+	db := openRuntimeTestDB(t)
+	cfg := configForRuntimeTest()
+	cfg.Agent.Leader.ModelID = "local-planner"
+	rt := NewLocal(cfg, db, &orchestrator.InMemoryEvidenceBus{})
+	if err := rt.Projects.Save(ctx, project.Project{
+		ID:            "proj-model-locked",
+		Name:          "Model Locked",
+		PrivacyClass:  "local_private",
+		AllowedModels: []string{"other-model"},
+	}); err != nil {
+		t.Fatalf("project Save() error = %v", err)
+	}
+	if err := db.CreateTask(ctx, storage.Task{ID: "task-model-denied", Title: "model", Input: "do work", Status: "running", LeaderModelID: "local-planner", PrivacyClass: "local_private"}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := rt.Run(ctx, RunRequest{TaskID: "task-model-denied", ProjectID: "proj-model-locked", Input: "do work", LeaderModelID: "local-planner"})
+	if !errors.Is(err, ErrWorkflowProjectDenied) {
+		t.Fatalf("Run() error = %v, want ErrWorkflowProjectDenied", err)
+	}
+}
+
+func TestWorkflowEngineRejectsProjectDeniedCodingAgent(t *testing.T) {
+	ctx := context.Background()
+	db := openRuntimeTestDB(t)
+	enabled := true
+	cfg := configForRuntimeTest()
+	cfg.CodingAgents.Backends = map[string]config.CodingAgentBackendConfig{
+		"codex": {Enabled: &enabled, Adapter: "codex", InferenceTrust: "local_private"},
+	}
+	rt := NewLocal(cfg, db, &orchestrator.InMemoryEvidenceBus{})
+	if err := rt.Projects.Save(ctx, project.Project{
+		ID:                  "proj-coding-locked",
+		Name:                "Coding Locked",
+		PrivacyClass:        "local_private",
+		AllowedCapabilities: []string{"coding.codex"},
+		AllowedCodingAgents: []string{"claude"},
+	}); err != nil {
+		t.Fatalf("project Save() error = %v", err)
+	}
+	if err := rt.Workflows.Create(ctx, workflow.Run{
+		ID:        "wf-coding-denied",
+		TaskID:    "task-coding-denied",
+		ProjectID: "proj-coding-locked",
+		Status:    workflow.StatusPending,
+		InputJSON: `{"input":"{\"repository_path\":\"/tmp/repo\",\"prompt\":\"change\"}"}`,
+	}, []workflow.Node{{WorkflowID: "wf-coding-denied", NodeID: "codex", CapabilityID: "coding.codex", Role: string(agent.RoleTool), Status: workflow.NodePending}}); err != nil {
+		t.Fatalf("workflow Create() error = %v", err)
+	}
+
+	err := rt.Workflow.RunWorkflow(ctx, "wf-coding-denied")
+	if !errors.Is(err, ErrWorkflowProjectDenied) {
+		t.Fatalf("RunWorkflow() error = %v, want ErrWorkflowProjectDenied", err)
 	}
 }
 
@@ -238,6 +296,31 @@ func TestRunUsesConfiguredPublicEscalatorUsage(t *testing.T) {
 	}
 	if result.RemoteCalls != 1 || result.Usage.RemoteTokens != 8 {
 		t.Fatalf("result=%#v, want one remote call with provider usage", result)
+	}
+}
+
+func TestRuntimeRejectsConfidentialProjectPublicEscalation(t *testing.T) {
+	ctx := context.Background()
+	db := openRuntimeTestDB(t)
+	cfg := configForRuntimeTest()
+	cfg.Agent.Leader.ModelID = "local-planner"
+	rt := NewLocal(cfg, db, &orchestrator.InMemoryEvidenceBus{})
+	rt.Escalator = &PublicEscalator{Provider: staticChatProvider("public summary"), Model: model.ModelMetadata{ID: "public-model"}}
+	if err := rt.Projects.Save(ctx, project.Project{
+		ID:            "proj-confidential",
+		Name:          "Confidential",
+		PrivacyClass:  "confidential",
+		AllowedModels: []string{"local-planner", "public-model"},
+	}); err != nil {
+		t.Fatalf("project Save() error = %v", err)
+	}
+	if err := db.CreateTask(ctx, storage.Task{ID: "task-confidential-public", Title: "public", Input: "unknown", Status: "running", LeaderModelID: "local-planner", PrivacyClass: "confidential"}); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := rt.Run(ctx, RunRequest{TaskID: "task-confidential-public", ProjectID: "proj-confidential", Input: "unknown", LeaderModelID: "local-planner", PrivacyClass: "confidential"})
+	if !errors.Is(err, ErrWorkflowProjectDenied) {
+		t.Fatalf("Run() error = %v, want ErrWorkflowProjectDenied", err)
 	}
 }
 
@@ -633,6 +716,57 @@ func TestRuntimeUsesHighConfidenceReadOnlySkillWithoutPlanner(t *testing.T) {
 	}
 }
 
+func TestRuntimeSkipsProjectDeniedSkillMatch(t *testing.T) {
+	ctx := context.Background()
+	db := openRuntimeTestDB(t)
+	rt := NewLocal(configForRuntimeTest(), db, &orchestrator.InMemoryEvidenceBus{})
+	planner := &countingPlanner{nodes: []agent.TaskNode{{ID: "memory", Type: "memory.search", Role: agent.RoleMemory, Input: "summarize"}}}
+	rt.Planner = planner
+	if err := rt.Projects.Save(ctx, project.Project{
+		ID:            "proj-skill-locked",
+		Name:          "Skill Locked",
+		PrivacyClass:  "local_private",
+		AllowedSkills: []string{"other.skill"},
+		AllowedModels: []string{"local-planner"},
+	}); err != nil {
+		t.Fatalf("project Save() error = %v", err)
+	}
+	if err := rt.Skills.Add(skill.Manifest{
+		ID:          "skill.summary",
+		Version:     "1.0.0",
+		Name:        "summarize",
+		Description: "summarize local memory",
+		Status:      skill.StatusActive,
+		Permissions: skill.PermissionPolicy{
+			MaxLevel: "read_only",
+		},
+		Requires: skill.Requirements{Capabilities: []string{"memory.search"}},
+		Privacy:  skill.PrivacyPolicy{MaxExternalTrust: "local_private"},
+		Workflow: skill.Workflow{Nodes: []skill.Node{
+			{ID: "memory", Capability: "memory.search", Role: string(agent.RoleMemory)},
+		}},
+	}, rt.Capabilities); err != nil {
+		t.Fatalf("skill Add() error = %v", err)
+	}
+	if err := db.CreateTask(ctx, storage.Task{ID: "task-skill-denied", Title: "skill", Input: "summarize", Status: "running", LeaderModelID: "local-planner", PrivacyClass: "local_private"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := rt.Run(ctx, RunRequest{TaskID: "task-skill-denied", ProjectID: "proj-skill-locked", Input: "summarize", LeaderModelID: "local-planner"}); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if planner.calls != 1 {
+		t.Fatalf("planner calls = %d, want 1 after project-denied skill match", planner.calls)
+	}
+	runs, err := rt.Workflows.List(ctx, 1)
+	if err != nil {
+		t.Fatalf("workflow List() error = %v", err)
+	}
+	if len(runs) != 1 || runs[0].SkillID != "runtime.default" {
+		t.Fatalf("workflow run = %#v, want default workflow after denied skill", runs)
+	}
+}
+
 func TestWorkflowWorkerRecoversRunnableWorkflowOnStartup(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -849,10 +983,22 @@ func (p *queuedChatProvider) Chat(ctx context.Context, request model.ChatRequest
 
 type countingPlanner struct {
 	calls int
+	nodes []agent.TaskNode
 }
 
 func (p *countingPlanner) Plan(ctx context.Context, req RunRequest) ([]agent.TaskNode, model.Usage, error) {
 	p.calls++
+	if len(p.nodes) > 0 {
+		nodes := make([]agent.TaskNode, 0, len(p.nodes))
+		for _, node := range p.nodes {
+			node.TaskID = req.TaskID
+			if node.Input == "" {
+				node.Input = req.Input
+			}
+			nodes = append(nodes, node)
+		}
+		return nodes, model.Usage{}, ctx.Err()
+	}
 	return nil, model.Usage{}, errors.New("planner should not be called")
 }
 

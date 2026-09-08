@@ -59,6 +59,7 @@ Run with your own task text:
 
 ```sh
 bin/pachat run --config configs/config.example.yaml --task "summarize my local notes"
+bin/pachat run --config configs/config.example.yaml --project <project_id> --task "summarize project notes"
 ```
 
 Expected output shape:
@@ -134,6 +135,8 @@ Skill workflow boundary: active high-confidence read-only Skills compile directl
 Background workflow worker: `pachat serve` starts a Runtime worker that resumes unfinished runnable workflows on startup and polls for more work. `paused` and `waiting_approval` workflows are left for operator or approval actions.
 
 Side-effect idempotency: non-read-only workflow capabilities claim a persisted idempotency key before execution. Replays from duplicate events, retries, or crash recovery do not re-run already claimed browser writes, MCP/tool mutations, coding pushes, PR creation, deploy, or message-send style effects.
+
+Project policy boundary: Runtime workflow execution applies project policy to Skill matching, Leader model selection, memory/RAG capabilities, public escalation, browser/MCP/tool dispatch, and Codex/Claude backend allowlists. CLI task runs can select a project with `--project`; API task creation accepts `project_id`.
 
 ### P1 Model And Privacy Foundation
 
@@ -386,6 +389,7 @@ bin/pachat run --config configs/config.example.yaml --task "smoke test"
 
 ```sh
 bin/pachat run --config configs/config.example.yaml --task "帮我整理本地资料"
+bin/pachat run --config configs/config.example.yaml --project <project_id> --task "整理项目资料"
 ```
 
 预期输出形态：
@@ -461,6 +465,8 @@ Skill workflow 边界：active、高置信、read-only Skill 会直接编译为�
 后台 workflow worker：`pachat serve` 会启动 Runtime worker，在服务启动时恢复未完成且可运行的 workflow，并持续轮询后续工作。`paused` 和 `waiting_approval` workflow 会保留给 operator 或 approval 操作处理。
 
 Side-effect idempotency：非 read-only workflow capability 在执行前会持久化认领 idempotency key。duplicate event、retry 或 crash recovery 触发的 replay 不会重复执行已认领的 browser write、MCP/tool mutation、coding push、PR create、deploy 或 message send 类 side effect。
+
+Project policy 边界：Runtime workflow execution 会把 project policy 统一应用到 Skill matching、Leader model selection、memory/RAG capability、public escalation、browser/MCP/tool dispatch，以及 Codex/Claude backend allowlist。CLI task run 可用 `--project` 选择 project；API task create 接受 `project_id`。
 
 ### P1 模型与隐私基础
 

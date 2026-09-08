@@ -22,6 +22,7 @@ var (
 	ErrWorkflowCapabilityDenied  = errors.New("workflow capability denied")
 	ErrWorkflowCapabilityUnknown = errors.New("workflow capability unknown")
 	ErrWorkflowBudgetExceeded    = errors.New("workflow budget exceeded")
+	ErrWorkflowProjectDenied     = errors.New("workflow project policy denied")
 )
 
 type WorkflowEngine struct {
@@ -199,7 +200,13 @@ func (e *WorkflowEngine) validateNode(ctx context.Context, proj project.Project,
 		return fmt.Errorf("%w: %s unavailable", ErrWorkflowCapabilityDenied, capabilityID)
 	}
 	if proj.ID != "" && !proj.AllowsCapability(capabilityID) {
-		return fmt.Errorf("%w: %s not allowed by project %s", ErrWorkflowCapabilityDenied, capabilityID, proj.ID)
+		return fmt.Errorf("%w: capability %s not allowed by project %s", ErrWorkflowProjectDenied, capabilityID, proj.ID)
+	}
+	if proj.ID != "" && strings.HasPrefix(capabilityID, "coding.") {
+		backendID := strings.TrimPrefix(capabilityID, "coding.")
+		if !proj.AllowsCodingAgent(backendID) {
+			return fmt.Errorf("%w: coding agent %s not allowed by project %s", ErrWorkflowProjectDenied, backendID, proj.ID)
+		}
 	}
 	return ctx.Err()
 }
