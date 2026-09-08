@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"os/exec"
-	"syscall"
 	"time"
 )
 
@@ -49,7 +48,7 @@ func (e ProcessExecutor) Run(ctx context.Context, req ExecRequest) (ExecResult, 
 	cmd := exec.CommandContext(runCtx, req.Args[0], req.Args[1:]...)
 	cmd.Dir = req.Dir
 	cmd.Env = req.Env
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	configureProcess(cmd)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -94,12 +93,10 @@ func (e ProcessExecutor) Run(ctx context.Context, req ExecRequest) (ExecResult, 
 
 func (e ProcessExecutor) terminateProcessGroup(pid int) {
 	grace := e.GracePeriod
-	if grace <= 0 {
-		grace = 200 * time.Millisecond
-	}
-	_ = syscall.Kill(-pid, syscall.SIGTERM)
-	time.Sleep(grace)
-	_ = syscall.Kill(-pid, syscall.SIGKILL)
+    if grace <= 0 {
+        grace = 200 * time.Millisecond
+    }
+    terminateProcessTree(pid, grace)
 }
 
 func exitCode(err error) int {
