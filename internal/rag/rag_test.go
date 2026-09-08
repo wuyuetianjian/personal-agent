@@ -89,6 +89,35 @@ func TestQdrantIntegrationSkipsWhenUnavailable(t *testing.T) {
 	}
 }
 
+func TestQdrantSearchHonorsContextCancellation(t *testing.T) {
+	started := make(chan struct{})
+	client := QdrantClient{
+		BaseURL:    "https://example.invalid",
+		Collection: "pachat_test",
+		HTTPClient: &http.Client{Transport: ragRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+			close(started)
+			<-req.Context().Done()
+			return nil, req.Context().Err()
+		})},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := client.Search(ctx, []float64{0.1, 0.2}, 1)
+		done <- err
+	}()
+	<-started
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Search() error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Search() did not return after cancellation")
+	}
+}
+
 func TestCompressorPreservesEvidence(t *testing.T) {
 	results := []Result{
 		{
@@ -129,4 +158,10 @@ func testStore(t *testing.T) SQLiteStore {
 		t.Fatalf("Migrate() error = %v", err)
 	}
 	return NewSQLiteStore(db.SQL, Chunker{MaxTokens: 20})
+}
+
+type ragRoundTripFunc func(req *http.Request) (*http.Response, error)
+
+func (f ragRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"agent/internal/privacy"
 )
@@ -119,6 +120,35 @@ func TestEmbeddingProviderUsesMockableTransport(t *testing.T) {
 	}
 	if len(response.Vectors) != 1 || len(response.Vectors[0]) != 2 {
 		t.Fatalf("Embed() response = %+v", response)
+	}
+}
+
+func TestChatProviderHonorsContextCancellation(t *testing.T) {
+	started := make(chan struct{})
+	client := &OpenAICompatibleClient{
+		Provider: ProviderMetadata{TrustLevel: TrustLocalPrivate},
+		BaseURL:  "https://example.invalid/v1",
+		Client: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			close(started)
+			<-req.Context().Done()
+			return nil, req.Context().Err()
+		})},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := client.Chat(ctx, ChatRequest{Model: ModelMetadata{Model: "local"}, Messages: []ChatMessage{{Role: "user", Content: "wait"}}})
+		done <- err
+	}()
+	<-started
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Chat() error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Chat() did not return after cancellation")
 	}
 }
 

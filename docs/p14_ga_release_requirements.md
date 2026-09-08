@@ -55,6 +55,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `BLOCK-05` connects verification policy to scheduler early stop. When completed node claims are supported by persisted evidence, meet the configured verification policy, and have no conflicts, the scheduler cancels remaining pending work. Usage reports then stop at the completed checkpoint usage instead of growing through cancelled speculative nodes.
 
+`BLOCK-06` verifies unified cancellation conformance across the Runtime backend boundary. Cancellation now has tests from model HTTP calls through vector HTTP, browser, MCP, and allowlisted tool executors, including MCP/tool child process cancellation. The existing coding agent process runner keeps context-backed subprocess cancellation for Codex/Claude-style backends.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -75,3 +77,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - Builder tests verify public escalator wiring, missing-gateway fail-closed behavior, and secret blocking before public provider calls.
 - Runtime and CLI tests verify node/workflow/task usage aggregation, unknown usage reporting, and hard-budget enforcement from accumulated checkpoint usage.
 - Runtime tests verify verification-driven early stop cancels pending work and keeps usage limited to completed nodes.
+- Model, RAG, and Runtime tests verify context cancellation is honored by model HTTP calls, vector HTTP calls, browser executors, MCP executors, MCP child processes, and allowlisted tool child processes.

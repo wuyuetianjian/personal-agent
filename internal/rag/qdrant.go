@@ -102,7 +102,7 @@ func (c QdrantClient) doRaw(ctx context.Context, method string, path string, bod
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrQdrantUnavailable, err)
+		return nil, fmt.Errorf("%w: %w", ErrQdrantUnavailable, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"agent/internal/agent"
 	"agent/internal/browser"
@@ -575,6 +576,78 @@ func TestWorkflowVerificationEarlyStopCancelsRemainingWork(t *testing.T) {
 	}
 }
 
+func TestBrowserExecutorHonorsContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	db := openRuntimeTestDB(t)
+	rt := NewLocal(configForRuntimeTest(), db, nil)
+	_, err := (BrowserExecutor{
+		Tool:     blockingBrowserTool{},
+		Evidence: rt.Evidence,
+	}).Execute(ctx, agent.TaskNode{TaskID: "task-browser-cancel", ID: "browser", Type: "browser.read", Role: agent.RoleBrowser, Input: "read"}, workflowInput{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("BrowserExecutor error = %v, want context.Canceled", err)
+	}
+}
+
+func TestMCPExecutorHonorsContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	db := openRuntimeTestDB(t)
+	rt := NewLocal(configForRuntimeTest(), db, nil)
+	_, err := (MCPExecutor{
+		ServerID: "local",
+		ToolName: "metrics",
+		Client:   fakeMCPClient{},
+		Evidence: rt.Evidence,
+	}).Execute(ctx, agent.TaskNode{TaskID: "task-mcp-cancel", ID: "mcp", Type: "mcp.local.metrics", Role: agent.RoleTool, Input: "{}"}, workflowInput{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("MCPExecutor error = %v, want context.Canceled", err)
+	}
+}
+
+func TestStdioMCPClientHonorsContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	client := stdioMCPClient{Config: config.MCPServerConfig{Enabled: true, Command: "/bin/sh", Args: []string{"-c", "sleep 2"}}}
+	done := make(chan error, 1)
+	go func() {
+		_, err := client.Call(ctx, "local", "metrics", nil)
+		done <- err
+	}()
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("stdioMCPClient error = nil, want cancellation error")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("stdioMCPClient did not return after cancellation")
+	}
+}
+
+func TestToolExecutorHonorsContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	db := openRuntimeTestDB(t)
+	rt := NewLocal(configForRuntimeTest(), db, nil)
+	done := make(chan error, 1)
+	go func() {
+		_, err := (ToolExecutor{
+			Config:   config.ToolConfig{ID: "tool.sleep", Enabled: true, Program: "/bin/sh", Args: []string{"-c", "sleep 2"}},
+			Evidence: rt.Evidence,
+		}).Execute(ctx, agent.TaskNode{TaskID: "task-tool-cancel", ID: "tool", Type: "tool.sleep", Role: agent.RoleTool, Input: "ignored"}, workflowInput{})
+		done <- err
+	}()
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("ToolExecutor error = nil, want cancellation error")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("ToolExecutor did not return after cancellation")
+	}
+}
+
 type queuedChatProvider struct {
 	responses []model.ChatResponse
 	calls     int
@@ -602,6 +675,18 @@ func (t fakeBrowserTool) Execute(ctx context.Context, action browser.Action) (br
 
 func (t fakeBrowserTool) Observe(ctx context.Context, sessionID string) (browser.Observation, error) {
 	return t.observation, ctx.Err()
+}
+
+type blockingBrowserTool struct{}
+
+func (t blockingBrowserTool) Execute(ctx context.Context, action browser.Action) (browser.Result, error) {
+	<-ctx.Done()
+	return browser.Result{}, ctx.Err()
+}
+
+func (t blockingBrowserTool) Observe(ctx context.Context, sessionID string) (browser.Observation, error) {
+	<-ctx.Done()
+	return browser.Observation{}, ctx.Err()
 }
 
 type fakeCodingRunner struct {
