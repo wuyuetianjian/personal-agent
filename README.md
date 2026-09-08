@@ -140,6 +140,8 @@ Project policy boundary: Runtime workflow execution applies project policy to Sk
 
 Coding Cross Review: set `coding_agents.cross_review.enabled: true` and configure `large_diff_bytes` to require a second enabled coding backend for security-sensitive, critical-project, verification-failed, or large-diff coding tasks. Ordinary coding tasks still use one backend.
 
+Real coding E2E: run `PACHAT_CODING_AGENT_E2E=1 PACHAT_CODEX_CLI_PATH=/path/to/codex go test ./internal/codingagent` or set `PACHAT_CLAUDE_CODE_CLI_PATH` for Claude to exercise real CLI backends against a temporary repository. These tests skip unless explicitly enabled.
+
 ### P1 Model And Privacy Foundation
 
 P1 adds library-level model and privacy controls:
@@ -471,6 +473,8 @@ Side-effect idempotency：非 read-only workflow capability 在执行前会持�
 Project policy 边界：Runtime workflow execution 会把 project policy 统一应用到 Skill matching、Leader model selection、memory/RAG capability、public escalation、browser/MCP/tool dispatch，以及 Codex/Claude backend allowlist。CLI task run 可用 `--project` 选择 project；API task create 接受 `project_id`。
 
 Coding Cross Review：设置 `coding_agents.cross_review.enabled: true` 并配置 `large_diff_bytes` 后，security-sensitive、critical-project、verification-failed 或 large-diff coding task 会要求第二个已启用 coding backend 做审查。普通 coding task 仍只使用一个 backend。
+
+真实 coding E2E：运行 `PACHAT_CODING_AGENT_E2E=1 PACHAT_CODEX_CLI_PATH=/path/to/codex go test ./internal/codingagent`，或设置 `PACHAT_CLAUDE_CODE_CLI_PATH` 验证 Claude，会在临时 repository 中调用真实 CLI backend。默认未显式启用时这些测试会跳过。
 
 ### P1 模型与隐私基础
 

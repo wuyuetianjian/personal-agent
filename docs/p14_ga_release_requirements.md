@@ -67,6 +67,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `HIGH-08` adds optional Coding Cross Review. When `coding_agents.cross_review.enabled` is true, Runtime coding execution asks a different enabled backend for `code_review` only when policy triggers are present: security-sensitive work, critical project work, verification failure, or diff size above `large_diff_bytes`. Simple coding tasks still run a single backend by default.
 
+`HIGH-09` adds opt-in real Codex/Claude coding E2E coverage. The default test suite skips external CLI execution, but `PACHAT_CODING_AGENT_E2E=1` with `PACHAT_CODEX_CLI_PATH` or `PACHAT_CLAUDE_CODE_CLI_PATH` runs the governed coding Runner against a temporary git repository and validates diff/test evidence.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -93,3 +95,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - Runtime and storage tests verify side-effect idempotency keys are persisted and block duplicate executor calls after retries or recovery.
 - Runtime and project tests verify project policy denies disallowed capabilities, disallowed Leader models, disallowed Skill matches, disallowed coding backends, and confidential public escalation.
 - Runtime tests verify Coding Cross Review runs only when configured policy triggers require it and uses a different enabled backend.
+- Opt-in coding E2E tests are available for real Codex and Claude CLI binaries and skip cleanly unless explicitly enabled.
