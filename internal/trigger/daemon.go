@@ -63,6 +63,9 @@ func (d Daemon) RunNow(ctx context.Context, id string) error {
 		return err
 	}
 	st.LastFiredAt = &now
+	if tr.Type == TypeConditionWatch {
+		st = MarkConditionNotification(st, now)
+	}
 	workflowID := ""
 	if d.Starter != nil {
 		workflowID, err = d.Starter.StartTriggerWorkflow(ctx, tr)
@@ -126,12 +129,16 @@ func (d Daemon) isDue(ctx context.Context, tr Trigger, st State, now time.Time) 
 		return false, nil
 	}
 	if tr.Type == TypeConditionWatch {
-		previous := st.StateJSON == `{"condition":true}`
+		previous := st.CurrentState == "true" || st.StateJSON == `{"condition":true}`
 		evaluator := d.Evaluator
 		if evaluator == nil {
 			evaluator = FalseToTrueEvaluator{}
 		}
 		current, err := evaluator.Evaluate(ctx, tr, previous)
+		st = RecordConditionCheck(st, current, now)
+		if putErr := d.Store.PutState(ctx, st); putErr != nil {
+			return false, putErr
+		}
 		if err != nil || !current || previous {
 			return false, err
 		}

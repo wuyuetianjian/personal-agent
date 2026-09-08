@@ -63,6 +63,11 @@ type State struct {
 	LastEventHash       string
 	ConsecutiveFailures int
 	CooldownUntil       *time.Time
+	PreviousState       string
+	CurrentState        string
+	LastTransitionAt    *time.Time
+	LastCheckAt         *time.Time
+	LastNotificationAt  *time.Time
 	StateJSON           string
 }
 

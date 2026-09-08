@@ -142,6 +142,8 @@ Coding Cross Review: set `coding_agents.cross_review.enabled: true` and configur
 
 Real coding E2E: run `PACHAT_CODING_AGENT_E2E=1 PACHAT_CODEX_CLI_PATH=/path/to/codex go test ./internal/codingagent` or set `PACHAT_CLAUDE_CODE_CLI_PATH` for Claude to exercise real CLI backends against a temporary repository. These tests skip unless explicitly enabled.
 
+Condition watcher state: proactive condition-watch triggers persist previous/current state, last transition, last check, last notification, and cooldown state so daemon restarts keep watcher context.
+
 ### P1 Model And Privacy Foundation
 
 P1 adds library-level model and privacy controls:
@@ -475,6 +477,8 @@ Project policy 边界：Runtime workflow execution 会把 project policy 统一�
 Coding Cross Review：设置 `coding_agents.cross_review.enabled: true` 并配置 `large_diff_bytes` 后，security-sensitive、critical-project、verification-failed 或 large-diff coding task 会要求第二个已启用 coding backend 做审查。普通 coding task 仍只使用一个 backend。
 
 真实 coding E2E：运行 `PACHAT_CODING_AGENT_E2E=1 PACHAT_CODEX_CLI_PATH=/path/to/codex go test ./internal/codingagent`，或设置 `PACHAT_CLAUDE_CODE_CLI_PATH` 验证 Claude，会在临时 repository 中调用真实 CLI backend。默认未显式启用时这些测试会跳过。
+
+Condition watcher state：proactive condition-watch trigger 会持久化 previous/current state、last transition、last check、last notification 和 cooldown state，daemon 重启后会保留 watcher 上下文。
 
 ### P1 模型与隐私基础
 
