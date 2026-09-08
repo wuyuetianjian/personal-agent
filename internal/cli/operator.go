@@ -743,6 +743,13 @@ func serveCommand(ctx context.Context, args []string, stdout io.Writer) error {
 		server.ModelRegistry = append(server.ModelRegistry, model.ID)
 	}
 	runtime.NewWorkflowWorker(rt.Workflow).Start(ctx)
+	if cfg.Proactive.IsEnabled() {
+		trigger.Daemon{
+			Store:   trigger.Store{DB: rt.Storage.SQL},
+			Starter: runtime.TriggerWorkflowStarter{Runtime: rt},
+			Now:     time.Now,
+		}.Start(ctx, cfg.Proactive.PollInterval.Duration)
+	}
 	metrics := observability.NewRegistry()
 	mux := http.NewServeMux()
 	mux.Handle("/", metricsMiddleware(metrics, server.Handler()))

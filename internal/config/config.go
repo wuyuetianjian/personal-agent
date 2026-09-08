@@ -16,6 +16,7 @@ type Config struct {
 	Tools         ToolsConfig        `yaml:"tools"`
 	Permissions   PermissionsConfig  `yaml:"permissions"`
 	CodingAgents  CodingAgentsConfig `yaml:"coding_agents"`
+	Proactive     ProactiveConfig    `yaml:"proactive"`
 	Security      SecurityConfig     `yaml:"security"`
 	Reliability   ReliabilityConfig  `yaml:"reliability"`
 }
@@ -150,6 +151,15 @@ type MCPServerConfig struct {
 
 type ToolsConfig struct {
 	Allowlist []ToolConfig `yaml:"allowlist"`
+}
+
+type ProactiveConfig struct {
+	Enabled      *bool    `yaml:"enabled"`
+	PollInterval Duration `yaml:"poll_interval"`
+}
+
+func (c ProactiveConfig) IsEnabled() bool {
+	return c.Enabled == nil || *c.Enabled
 }
 
 type ToolConfig struct {

@@ -134,6 +134,8 @@ Skill workflow boundary: active high-confidence read-only Skills compile directl
 
 Background workflow worker: `pachat serve` starts a Runtime worker that resumes unfinished runnable workflows on startup and polls for more work. `paused` and `waiting_approval` workflows are left for operator or approval actions.
 
+Proactive daemon: `pachat serve` starts the proactive trigger loop when `proactive.enabled` is true. It recovers trigger/watch state, processes due schedules and condition-watch transitions at `proactive.poll_interval`, dispatches trigger work as Runtime workflows, and shuts down through the server context.
+
 Side-effect idempotency: non-read-only workflow capabilities claim a persisted idempotency key before execution. Replays from duplicate events, retries, or crash recovery do not re-run already claimed browser writes, MCP/tool mutations, coding pushes, PR creation, deploy, or message-send style effects.
 
 Project policy boundary: Runtime workflow execution applies project policy to Skill matching, Leader model selection, memory/RAG capabilities, public escalation, browser/MCP/tool dispatch, and Codex/Claude backend allowlists. CLI task runs can select a project with `--project`; API task creation accepts `project_id`.
@@ -316,6 +318,8 @@ Task usage can be queried with `pachat task usage --config <path> --id <task_id>
 
 Verification-driven early stop is enabled in the workflow engine. Once completed node claims meet the verification policy with persisted evidence and no conflicts, the scheduler cancels remaining pending work and usage stops growing beyond completed checkpoints.
 
+`HIGH-13` wires proactive triggers into the long-running service path. `pachat serve` uses `proactive.enabled` and `proactive.poll_interval` to recover trigger/watch state, process due work, enqueue Runtime workflows, and stop through context cancellation.
+
 P14 documentation lives under `docs/release/` and covers quickstart, user operations, administration, security/threat model, troubleshooting, upgrade, RC E2E scenarios, soak testing, performance baselines, and data-loss recovery drills. The current release package is archive/script based; package manager publishing and Windows binaries are post-v1 work.
 
 ### Validation
@@ -473,6 +477,8 @@ bin/pachat storage integrity --config configs/config.example.yaml
 Skill workflow 边界：active、高置信、read-only Skill 会直接编译为带 `skill_id` 和 `skill_version` 的持久化 workflow，并通过现有 scheduler 执行，不调用 Leader planner。没有合格 Skill 命中时继续回退到 planner-backed 或默认 Runtime workflow。
 
 后台 workflow worker：`pachat serve` 会启动 Runtime worker，在服务启动时恢复未完成且可运行的 workflow，并持续轮询后续工作。`paused` 和 `waiting_approval` workflow 会保留给 operator 或 approval 操作处理。
+
+Proactive daemon：当 `proactive.enabled` 为 true 时，`pachat serve` 会启动 proactive trigger loop。它会恢复 trigger/watch state，按 `proactive.poll_interval` 处理到期 schedule 和 condition-watch transition，把 trigger work 派发为 Runtime workflow，并通过 server context 安全退出。
 
 Side-effect idempotency：非 read-only workflow capability 在执行前会持久化认领 idempotency key。duplicate event、retry 或 crash recovery 触发的 replay 不会重复执行已认领的 browser write、MCP/tool mutation、coding push、PR create、deploy 或 message send 类 side effect。
 
@@ -655,6 +661,8 @@ Public escalation 会从 model registry 中启用的 `public_remote` chat model 
 可以使用 `pachat task usage --config <path> --id <task_id>` 查询 task usage。Usage 会从 workflow checkpoint 聚合到 node、workflow 和 task 层级。具备可靠 usage 的模型 provider 会使用 provider token count；外部 CLI/tool 在没有 token count 时会标记为 unknown。
 
 Workflow engine 已启用 verification-driven early stop。当已完成节点的 claims 通过持久化 evidence 验证、满足 verification policy 且没有冲突时，scheduler 会取消剩余 pending work，usage 不会继续增长到被取消的节点之后。
+
+`HIGH-13` 将 proactive trigger 接入长运行服务路径。`pachat serve` 使用 `proactive.enabled` 与 `proactive.poll_interval` 恢复 trigger/watch state、处理到期工作、入队 Runtime workflow，并通过 context cancellation 停止。
 
 P14 文档位于 `docs/release/`，覆盖 quickstart、用户操作、管理员操作、安全/threat model、troubleshooting、upgrade、RC E2E scenario、soak test、performance baseline 和 data-loss recovery drill。当前发布包采用 archive/script 形式；package manager 发布和 Windows 二进制属于 post-v1 工作。
 

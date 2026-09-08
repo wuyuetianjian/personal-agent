@@ -139,6 +139,10 @@ coding_agents:
       capabilities: [coding, code_review, code_test, code_debug]
       allow_direct_writes: false
 
+proactive:
+  enabled: true
+  poll_interval: 30s
+
 security:
   api:
     auth_token_env: PACHAT_API_TOKEN

@@ -21,6 +21,7 @@ import (
 	"agent/internal/rag"
 	"agent/internal/skill"
 	"agent/internal/storage"
+	"agent/internal/trigger"
 	"agent/internal/workflow"
 )
 
@@ -278,6 +279,44 @@ func TestWorkflowEngineRejectsProjectDeniedCodingAgent(t *testing.T) {
 	err := rt.Workflow.RunWorkflow(ctx, "wf-coding-denied")
 	if !errors.Is(err, ErrWorkflowProjectDenied) {
 		t.Fatalf("RunWorkflow() error = %v, want ErrWorkflowProjectDenied", err)
+	}
+}
+
+func TestTriggerWorkflowStarterCreatesPendingWorkflow(t *testing.T) {
+	ctx := context.Background()
+	db := openRuntimeTestDB(t)
+	rt := NewLocal(configForRuntimeTest(), db, &orchestrator.InMemoryEvidenceBus{})
+	if err := rt.Projects.Save(ctx, project.Project{
+		ID:           "proj-trigger",
+		Name:         "Trigger Project",
+		PrivacyClass: "local_private",
+	}); err != nil {
+		t.Fatalf("project Save() error = %v", err)
+	}
+
+	workflowID, err := TriggerWorkflowStarter{Runtime: rt}.StartTriggerWorkflow(ctx, trigger.Trigger{
+		ID:        "trigger-runtime",
+		ProjectID: "proj-trigger",
+		Type:      trigger.TypeConditionWatch,
+		SkillID:   "daily-brief",
+		Condition: trigger.ConditionSpec{Query: "summarize local trigger input"},
+	})
+	if err != nil {
+		t.Fatalf("StartTriggerWorkflow() error = %v", err)
+	}
+	run, err := rt.Workflows.Get(ctx, workflowID)
+	if err != nil {
+		t.Fatalf("workflow Get() error = %v", err)
+	}
+	if run.ProjectID != "proj-trigger" || run.SkillID != "daily-brief" || run.Status != workflow.StatusPending {
+		t.Fatalf("run=%#v, want pending trigger workflow with project and skill", run)
+	}
+	tasks, err := db.ListTasks(ctx, 10)
+	if err != nil {
+		t.Fatalf("ListTasks() error = %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].Title != "summarize local trigger input" || tasks[0].Status != "running" {
+		t.Fatalf("tasks=%#v, want running trigger task", tasks)
 	}
 }
 

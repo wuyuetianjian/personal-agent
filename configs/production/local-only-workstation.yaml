@@ -59,6 +59,9 @@ coding_agents:
     enabled: false
     large_diff_bytes: 20000
   backends: {}
+proactive:
+  enabled: true
+  poll_interval: 30s
 security:
   api:
     auth_token_env: PACHAT_API_TOKEN

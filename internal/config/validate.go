@@ -84,6 +84,9 @@ func (c Config) Validate() error {
 	if c.CodingAgents.CrossReview.LargeDiffBytes < 0 {
 		return errors.New("coding_agents.cross_review.large_diff_bytes must be non-negative")
 	}
+	if c.Proactive.PollInterval.Duration < 0 {
+		return errors.New("proactive.poll_interval must be non-negative")
+	}
 	for id, backend := range c.CodingAgents.Backends {
 		if backend.Adapter == "" {
 			return fmt.Errorf("coding_agents.backends.%s.adapter is required", id)

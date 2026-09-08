@@ -75,6 +75,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `HIGH-12` persists bounded Goal runtime state. Goals and milestones now store status, dependencies, workflow linkage, completion criteria, budget policy, and re-evaluation timestamps, with pause/resume transitions and planner-driven re-evaluation remaining bounded by the existing iteration limit.
 
+`HIGH-13` wires proactive triggers into the long-running service path. `pachat serve` starts the proactive daemon when `proactive.enabled` is true, recovers trigger and watcher state on startup, processes due schedules and condition-watch transitions on each poll, dispatches triggered work as pending Runtime workflows, and stops through the server context during shutdown.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -105,3 +107,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - Trigger tests verify condition-watch state persists check, transition, notification, and cooldown fields.
 - Notification tests verify deduplication, severity, delivery state, and quiet-hours suppression.
 - Goal tests verify persisted goals, milestone dependencies, workflow linkage, pause/resume, and bounded re-evaluation.
+- Serve, trigger, and Runtime tests verify the proactive daemon starts from `pachat serve` configuration, recovers/ticks on startup, creates workflow-backed trigger work, and shuts down through context cancellation.

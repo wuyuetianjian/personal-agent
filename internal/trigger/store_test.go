@@ -155,6 +155,60 @@ func TestConditionWatcherPersistsCheckTransitionAndNotification(t *testing.T) {
 	}
 }
 
+func TestDaemonStartRecoversAndTicksUntilShutdown(t *testing.T) {
+	ctx := context.Background()
+	db, err := storage.OpenSQLite(ctx, filepath.Join(t.TempDir(), "trigger.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := storage.Migrate(ctx, db.SQL); err != nil {
+		t.Fatal(err)
+	}
+	store := Store{DB: db.SQL}
+	tr := Trigger{
+		ID:        "condition-start",
+		ProjectID: "project-1",
+		Type:      TypeConditionWatch,
+		Enabled:   true,
+		Condition: ConditionSpec{Evaluator: "test"},
+	}
+	if err := store.Put(ctx, tr); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 8, 2, 3, 4, 0, time.UTC)
+	daemonCtx, cancel := context.WithCancel(ctx)
+	Daemon{Store: store, Starter: fixedStarter("wf-start"), Now: func() time.Time { return now }}.Start(daemonCtx, time.Hour)
+	defer cancel()
+
+	deadline := time.After(time.Second)
+	for {
+		history, err := store.History(ctx, "condition-start", 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(history) == 1 {
+			if history[0].WorkflowID != "wf-start" || history[0].Status != "completed" {
+				t.Fatalf("history=%#v", history)
+			}
+			st, err := store.GetState(ctx, "condition-start")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if st.LastCheckAt == nil || st.LastNotificationAt == nil {
+				t.Fatalf("state=%#v, want recovered watcher state", st)
+			}
+			cancel()
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatal("daemon did not recover and tick")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
 type fixedStarter string
 
 func (s fixedStarter) StartTriggerWorkflow(ctx context.Context, t Trigger) (string, error) {

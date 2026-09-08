@@ -22,6 +22,26 @@ type Daemon struct {
 	Now       func() time.Time
 }
 
+func (d Daemon) Start(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	go func() {
+		_, _ = d.Recover(ctx)
+		_, _ = d.Tick(ctx)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				_, _ = d.Tick(ctx)
+			}
+		}
+	}()
+}
+
 func (d Daemon) Tick(ctx context.Context) (int, error) {
 	now := d.now()
 	triggers, err := d.Store.ListEnabled(ctx)
