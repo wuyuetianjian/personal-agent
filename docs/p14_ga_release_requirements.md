@@ -71,6 +71,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `HIGH-10` persists condition watcher state for proactive triggers. Condition-watch ticks now record previous state, current state, last transition time, last check time, last notification time, and cooldown in SQLite so daemon restarts preserve watcher context.
 
+`HIGH-11` closes notification policy behavior. Notifications carry severity and delivery state, deduplicate by `dedup_key`, and can be written through quiet-hours policy so delivery is suppressed until the configured window ends.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -99,3 +101,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - Runtime tests verify Coding Cross Review runs only when configured policy triggers require it and uses a different enabled backend.
 - Opt-in coding E2E tests are available for real Codex and Claude CLI binaries and skip cleanly unless explicitly enabled.
 - Trigger tests verify condition-watch state persists check, transition, notification, and cooldown fields.
+- Notification tests verify deduplication, severity, delivery state, and quiet-hours suppression.
