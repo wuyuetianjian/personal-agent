@@ -156,6 +156,7 @@ func (r *Runtime) runViaWorkflow(ctx context.Context, req RunRequest) (*RunResul
 		_ = r.Storage.FailTask(ctx, req.TaskID, "workflow_failed", err.Error())
 		return nil, err
 	}
+	runState, _ := r.Workflows.Get(ctx, workflowID)
 	allEvidence, err := r.Evidence.ListByTask(ctx, req.TaskID)
 	if err != nil {
 		_ = r.Storage.FailTask(ctx, req.TaskID, "evidence_failed", err.Error())
@@ -201,6 +202,7 @@ func (r *Runtime) runViaWorkflow(ctx context.Context, req RunRequest) (*RunResul
 		Confidence:     confidence,
 		EvidenceIDs:    evidenceIDs(allEvidence),
 		Verification:   report,
+		EarlyStopped:   runState.Status == workflow.StatusCancelled,
 		LocalRouteType: RouteMixed,
 	}
 	result.Usage.InputTokens = estimateTokens(req.Input)

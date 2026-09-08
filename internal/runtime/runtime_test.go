@@ -512,6 +512,69 @@ func TestWorkflowBudgetUsesAccumulatedCheckpointUsage(t *testing.T) {
 	}
 }
 
+func TestWorkflowVerificationEarlyStopCancelsRemainingWork(t *testing.T) {
+	ctx := context.Background()
+	db := openRuntimeTestDB(t)
+	cfg := configForRuntimeTest()
+	cfg.Tools.Allowlist = []config.ToolConfig{{ID: "tool.echo", Enabled: true, Program: "/bin/echo", Args: []string{"should-not-run"}, SideEffectLevel: "read_only"}}
+	rt := NewLocal(cfg, db, &orchestrator.InMemoryEvidenceBus{})
+	rt.ChatModel = model.ModelMetadata{ID: "local-planner", Model: "qwen3.8:27b-mlx"}
+	rt.ChatProvider = &queuedChatProvider{responses: []model.ChatResponse{
+		{Content: `{"claims":[{"text":"supported claim","confidence":0.95,"evidence_ids":["ev-supported"]}],"decision_summary":"enough evidence","confidence":0.95,"evidence_ids":["ev-supported"]}`, Usage: model.Usage{InputTokens: 5, OutputTokens: 7}},
+	}}
+	if err := rt.Evidence.Put(ctx, Evidence{
+		ID:           "ev-supported",
+		TaskID:       "task-early-stop",
+		NodeID:       "seed",
+		Claim:        "seed evidence",
+		SourceType:   SourceMemory,
+		SourceID:     "seed",
+		Content:      "supported claim",
+		Trust:        0.9,
+		PrivacyClass: "local_private",
+	}); err != nil {
+		t.Fatalf("Evidence Put() error = %v", err)
+	}
+	if err := rt.Workflows.Create(ctx, workflow.Run{
+		ID:        "wf-early-stop",
+		TaskID:    "task-early-stop",
+		Status:    workflow.StatusPending,
+		InputJSON: `{"input":"decide early"}`,
+	}, []workflow.Node{
+		{WorkflowID: "wf-early-stop", NodeID: "reason", CapabilityID: "reasoning.local", Status: workflow.NodePending},
+		{WorkflowID: "wf-early-stop", NodeID: "expensive", CapabilityID: "tool.echo", Dependencies: []string{"reason"}, Status: workflow.NodePending},
+	}); err != nil {
+		t.Fatalf("workflow Create() error = %v", err)
+	}
+
+	if err := rt.Workflow.RunWorkflow(ctx, "wf-early-stop"); err != nil {
+		t.Fatalf("RunWorkflow() error = %v", err)
+	}
+	run, err := rt.Workflows.Get(ctx, "wf-early-stop")
+	if err != nil {
+		t.Fatalf("workflow Get() error = %v", err)
+	}
+	if run.Status != workflow.StatusCancelled {
+		t.Fatalf("workflow status = %s, want cancelled by early stop", run.Status)
+	}
+	checkpoints, err := rt.Workflows.ListCheckpoints(ctx, "wf-early-stop")
+	if err != nil {
+		t.Fatalf("ListCheckpoints() error = %v", err)
+	}
+	for _, checkpoint := range checkpoints {
+		if checkpoint.NodeID == "expensive" {
+			t.Fatalf("expensive node checkpoint = %#v, want not launched", checkpoint)
+		}
+	}
+	report, err := rt.UsageForWorkflow(ctx, "wf-early-stop")
+	if err != nil {
+		t.Fatalf("UsageForWorkflow() error = %v", err)
+	}
+	if report.Total.InputTokens != 5 || report.Total.OutputTokens != 7 {
+		t.Fatalf("usage = %#v, want only reasoning provider usage", report.Total)
+	}
+}
+
 type queuedChatProvider struct {
 	responses []model.ChatResponse
 	calls     int

@@ -53,6 +53,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `BLOCK-04` adds a queryable usage report over workflow checkpoints. Runtime usage reports aggregate node usage into workflow and task totals, mark unknown usage when token/cost counters are unavailable, and use accumulated checkpoint usage during budget checks before launching later nodes. The CLI exposes this through `pachat task usage`.
 
+`BLOCK-05` connects verification policy to scheduler early stop. When completed node claims are supported by persisted evidence, meet the configured verification policy, and have no conflicts, the scheduler cancels remaining pending work. Usage reports then stop at the completed checkpoint usage instead of growing through cancelled speculative nodes.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -72,3 +74,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - Workflow tests verify `mcp.<server>.<tool>` and `tool.<id>` execution through registered Runtime executors with untrusted MCP output and fixed allowlisted command arguments.
 - Builder tests verify public escalator wiring, missing-gateway fail-closed behavior, and secret blocking before public provider calls.
 - Runtime and CLI tests verify node/workflow/task usage aggregation, unknown usage reporting, and hard-budget enforcement from accumulated checkpoint usage.
+- Runtime tests verify verification-driven early stop cancels pending work and keeps usage limited to completed nodes.

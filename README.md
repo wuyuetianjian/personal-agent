@@ -293,6 +293,8 @@ Public escalation is wired from enabled `public_remote` chat models in the model
 
 Task usage can be queried with `pachat task usage --config <path> --id <task_id>`. Usage is aggregated from workflow checkpoints at node, workflow, and task levels. Model providers with reliable usage use provider token counts; external CLI/tool usage remains marked as unknown when token counts are unavailable.
 
+Verification-driven early stop is enabled in the workflow engine. Once completed node claims meet the verification policy with persisted evidence and no conflicts, the scheduler cancels remaining pending work and usage stops growing beyond completed checkpoints.
+
 P14 documentation lives under `docs/release/` and covers quickstart, user operations, administration, security/threat model, troubleshooting, upgrade, RC E2E scenarios, soak testing, performance baselines, and data-loss recovery drills. The current release package is archive/script based; package manager publishing and Windows binaries are post-v1 work.
 
 ### Validation
@@ -609,6 +611,8 @@ Runtime capability executor 现在通过本地 executor registry 注册。启用
 Public escalation 会从 model registry 中启用的 `public_remote` chat model 接线。如果 public provider 要求 Privacy Gateway，`privacy.hmac_secret_env` 必须能解析，否则 Runtime build 会 fail closed。包含 secret 的 payload 会在调用 provider 前被阻断。
 
 可以使用 `pachat task usage --config <path> --id <task_id>` 查询 task usage。Usage 会从 workflow checkpoint 聚合到 node、workflow 和 task 层级。具备可靠 usage 的模型 provider 会使用 provider token count；外部 CLI/tool 在没有 token count 时会标记为 unknown。
+
+Workflow engine 已启用 verification-driven early stop。当已完成节点的 claims 通过持久化 evidence 验证、满足 verification policy 且没有冲突时，scheduler 会取消剩余 pending work，usage 不会继续增长到被取消的节点之后。
 
 P14 文档位于 `docs/release/`，覆盖 quickstart、用户操作、管理员操作、安全/threat model、troubleshooting、upgrade、RC E2E scenario、soak test、performance baseline 和 data-loss recovery drill。当前发布包采用 archive/script 形式；package manager 发布和 Windows 二进制属于 post-v1 工作。
 

@@ -13,6 +13,7 @@ import (
 	"agent/internal/cost"
 	"agent/internal/orchestrator"
 	"agent/internal/project"
+	"agent/internal/verification"
 	"agent/internal/workflow"
 )
 
@@ -29,6 +30,7 @@ type WorkflowEngine struct {
 	Projects     project.Store
 	CostEnforcer cost.Enforcer
 	Parallelism  int
+	EarlyStop    bool
 }
 
 type workflowInput struct {
@@ -45,6 +47,7 @@ func NewWorkflowEngine(rt *Runtime) *WorkflowEngine {
 		Projects:     rt.Projects,
 		CostEnforcer: cost.Enforcer{},
 		Parallelism:  2,
+		EarlyStop:    true,
 	}
 }
 
@@ -113,6 +116,7 @@ func (e *WorkflowEngine) RunWorkflow(ctx context.Context, workflowID string) err
 		Agents:      agents,
 		EvidenceBus: e.Runtime.Events,
 		Parallelism: e.Parallelism,
+		EarlyStop:   e.earlyStopFunc(ctx, run.TaskID),
 	}).Run(ctx, dag)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -135,6 +139,37 @@ func (e *WorkflowEngine) RunWorkflow(ctx context.Context, workflowID string) err
 		return e.Workflows.UpdateStatus(ctx, workflowID, workflow.StatusCancelled)
 	}
 	return e.Workflows.UpdateStatus(ctx, workflowID, workflow.StatusCompleted)
+}
+
+func (e *WorkflowEngine) earlyStopFunc(ctx context.Context, taskID string) orchestrator.EarlyStopFunc {
+	if e == nil || e.Runtime == nil || !e.EarlyStop {
+		return nil
+	}
+	return func(results []agent.Result) bool {
+		var claims []verification.Claim
+		for i, result := range results {
+			for j, claim := range result.Claims {
+				if claim.Confidence <= 0 {
+					continue
+				}
+				claims = append(claims, verification.Claim{
+					ID:          fmt.Sprintf("early_stop_%d_%d", i, j),
+					Text:        claim.Text,
+					Confidence:  claim.Confidence,
+					EvidenceIDs: append([]string(nil), claim.EvidenceIDs...),
+				})
+			}
+		}
+		if len(claims) == 0 {
+			return false
+		}
+		evidence, err := e.Runtime.Evidence.ListByTask(ctx, taskID)
+		if err != nil || len(evidence) == 0 {
+			return false
+		}
+		report := e.Runtime.Verifier.Verify(claims, verificationEvidence(evidence, ""))
+		return report.PassesPolicy && report.ConflictCount == 0
+	}
 }
 
 func (e *WorkflowEngine) project(ctx context.Context, projectID string) (project.Project, error) {
