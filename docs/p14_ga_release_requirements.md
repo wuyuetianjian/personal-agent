@@ -103,6 +103,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `GA-BLOCK-04` adds an executable data-loss recovery drill through `pachat release recovery-drill`. The command must seed disposable fixture state for Projects, Skills, Memory, Workflow, Trigger, Notification, and Approval records, create a backup with the production backup command path, delete the fixture SQLite files, restore the archive into a fresh database, run integrity validation, verify every required object class, and emit a JSON report when requested.
 
+`GA-BLOCK-05` adds an executable performance baseline through `pachat release perf-baseline`. The command must measure real local Runtime startup, local memory query latency, hybrid RAG fallback latency, workflow dispatch latency, heap allocation, and concurrent workflow completion behavior, then emit a JSON report suitable for regression comparison.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -147,3 +149,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - Release check tests verify the mandatory Functional GA gate commands are included in `pachat release check`.
 - Soak tests verify `pachat release soak` produces a passing JSON report for the offline Runtime gate and records workflow, memory, goroutine, SQLite, notification, and external-artifact metrics.
 - Recovery drill tests verify `pachat release recovery-drill` performs backup, fixture database destruction, restore, integrity validation, and object-class verification for Projects, Skills, Memory, Workflow, Trigger, Notification, and Approval records.
+- Performance baseline tests verify `pachat release perf-baseline` records startup, local query, hybrid RAG fallback, workflow dispatch, memory, and concurrent workflow metrics from an offline local Runtime fixture.

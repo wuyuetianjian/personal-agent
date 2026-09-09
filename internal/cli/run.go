@@ -8,6 +8,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -121,10 +123,12 @@ func releaseCommand(ctx context.Context, args []string, stdout io.Writer) error 
 		return releaseCheckCommand(ctx, args[1:], stdout)
 	case "soak":
 		return releaseSoakCommand(ctx, args[1:], stdout)
+	case "perf-baseline":
+		return releasePerformanceBaselineCommand(ctx, args[1:], stdout)
 	case "recovery-drill":
 		return releaseRecoveryDrillCommand(ctx, args[1:], stdout)
 	default:
-		return usageError("release requires check, soak, or recovery-drill")
+		return usageError("release requires check, soak, perf-baseline, or recovery-drill")
 	}
 }
 
@@ -193,6 +197,59 @@ func releaseSoakCommand(ctx context.Context, args []string, stdout io.Writer) er
 	}
 	fmt.Fprintf(stdout, "status=%s\niterations=%d\nheap_growth_bytes=%d\ngoroutine_growth=%d\nsqlite_growth_bytes=%d\nterminal_workflows=%d\nnon_terminal_workflows=%d\nnotifications=%d\nduplicate_notifications=%d\nchild_process_leaks=%d\nworktree_leaks=%d\nbrowser_artifact_leaks=%d\n",
 		report.Status, report.Iterations, report.HeapGrowthBytes, report.GoroutineGrowth, report.SQLiteGrowthBytes, report.TerminalWorkflows, report.NonTerminalWorkflows, report.NotificationCount, report.DuplicateNotifications, report.ChildProcessLeaks, report.WorktreeLeaks, report.BrowserArtifactLeaks)
+	if *output != "" {
+		fmt.Fprintf(stdout, "report=%s\n", *output)
+	}
+	for _, failure := range report.Failures {
+		fmt.Fprintf(stdout, "failure=%s\n", failure)
+	}
+	return err
+}
+
+func releasePerformanceBaselineCommand(ctx context.Context, args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("release perf-baseline", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	configPath := fs.String("config", "", "config file path")
+	workDir := fs.String("work-dir", "", "disposable baseline directory")
+	output := fs.String("output", "", "write JSON report path")
+	offline := fs.Bool("offline", true, "disable external model/browser/CLI backends")
+	concurrency := fs.Int("concurrency", 2, "concurrent workflow count")
+	jsonOutput := fs.Bool("json", false, "print JSON report")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *configPath == "" {
+		return usageError("release perf-baseline requires --config")
+	}
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	if *workDir == "" {
+		*workDir, err = os.MkdirTemp("", "pachat-perf-baseline-*")
+		if err != nil {
+			return err
+		}
+	} else if err := os.MkdirAll(*workDir, 0o755); err != nil {
+		return err
+	}
+	cfg.App.DataDir = *workDir
+	cfg.Storage.Driver = "sqlite"
+	cfg.Storage.SQLite.Path = filepath.Join(*workDir, "performance.db")
+	report, err := release.RunPerformanceBaseline(ctx, release.PerformanceOptions{
+		Config:      cfg,
+		Offline:     *offline,
+		OutputPath:  *output,
+		Concurrency: *concurrency,
+	})
+	if *jsonOutput {
+		if writeErr := writePrettyJSON(stdout, report); writeErr != nil {
+			return writeErr
+		}
+		return err
+	}
+	fmt.Fprintf(stdout, "status=%s\nstartup_latency_ms=%d\nlocal_query_latency_ms=%d\nhybrid_rag_latency_ms=%d\nworkflow_dispatch_latency_ms=%d\nheap_alloc_bytes=%d\nconcurrent_workflows_completed=%d\nconcurrent_workflows_requested=%d\nconcurrent_workflow_latency_ms=%d\n",
+		report.Status, report.StartupLatencyMS, report.LocalQueryLatencyMS, report.HybridRAGLatencyMS, report.WorkflowDispatchLatencyMS, report.HeapAllocBytes, report.ConcurrentWorkflowsCompleted, report.ConcurrentWorkflowsRequested, report.ConcurrentWorkflowLatencyMS)
 	if *output != "" {
 		fmt.Fprintf(stdout, "report=%s\n", *output)
 	}

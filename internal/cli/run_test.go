@@ -601,6 +601,29 @@ func TestReleaseRecoveryDrillCommand(t *testing.T) {
 	}
 }
 
+func TestReleasePerformanceBaselineCommand(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	outputPath := filepath.Join(dir, "performance-report.json")
+	writeConfig(t, configPath, filepath.Join(dir, "template.db"))
+	var stdout bytes.Buffer
+	err := Run(context.Background(), []string{"release", "perf-baseline", "--config", configPath, "--work-dir", filepath.Join(dir, "baseline"), "--output", outputPath, "--concurrency", "2"}, &stdout)
+	if err != nil {
+		t.Fatalf("release perf-baseline error = %v\n%s", err, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "status=pass") {
+		t.Fatalf("release perf-baseline output = %q, want status=pass", stdout.String())
+	}
+	for _, field := range []string{"startup_latency_ms=", "local_query_latency_ms=", "hybrid_rag_latency_ms=", "workflow_dispatch_latency_ms=", "concurrent_workflows_completed=2"} {
+		if !strings.Contains(stdout.String(), field) {
+			t.Fatalf("release perf-baseline output = %q, missing %s", stdout.String(), field)
+		}
+	}
+	if _, err := os.Stat(outputPath); err != nil {
+		t.Fatalf("performance report not written: %v", err)
+	}
+}
+
 func TestMCPCommands(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
