@@ -91,6 +91,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `OP-07` adds a portable export/import path for moving user-operable data between local installs. `pachat export` writes a versioned JSON artifact containing Project records, Skill records and versions, a bounded memory subset, and knowledge document metadata. `pachat import` validates that artifact and upserts the same object classes into the configured local database. The artifact intentionally excludes configuration secrets, credentials, browser cookies, browser passwords, browser profile data, coding CLI credential stores, and document chunk text.
 
+`OP-08` adds a streaming CLI mode for foreground task runs. `pachat run --stream` emits redacted line-oriented progress for planning, workflow/node state, tool-like node progress, approval wait state, and final answer deltas. The stream intentionally avoids chain-of-thought and does not expose raw reasoning checkpoint payloads.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -129,3 +131,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - API tests verify evidence viewer responses include claim/source/trust/privacy/timestamp/verification fields and redact sensitive evidence previews by default.
 - CLI restore tests verify dry-run validation, schema compatibility through migrations, integrity checks, existing database protection, force restore, restored data reads, and pre-restore backup creation.
 - CLI portable-data tests verify `pachat export/import` round-trips Projects, Skills, selected memory, and knowledge metadata while excluding credentials, browser cookie/password material, coding CLI credential stores, and raw document chunk text.
+- CLI streaming tests verify `pachat run --stream` emits planning, workflow progress, node state, approval wait, and answer stream records while redacting secret-like output and omitting chain-of-thought fields.

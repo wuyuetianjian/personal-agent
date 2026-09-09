@@ -41,6 +41,37 @@ func TestRunRuntimeTask(t *testing.T) {
 	}
 }
 
+func TestRunStreamOutputsProgressWithoutSecrets(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	dbPath := filepath.Join(dir, "agent.db")
+	writeConfig(t, configPath, dbPath)
+
+	var out bytes.Buffer
+	err := Run(context.Background(), []string{"run", "--config", configPath, "--task", "stream task token=secret-value", "--stream"}, &out)
+	if err != nil {
+		t.Fatalf("Run(stream) error = %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{
+		"stream planning",
+		"stream workflow",
+		"stream node",
+		"stream approval_wait",
+		"stream answer",
+		"status=completed",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stream output missing %s: %q", want, got)
+		}
+	}
+	for _, forbidden := range []string{"secret-value", "chain-of-thought", "usage_json", "result_ref"} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("stream output contains forbidden text %q: %q", forbidden, got)
+		}
+	}
+}
+
 func TestRunLongTaskCommands(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")

@@ -60,6 +60,7 @@ Run with your own task text:
 ```sh
 bin/pachat run --config configs/config.example.yaml --task "summarize my local notes"
 bin/pachat run --config configs/config.example.yaml --project <project_id> --task "summarize project notes"
+bin/pachat run --config configs/config.example.yaml --task "summarize my local notes" --stream
 ```
 
 Expected output shape:
@@ -334,6 +335,8 @@ Configured MCP servers are registered as `mcp.<server>.<tool>` executors and cal
 
 `OP-07` adds portable data export/import. `pachat export` writes Projects, Skills and versions, selected episodic/semantic memory, and knowledge document metadata to a versioned JSON artifact. `pachat import` validates that artifact and upserts those objects into the configured local database. It does not export credentials, browser cookies, browser passwords, browser profile data, coding CLI credential stores, or raw document chunk text.
 
+`OP-08` adds foreground streaming for `pachat run --stream`. The stream reports planning, workflow progress, node state, tool-like node progress, approval wait state, and final answer deltas with secret-like text redacted. It does not expose chain-of-thought or raw reasoning checkpoint fields.
+
 Public escalation is wired from enabled `public_remote` chat models in the model registry. If a public provider requires Privacy Gateway, `privacy.hmac_secret_env` must resolve or Runtime build fails closed. Secret-bearing payloads are blocked before provider calls.
 
 Task usage can be queried with `pachat task usage --config <path> --id <task_id>`. Usage is aggregated from workflow checkpoints at node, workflow, and task levels. Model providers with reliable usage use provider token counts; external CLI/tool usage remains marked as unknown when token counts are unavailable.
@@ -429,6 +432,7 @@ bin/pachat run --config configs/config.example.yaml --task "smoke test"
 ```sh
 bin/pachat run --config configs/config.example.yaml --task "帮我整理本地资料"
 bin/pachat run --config configs/config.example.yaml --project <project_id> --task "整理项目资料"
+bin/pachat run --config configs/config.example.yaml --task "帮我整理本地资料" --stream
 ```
 
 预期输出形态：
@@ -702,6 +706,8 @@ Runtime capability executor 现在通过本地 executor registry 注册。启用
 `OP-06` 完成完整 backup restore 执行：临时数据库校验、migration compatibility check、SQLite integrity check、现有数据库 pre-restore copy，以及最终校验失败时 rollback。
 
 `OP-07` 增加便携数据导出/导入。`pachat export` 会把 Project、Skill 及版本、选定 episodic/semantic memory 和 knowledge document metadata 写入版本化 JSON artifact。`pachat import` 会校验 artifact，并把这些对象 upsert 到配置指向的本地数据库。它不会导出 credential、浏览器 cookie、浏览器密码、浏览器 profile data、coding CLI credential store 或原始 document chunk text。
+
+`OP-08` 为 `pachat run --stream` 增加前台 streaming。stream 会报告 planning、workflow progress、node state、tool-like node progress、approval wait state 和 final answer delta，并对 secret-like 文本脱敏。它不会暴露 chain-of-thought 或原始 reasoning checkpoint 字段。
 
 Public escalation 会从 model registry 中启用的 `public_remote` chat model 接线。如果 public provider 要求 Privacy Gateway，`privacy.hmac_secret_env` 必须能解析，否则 Runtime build 会 fail closed。包含 secret 的 payload 会在调用 provider 前被阻断。
 

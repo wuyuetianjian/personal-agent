@@ -308,6 +308,7 @@ func runTask(ctx context.Context, args []string, stdout io.Writer) error {
 	taskInput := fs.String("task", "", "task input")
 	projectID := fs.String("project", "", "project id")
 	longTask := fs.Bool("long", false, "persist task as running for long-task tracking")
+	stream := fs.Bool("stream", false, "stream task progress")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -327,6 +328,9 @@ func runTask(ctx context.Context, args []string, stdout io.Writer) error {
 		return err
 	}
 	defer rt.Close()
+	if *stream {
+		rt.Events = newStreamingEvidenceBus(rt.Events, stdout)
+	}
 
 	taskID, err := newID("task")
 	if err != nil {
@@ -357,6 +361,9 @@ func runTask(ctx context.Context, args []string, stdout io.Writer) error {
 	}); err != nil {
 		return err
 	}
+	if *stream {
+		streamRunStarted(stdout, taskID)
+	}
 	result, err := rt.Run(ctx, runtime.RunRequest{
 		TaskID:        taskID,
 		Input:         *taskInput,
@@ -366,7 +373,13 @@ func runTask(ctx context.Context, args []string, stdout io.Writer) error {
 	})
 	if err != nil {
 		_ = rt.Storage.FailTask(ctx, taskID, "runtime_failed", err.Error())
+		if *stream {
+			streamRunFailed(stdout, err)
+		}
 		return err
+	}
+	if *stream {
+		return streamRunCompleted(ctx, stdout, rt.Workflows, taskID, result)
 	}
 	_, err = fmt.Fprintf(stdout, "task_id=%s\nstatus=completed\nconfidence=%.2f\nremote_tokens=%d\n\nanswer:\n%s\n",
 		taskID, result.Confidence, result.Usage.RemoteTokens, result.Answer)
