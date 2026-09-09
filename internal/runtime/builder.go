@@ -39,6 +39,7 @@ type Runtime struct {
 	Escalator    *PublicEscalator
 	ChatProvider model.ChatProvider
 	ChatModel    model.ModelMetadata
+	SubAgents    map[string]ModelAgent
 	Governor     *reliability.Governor
 	Tracer       *observability.Tracer
 	Audit        audit.Store
@@ -64,6 +65,12 @@ func Build(ctx context.Context, cfg config.Config) (*Runtime, error) {
 	}
 	rt.ChatProvider = provider
 	rt.ChatModel = metadata
+	subAgents, err := buildConfiguredSubAgentProviders(cfg)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	rt.SubAgents = subAgents
 	rt.Planner = buildConfiguredPlanner(cfg, provider, metadata, rt.Capabilities)
 	escalator, err := buildConfiguredPublicEscalator(cfg)
 	if err != nil {
@@ -77,6 +84,43 @@ func Build(ctx context.Context, cfg config.Config) (*Runtime, error) {
 	}
 	rt.ownsStorage = true
 	return rt, nil
+}
+
+type ModelAgent struct {
+	Provider model.ChatProvider
+	Model    model.ModelMetadata
+}
+
+func buildConfiguredSubAgentProviders(cfg config.Config) (map[string]ModelAgent, error) {
+	if len(cfg.Agent.SubAgents) == 0 || len(cfg.Models.Registry) == 0 {
+		return nil, nil
+	}
+	registry, err := model.NewRegistry(cfg.Models)
+	if err != nil {
+		return nil, err
+	}
+	agents := map[string]ModelAgent{}
+	for role, settings := range cfg.Agent.SubAgents {
+		if settings.ModelID == "" {
+			continue
+		}
+		metadata, err := registry.Model(settings.ModelID)
+		if err != nil {
+			return nil, err
+		}
+		if !metadata.Provider.Enabled || !metadata.Capabilities[model.CapabilityChat] {
+			continue
+		}
+		provider, err := buildOpenAICompatibleClient(metadata)
+		if err != nil {
+			return nil, err
+		}
+		if err := attachPrivacyGateway(cfg, provider); err != nil {
+			return nil, err
+		}
+		agents[role] = ModelAgent{Provider: provider, Model: metadata}
+	}
+	return agents, nil
 }
 
 func buildConfiguredPlanner(cfg config.Config, provider model.ChatProvider, metadata model.ModelMetadata, capabilities *capability.Registry) Planner {
@@ -131,20 +175,31 @@ func buildConfiguredPublicEscalator(cfg config.Config) (*PublicEscalator, error)
 		if err != nil {
 			return nil, err
 		}
-		if metadata.Provider.RequirePrivacyGateway || cfg.Privacy.FailClosedForPublicModels {
-			secret, ok := config.EnvValue(cfg.Privacy.HMACSecretEnv)
-			if !ok {
-				return nil, model.ErrPrivacyGatewayRequired
-			}
-			gateway, err := privacy.NewGateway(secret)
-			if err != nil {
-				return nil, err
-			}
-			client.Privacy = gateway
+		if err := attachPrivacyGateway(cfg, client); err != nil {
+			return nil, err
 		}
 		return &PublicEscalator{Provider: client, Model: metadata}, nil
 	}
 	return nil, nil
+}
+
+func attachPrivacyGateway(cfg config.Config, client *model.OpenAICompatibleClient) error {
+	if client == nil || client.Provider.TrustLevel != model.TrustPublicRemote {
+		return nil
+	}
+	if !client.Provider.RequirePrivacyGateway && !cfg.Privacy.FailClosedForPublicModels {
+		return nil
+	}
+	secret, ok := config.EnvValue(cfg.Privacy.HMACSecretEnv)
+	if !ok {
+		return model.ErrPrivacyGatewayRequired
+	}
+	gateway, err := privacy.NewGateway(secret)
+	if err != nil {
+		return err
+	}
+	client.Privacy = gateway
+	return nil
 }
 
 func NewLocal(cfg config.Config, db *storage.DB, events orchestrator.EvidenceBus) *Runtime {

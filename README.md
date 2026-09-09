@@ -322,6 +322,8 @@ agent:
 
 Workflow reasoning and synthesis now reuse the configured private local model when `Runtime.ChatProvider` is available. `reasoning.local` emits bounded claims, evidence IDs, confidence, and provider usage without storing chain-of-thought. `synthesis.local` writes the final answer from verified evidence, and `Runtime.Run()` uses the completed synthesis checkpoint as the persisted task answer.
 
+Role-specific Sub-Agent model IDs are honored for workflow-backed reasoning and synthesis. Set `agent.subagents.reasoning.model_id` or `agent.subagents.synthesis.model_id` to a model in `models.registry` to use a different configured provider for those nodes. `pachat chat` is a direct interactive Leader chat path; use `pachat run` or workflow-backed execution to exercise reasoning and synthesis Sub-Agent providers.
+
 Hybrid RAG production wiring is controlled by the mountable `rag` config. `rag.vector` composes an embedding model with Qdrant vector search; `rag.reranker` composes a configured rerank model when available. If vector search or reranking is disabled or unavailable, retrieval keeps the local BM25 fallback.
 
 Runtime capability executors are now registered through a local executor registry. When browser support is enabled, `browser.read`, `browser.navigate`, and `browser.write` route through the governed browser tool; read observations are persisted as Runtime evidence, while navigation and write actions still pass through session/domain policy and confirmation gates.
@@ -717,6 +719,8 @@ agent:
 ```
 
 Workflow 中的 reasoning 与 synthesis 现在会在 `Runtime.ChatProvider` 可用时复用配置的私有本地模型。`reasoning.local` 输出有界 claims、evidence IDs、confidence 和 provider usage，不保存 chain-of-thought。`synthesis.local` 基于已验证 evidence 写出最终答案，`Runtime.Run()` 会使用完成的 synthesis checkpoint 作为持久化 task answer。
+
+Workflow-backed reasoning 和 synthesis 会读取各自的 Sub-Agent model ID。将 `agent.subagents.reasoning.model_id` 或 `agent.subagents.synthesis.model_id` 指向 `models.registry` 中的模型，即可让这些节点使用不同的已配置 provider。`pachat chat` 是直接交互式 Leader chat 路径；要触发 reasoning/synthesis Sub-Agent provider，请使用 `pachat run` 或 workflow-backed 执行。
 
 Hybrid RAG 生产接线由可挂载的 `rag` 配置控制。`rag.vector` 会组合 embedding 模型与 Qdrant 向量检索；`rag.reranker` 会在可用时组合配置的 rerank 模型。vector search 或 reranking 禁用/不可用时，检索会继续使用本地 BM25 fallback。
 

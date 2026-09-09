@@ -14,6 +14,7 @@ P14 turns the local-first Personal Agent into a distributable v1.0 package for m
 - Keep packaged `bin/config.example.yaml` synchronized from `configs/config.example.yaml` during local builds so `./pachat chat --config config.example.yaml` starts with the safe local-first example. The copied example must not enable public providers by default and must use environment variable names, not inline URLs or credentials, for public provider overrides.
 - Wire configured OpenAI-compatible local providers into the Runtime chat path so the interactive CLI uses the selected local model.
 - Wire the configured Leader OpenAI-compatible provider into `BoundedModelPlanner` when `agent.planner.enabled` is true and the selected model supports `chat` and `json_schema`.
+- Wire configured role-specific Sub-Agent model IDs into model-backed `reasoning.local` and `synthesis.local` execution so those nodes use `agent.subagents.reasoning.model_id` and `agent.subagents.synthesis.model_id` instead of always reusing the Leader provider.
 - Provide quickstart, user, administrator, security/threat model, troubleshooting, upgrade, RC E2E, soak, performance, and recovery drill documentation.
 - Provide a release checklist command that verifies tests, vet, build, build matrix, checksums, and required release documents.
 - Add migration compatibility coverage for upgrading from a supported P13/P14-pre schema state to the latest embedded migrations.

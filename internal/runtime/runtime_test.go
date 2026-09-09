@@ -439,6 +439,49 @@ func TestRunUsesModelBackedReasoningAndSynthesisCheckpoint(t *testing.T) {
 	}
 }
 
+func TestRunUsesRoleSpecificSubAgentModels(t *testing.T) {
+	ctx := context.Background()
+	db := openRuntimeTestDB(t)
+	cfg := configForRuntimeTest()
+	cfg.Agent.SubAgents = map[string]config.RoleModelConfig{
+		"reasoning": {ModelID: "reasoning-model", Temperature: 0.1, MaxOutputTokens: 512},
+		"synthesis": {ModelID: "synthesis-model", Temperature: 0.3, MaxOutputTokens: 768},
+	}
+	rt := NewLocal(cfg, db, &orchestrator.InMemoryEvidenceBus{})
+	rt.ChatModel = model.ModelMetadata{ID: "leader-model", Model: "leader"}
+	rt.ChatProvider = &captureModelChatProvider{responses: []model.ChatResponse{{Content: "leader should not be called"}}}
+	reasoningProvider := &captureModelChatProvider{responses: []model.ChatResponse{{Content: `{"claims":[],"decision_summary":"role reasoning","confidence":0.8,"evidence_ids":[]}`}}}
+	synthesisProvider := &captureModelChatProvider{responses: []model.ChatResponse{{Content: "role synthesis answer"}}}
+	rt.SubAgents = map[string]ModelAgent{
+		"reasoning": {Provider: reasoningProvider, Model: model.ModelMetadata{ID: "reasoning-model", Model: "reasoning-external"}},
+		"synthesis": {Provider: synthesisProvider, Model: model.ModelMetadata{ID: "synthesis-model", Model: "synthesis-external"}},
+	}
+	ragStore := rag.NewSQLiteStore(db.SQL, rag.Chunker{MaxTokens: 32})
+	if _, err := ragStore.Index(ctx, rag.Document{ID: "doc-role-subagents", SourceURI: "local://role-subagents", Title: "Role subagents", Text: "role subagent model selection evidence", PrivacyClass: "local_private"}); err != nil {
+		t.Fatalf("Index() error = %v", err)
+	}
+	if err := db.CreateTask(ctx, storage.Task{ID: "task-role-subagents", Title: "role", Input: "Use role subagents", Status: "running", LeaderModelID: "leader-model", PrivacyClass: "local_private"}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := rt.Run(ctx, RunRequest{TaskID: "task-role-subagents", Input: "Use role subagents", LeaderModelID: "leader-model"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if result.Answer != "role synthesis answer" {
+		t.Fatalf("answer = %q, want role synthesis answer", result.Answer)
+	}
+	if got := reasoningProvider.modelIDs; len(got) != 1 || got[0] != "reasoning-model" {
+		t.Fatalf("reasoning model ids = %v, want [reasoning-model]", got)
+	}
+	if got := synthesisProvider.modelIDs; len(got) != 1 || got[0] != "synthesis-model" {
+		t.Fatalf("synthesis model ids = %v, want [synthesis-model]", got)
+	}
+	if leader := rt.ChatProvider.(*captureModelChatProvider); leader.calls != 0 {
+		t.Fatalf("leader provider calls = %d, want 0", leader.calls)
+	}
+}
+
 func TestWorkflowEngineExecutesRegisteredBrowserReadExecutor(t *testing.T) {
 	ctx := context.Background()
 	db := openRuntimeTestDB(t)
@@ -1085,6 +1128,25 @@ func (p *queuedChatProvider) Chat(ctx context.Context, request model.ChatRequest
 	if err := ctx.Err(); err != nil {
 		return model.ChatResponse{}, err
 	}
+	if p.calls >= len(p.responses) {
+		return model.ChatResponse{}, errors.New("unexpected chat call")
+	}
+	response := p.responses[p.calls]
+	p.calls++
+	return response, nil
+}
+
+type captureModelChatProvider struct {
+	responses []model.ChatResponse
+	modelIDs  []string
+	calls     int
+}
+
+func (p *captureModelChatProvider) Chat(ctx context.Context, request model.ChatRequest) (model.ChatResponse, error) {
+	if err := ctx.Err(); err != nil {
+		return model.ChatResponse{}, err
+	}
+	p.modelIDs = append(p.modelIDs, request.Model.ID)
 	if p.calls >= len(p.responses) {
 		return model.ChatResponse{}, errors.New("unexpected chat call")
 	}

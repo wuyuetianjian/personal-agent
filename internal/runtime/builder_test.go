@@ -163,6 +163,55 @@ func TestBuildWiresConfiguredProviderIntoPlanner(t *testing.T) {
 	}
 }
 
+func TestBuildWiresConfiguredSubAgentProviders(t *testing.T) {
+	cfg := configForBuilderPlannerTest(t)
+	cfg.Models.Providers["reasoning-provider"] = config.ProviderConfig{Type: "openai_compatible", BaseURL: "http://127.0.0.1:11435/v1", TrustLevel: "local_private"}
+	cfg.Models.Registry = append(cfg.Models.Registry, config.ModelConfig{
+		ID:           "reasoning-model",
+		Provider:     "reasoning-provider",
+		Model:        "reasoning-subagent",
+		TrustLevel:   "local_private",
+		Capabilities: []string{string(model.CapabilityChat)},
+	})
+	cfg.Agent.SubAgents = map[string]config.RoleModelConfig{
+		"reasoning": {ModelID: "reasoning-model", Temperature: 0.1, MaxOutputTokens: 512},
+	}
+
+	rt, err := Build(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	t.Cleanup(func() { _ = rt.Close() })
+	agent, ok := rt.SubAgents["reasoning"]
+	if !ok {
+		t.Fatal("Build() did not wire reasoning subagent")
+	}
+	if agent.Model.ID != "reasoning-model" {
+		t.Fatalf("reasoning model id = %q, want reasoning-model", agent.Model.ID)
+	}
+	client, ok := agent.Provider.(*model.OpenAICompatibleClient)
+	if !ok {
+		t.Fatalf("reasoning provider type = %T, want *model.OpenAICompatibleClient", agent.Provider)
+	}
+	if client.BaseURL != "http://127.0.0.1:11435/v1" {
+		t.Fatalf("reasoning provider base url = %q", client.BaseURL)
+	}
+}
+
+func TestBuildSubAgentPublicProviderRequiresPrivacyGateway(t *testing.T) {
+	cfg := configForBuilderPlannerTest(t)
+	cfg.Privacy.HMACSecretEnv = "PACHAT_MISSING_SUBAGENT_SECRET"
+	cfg.Privacy.FailClosedForPublicModels = true
+	cfg.Models.Providers["public-subagent"] = config.ProviderConfig{Enabled: boolPtr(true), Type: "openai_compatible", BaseURL: "http://127.0.0.1:1/v1", TrustLevel: string(model.TrustPublicRemote), RequirePrivacyGateway: true}
+	cfg.Models.Registry = append(cfg.Models.Registry, config.ModelConfig{ID: "public-reasoning", Provider: "public-subagent", Model: "public-reasoning", TrustLevel: string(model.TrustPublicRemote), Capabilities: []string{string(model.CapabilityChat)}})
+	cfg.Agent.SubAgents = map[string]config.RoleModelConfig{"reasoning": {ModelID: "public-reasoning"}}
+
+	_, err := Build(context.Background(), cfg)
+	if !errors.Is(err, model.ErrPrivacyGatewayRequired) {
+		t.Fatalf("Build() error = %v, want ErrPrivacyGatewayRequired", err)
+	}
+}
+
 func TestBuildLeavesPlannerNilWhenProviderUnavailable(t *testing.T) {
 	cfg := configForBuilderPlannerTest(t)
 	disabled := false

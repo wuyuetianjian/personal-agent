@@ -25,13 +25,14 @@ type reasoningClaim struct {
 }
 
 func (r *Runtime) runReasoningAgent(ctx context.Context, node agent.TaskNode, evidence []Evidence, input workflowInput) (agent.Result, error) {
-	if r.ChatProvider == nil {
+	modelAgent := r.modelAgent("reasoning")
+	if modelAgent.Provider == nil {
 		text := "reasoning completed with deterministic local evidence review"
 		return agent.Result{Text: text, EvidenceIDs: evidenceIDs(evidence), Usage: agentUsage(node.Input, text)}, nil
 	}
 	maxTokens := r.modelMaxOutputTokens("reasoning", input.MaxOutputTokens, 1024)
-	response, err := r.ChatProvider.Chat(ctx, model.ChatRequest{
-		Model: r.ChatModel,
+	response, err := modelAgent.Provider.Chat(ctx, model.ChatRequest{
+		Model: modelAgent.Model,
 		Messages: []model.ChatMessage{
 			{Role: "system", Content: "Return only JSON: {\"claims\":[{\"text\":\"...\",\"confidence\":0.0,\"evidence_ids\":[\"...\"]}],\"decision_summary\":\"...\",\"confidence\":0.0,\"evidence_ids\":[\"...\"]}. Do not include chain-of-thought or hidden reasoning."},
 			{Role: "user", Content: fmt.Sprintf("task:\n%s\n\nconstraints:\nprivacy_class=%s\nmax_tokens=%d\nmax_cost_usd=%.6f\n\npersisted_evidence:\n%s", node.Input, defaultPrivacyClass(r.PrivacyClass), maxTokens, input.MaxCostUSD, compactEvidenceForModel(evidence))},
@@ -70,7 +71,7 @@ func (r *Runtime) runReasoningAgent(ctx context.Context, node agent.TaskNode, ev
 		NodeID:       node.ID,
 		Claim:        "model reasoning summary",
 		SourceType:   SourceModel,
-		SourceID:     r.ChatModel.ID,
+		SourceID:     modelAgent.Model.ID,
 		Content:      decoded.DecisionSummary,
 		Score:        decoded.Confidence,
 		Trust:        0.7,
@@ -90,13 +91,14 @@ func (r *Runtime) runReasoningAgent(ctx context.Context, node agent.TaskNode, ev
 }
 
 func (r *Runtime) runSynthesisAgent(ctx context.Context, node agent.TaskNode, evidence []Evidence, input workflowInput) (agent.Result, error) {
-	if r.ChatProvider == nil {
+	modelAgent := r.modelAgent("synthesis")
+	if modelAgent.Provider == nil {
 		answer, _ := synthesizeLocalAnswer(node.Input, evidence)
 		return agent.Result{Text: answer, EvidenceIDs: evidenceIDs(evidence), Usage: agentUsage(node.Input, answer)}, nil
 	}
 	maxTokens := r.modelMaxOutputTokens("synthesis", input.MaxOutputTokens, 2048)
-	response, err := r.ChatProvider.Chat(ctx, model.ChatRequest{
-		Model: r.ChatModel,
+	response, err := modelAgent.Provider.Chat(ctx, model.ChatRequest{
+		Model: modelAgent.Model,
 		Messages: []model.ChatMessage{
 			{Role: "system", Content: "Write the final answer using only supported persisted evidence. Exclude unsupported claims. Surface conflicts or insufficient evidence plainly. Do not include chain-of-thought."},
 			{Role: "user", Content: fmt.Sprintf("task:\n%s\n\nconstraints:\nprivacy_class=%s\nmax_tokens=%d\nmax_cost_usd=%.6f\n\npersisted_evidence:\n%s", node.Input, defaultPrivacyClass(r.PrivacyClass), maxTokens, input.MaxCostUSD, compactEvidenceForModel(evidence))},
@@ -112,6 +114,15 @@ func (r *Runtime) runSynthesisAgent(ctx context.Context, node agent.TaskNode, ev
 		answer = "No supported answer could be synthesized from the available evidence."
 	}
 	return agent.Result{Text: answer, EvidenceIDs: evidenceIDs(evidence), Usage: usageFromModel(response.Usage)}, nil
+}
+
+func (r *Runtime) modelAgent(role string) ModelAgent {
+	if r.SubAgents != nil {
+		if agent, ok := r.SubAgents[role]; ok {
+			return agent
+		}
+	}
+	return ModelAgent{Provider: r.ChatProvider, Model: r.ChatModel}
 }
 
 func compactEvidenceForModel(evidence []Evidence) string {
