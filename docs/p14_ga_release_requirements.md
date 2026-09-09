@@ -95,6 +95,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `OP-09` adds REST pagination and filtering for operator list APIs covering tasks, workflows, events, notifications, projects, triggers, and skills. List endpoints accept bounded `limit` and `offset` parameters plus resource-specific filters such as status, project, type, enabled, privacy, skill, source, severity, and text query where applicable.
 
+`GA-BLOCK-01` adds an executable Functional RC E2E gate. `go test ./internal/e2e -run FunctionalRC` validates the GA scenarios with mock-backed Browser/Codex/Claude/MCP executors while still using the real Runtime workflow scheduler, SQLite state, evidence stores, Privacy Gateway public escalation path, side-effect idempotency ledger, and trigger/notification stores.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -135,3 +137,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - CLI portable-data tests verify `pachat export/import` round-trips Projects, Skills, selected memory, and knowledge metadata while excluding credentials, browser cookie/password material, coding CLI credential stores, and raw document chunk text.
 - CLI streaming tests verify `pachat run --stream` emits planning, workflow progress, node state, approval wait, and answer stream records while redacting secret-like output and omitting chain-of-thought fields.
 - API tests verify paginated and filtered REST lists for tasks, workflows, events, notifications, projects, triggers, and skills.
+- Functional RC E2E tests verify local RAG/memory zero-public-call execution, model-backed DAG planning, Browser read/write evidence, Codex-style diff/test evidence, Claude-style review evidence, MCP evidence, Privacy Gateway public escalation, restart/idempotency behavior, and false-to-true watcher notification deduplication.

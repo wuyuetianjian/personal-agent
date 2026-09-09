@@ -344,6 +344,8 @@ Configured MCP servers are registered as `mcp.<server>.<tool>` executors and cal
 
 `OP-09` adds paginated and filtered REST list APIs for tasks, workflows, events, notifications, projects, triggers, and skills. List endpoints accept bounded `limit` and `offset` plus resource-specific filters such as `status`, `project_id`, `type`, `enabled`, `privacy_class`, `skill_id`, `source`, `severity`, and `q`.
 
+The Functional RC E2E gate is executable with `go test ./internal/e2e -run FunctionalRC`. It covers local RAG/memory with zero public calls, model-backed DAG planning, Browser read/write evidence, Codex-style diff/test evidence, Claude-style review evidence, MCP evidence, Privacy Gateway public escalation, restart/idempotency behavior, and false-to-true watcher notification deduplication using mock-backed external executors and real Runtime persistence/scheduling.
+
 Public escalation is wired from enabled `public_remote` chat models in the model registry. If a public provider requires Privacy Gateway, `privacy.hmac_secret_env` must resolve or Runtime build fails closed. Secret-bearing payloads are blocked before provider calls.
 
 Task usage can be queried with `pachat task usage --config <path> --id <task_id>`. Usage is aggregated from workflow checkpoints at node, workflow, and task levels. Model providers with reliable usage use provider token counts; external CLI/tool usage remains marked as unknown when token counts are unavailable.
@@ -362,6 +364,7 @@ Run:
 
 ```sh
 go test ./...
+go test ./internal/e2e -run FunctionalRC
 make build
 make smoke
 make release-build
@@ -723,6 +726,8 @@ Runtime capability executor 现在通过本地 executor registry 注册。启用
 
 `OP-09` 为 tasks、workflows、events、notifications、projects、triggers 和 skills 增加带分页与过滤的 REST list API。列表 endpoint 支持有界 `limit` 和 `offset`，以及 `status`、`project_id`、`type`、`enabled`、`privacy_class`、`skill_id`、`source`、`severity`、`q` 等资源相关过滤参数。
 
+Functional RC E2E gate 可通过 `go test ./internal/e2e -run FunctionalRC` 执行。它使用 mock-backed external executor 和真实 Runtime persistence/scheduling，覆盖 local RAG/memory 且公网调用为 0、模型驱动 DAG planning、Browser read/write evidence、Codex 风格 diff/test evidence、Claude 风格 review evidence、MCP evidence、经 Privacy Gateway 的 public escalation、restart/idempotency 行为，以及 false-to-true watcher notification 去重。
+
 Public escalation 会从 model registry 中启用的 `public_remote` chat model 接线。如果 public provider 要求 Privacy Gateway，`privacy.hmac_secret_env` 必须能解析，否则 Runtime build 会 fail closed。包含 secret 的 payload 会在调用 provider 前被阻断。
 
 可以使用 `pachat task usage --config <path> --id <task_id>` 查询 task usage。Usage 会从 workflow checkpoint 聚合到 node、workflow 和 task 层级。具备可靠 usage 的模型 provider 会使用 provider token count；外部 CLI/tool 在没有 token count 时会标记为 unknown。
@@ -741,6 +746,7 @@ P14 文档位于 `docs/release/`，覆盖 quickstart、用户操作、管理员�
 
 ```sh
 go test ./...
+go test ./internal/e2e -run FunctionalRC
 make build
 make smoke
 make release-build
