@@ -15,7 +15,7 @@ LDFLAGS := -X agent/internal/version.Version=$(VERSION) \
 .PHONY: build test smoke release-build checksums release-check clean
 
 build:
-	go build -ldflags "$(LDFLAGS)" -o bin/pachat ./cmd/pachathat
+	go build -ldflags "$(LDFLAGS)" -o bin/pachat ./cmd/pachat
 
 test:
 	go test ./...

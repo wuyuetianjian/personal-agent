@@ -346,6 +346,8 @@ Configured MCP servers are registered as `mcp.<server>.<tool>` executors and cal
 
 The Functional RC E2E gate is executable with `go test ./internal/e2e -run FunctionalRC`. It covers local RAG/memory with zero public calls, model-backed DAG planning, Browser read/write evidence, Codex-style diff/test evidence, Claude-style review evidence, MCP evidence, Privacy Gateway public escalation, restart/idempotency behavior, and false-to-true watcher notification deduplication using mock-backed external executors and real Runtime persistence/scheduling.
 
+`pachat release check --quick` now includes mandatory Functional GA gates for the Functional RC E2E suite, runtime Leader planning, external executor registry wiring, workflow restart recovery, privacy escalation, early-stop cancellation, side-effect idempotency, and notification edge semantics. Real external CLI/browser binary validation remains opt-in for release candidates.
+
 Public escalation is wired from enabled `public_remote` chat models in the model registry. If a public provider requires Privacy Gateway, `privacy.hmac_secret_env` must resolve or Runtime build fails closed. Secret-bearing payloads are blocked before provider calls.
 
 Task usage can be queried with `pachat task usage --config <path> --id <task_id>`. Usage is aggregated from workflow checkpoints at node, workflow, and task levels. Model providers with reliable usage use provider token counts; external CLI/tool usage remains marked as unknown when token counts are unavailable.
@@ -364,6 +366,7 @@ Run:
 
 ```sh
 go test ./...
+go test ./internal/release
 go test ./internal/e2e -run FunctionalRC
 make build
 make smoke
@@ -728,6 +731,8 @@ Runtime capability executor 现在通过本地 executor registry 注册。启用
 
 Functional RC E2E gate 可通过 `go test ./internal/e2e -run FunctionalRC` 执行。它使用 mock-backed external executor 和真实 Runtime persistence/scheduling，覆盖 local RAG/memory 且公网调用为 0、模型驱动 DAG planning、Browser read/write evidence、Codex 风格 diff/test evidence、Claude 风格 review evidence、MCP evidence、经 Privacy Gateway 的 public escalation、restart/idempotency 行为，以及 false-to-true watcher notification 去重。
 
+`pachat release check --quick` 现在包含必过 Functional GA gate：Functional RC E2E、Runtime Leader planning、external executor registry 接线、workflow restart recovery、privacy escalation、early-stop cancellation、side-effect idempotency 和 notification edge semantics。真实外部 CLI/browser 二进制验证仍是 release candidate 的 opt-in 步骤。
+
 Public escalation 会从 model registry 中启用的 `public_remote` chat model 接线。如果 public provider 要求 Privacy Gateway，`privacy.hmac_secret_env` 必须能解析，否则 Runtime build 会 fail closed。包含 secret 的 payload 会在调用 provider 前被阻断。
 
 可以使用 `pachat task usage --config <path> --id <task_id>` 查询 task usage。Usage 会从 workflow checkpoint 聚合到 node、workflow 和 task 层级。具备可靠 usage 的模型 provider 会使用 provider token count；外部 CLI/tool 在没有 token count 时会标记为 unknown。
@@ -746,6 +751,7 @@ P14 文档位于 `docs/release/`，覆盖 quickstart、用户操作、管理员�
 
 ```sh
 go test ./...
+go test ./internal/release
 go test ./internal/e2e -run FunctionalRC
 make build
 make smoke

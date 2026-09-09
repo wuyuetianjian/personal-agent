@@ -34,6 +34,12 @@ type Options struct {
 	Quick    bool
 }
 
+type commandCheckSpec struct {
+	Name    string
+	Command string
+	Args    []string
+}
+
 func RunChecks(ctx context.Context, opts Options) (Report, error) {
 	root := opts.RepoRoot
 	if root == "" {
@@ -52,6 +58,7 @@ func RunChecks(ctx context.Context, opts Options) (Report, error) {
 	report.add(runCommand(ctx, root, "go test ./...", "go", "test", "./..."))
 	report.add(runCommand(ctx, root, "go vet ./...", "go", "vet", "./..."))
 	report.add(runCommand(ctx, root, "make build", "make", "build"))
+	report.add(functionalGAChecks(ctx, root)...)
 	if !opts.Quick {
 		report.add(runCommand(ctx, root, "go test -race ./...", "go", "test", "-race", "./..."))
 		report.add(runOptionalCommand(ctx, root, "staticcheck ./...", "staticcheck", "./..."))
@@ -65,6 +72,60 @@ func RunChecks(ctx context.Context, opts Options) (Report, error) {
 		return report, errors.New("release checks failed")
 	}
 	return report, nil
+}
+
+func functionalGAChecks(ctx context.Context, root string) []Check {
+	specs := functionalGACheckSpecs()
+	checks := make([]Check, 0, len(specs))
+	for _, spec := range specs {
+		checks = append(checks, runCommand(ctx, root, spec.Name, spec.Command, spec.Args...))
+	}
+	return checks
+}
+
+func functionalGACheckSpecs() []commandCheckSpec {
+	return []commandCheckSpec{
+		{
+			Name:    "functional rc e2e",
+			Command: "go",
+			Args:    []string{"test", "./internal/e2e", "-run", "FunctionalRC", "-count=1"},
+		},
+		{
+			Name:    "runtime leader planning",
+			Command: "go",
+			Args:    []string{"test", "./internal/runtime", "-run", "TestBuildWiresConfiguredProviderIntoPlanner|TestBoundedModelPlannerAcceptsBoundedDAG", "-count=1"},
+		},
+		{
+			Name:    "external executor registry",
+			Command: "go",
+			Args:    []string{"test", "./internal/runtime", "-run", "TestWorkflowEngineExecutesRegisteredBrowserReadExecutor|TestWorkflowEngineExecutesRegisteredCodingExecutor|TestWorkflowEngineExecutesRegisteredMCPExecutor|TestWorkflowEngineExecutesAllowlistedToolExecutor", "-count=1"},
+		},
+		{
+			Name:    "workflow restart recovery",
+			Command: "go",
+			Args:    []string{"test", "./internal/runtime", "-run", "TestWorkflowWorkerRecoversRunnableWorkflowOnStartup", "-count=1"},
+		},
+		{
+			Name:    "privacy escalation",
+			Command: "go",
+			Args:    []string{"test", "./internal/runtime", "-run", "TestBuildWiresConfiguredPublicEscalatorWithPrivacyGateway|TestPublicEscalatorPrivacyGatewayBlocksSecretsBeforeProviderCall", "-count=1"},
+		},
+		{
+			Name:    "early-stop cancellation",
+			Command: "go",
+			Args:    []string{"test", "./internal/runtime", "-run", "TestWorkflowVerificationEarlyStopCancelsRemainingWork", "-count=1"},
+		},
+		{
+			Name:    "side-effect idempotency",
+			Command: "go",
+			Args:    []string{"test", "./internal/runtime", "-run", "TestSideEffectIdempotencySkipsCompletedDuplicate|TestSideEffectIdempotencyBlocksRecoveryDuplicate", "-count=1"},
+		},
+		{
+			Name:    "notification edge semantics",
+			Command: "go",
+			Args:    []string{"test", "./internal/notification", "-run", "TestNotificationPolicyDedupSeverityAndQuietHours", "-count=1"},
+		},
+	}
 }
 
 func (r *Report) add(checks ...Check) {
