@@ -31,6 +31,7 @@ type SoakOptions struct {
 }
 
 type SoakReport struct {
+	RunID                  string       `json:"run_id"`
 	StartedAt              time.Time    `json:"started_at"`
 	CompletedAt            time.Time    `json:"completed_at"`
 	Duration               string       `json:"duration"`
@@ -95,7 +96,8 @@ func RunSoak(ctx context.Context, opts SoakOptions) (SoakReport, error) {
 
 	started := now().UTC()
 	deadline := started.Add(opts.Duration)
-	report := SoakReport{StartedAt: started, Duration: opts.Duration.String(), Offline: opts.Offline}
+	runID := fmt.Sprintf("soak-%s", started.Format("20060102T150405.000000000Z"))
+	report := SoakReport{RunID: runID, StartedAt: started, Duration: opts.Duration.String(), Offline: opts.Offline}
 	browserArtifactsAtStart := countTreeFiles(cfg.Browser.ScreenshotDir)
 	worktreesAtStart := countWorktreeArtifacts(cfg)
 	report.Samples = append(report.Samples, collectSoakSample(ctx, rt.Storage.SQL, cfg.Storage.SQLite.Path, now))
@@ -106,7 +108,7 @@ func RunSoak(ctx context.Context, opts SoakOptions) (SoakReport, error) {
 			break
 		}
 		iteration++
-		if err := runSoakWorkload(ctx, rt, cfg, iteration, now); err != nil {
+		if err := runSoakWorkload(ctx, rt, cfg, runID, iteration, now); err != nil {
 			report.Failures = append(report.Failures, err.Error())
 			break
 		}
@@ -158,8 +160,8 @@ func offlineSoakConfig(cfg config.Config) config.Config {
 	return cfg
 }
 
-func runSoakWorkload(ctx context.Context, rt *agentruntime.Runtime, cfg config.Config, iteration int, now func() time.Time) error {
-	taskID := fmt.Sprintf("soak-task-%06d", iteration)
+func runSoakWorkload(ctx context.Context, rt *agentruntime.Runtime, cfg config.Config, runID string, iteration int, now func() time.Time) error {
+	taskID := fmt.Sprintf("%s-task-%06d", runID, iteration)
 	input := fmt.Sprintf("soak iteration %d local workflow health check", iteration)
 	if err := rt.Storage.CreateTask(ctx, storage.Task{
 		ID:            taskID,
@@ -181,9 +183,9 @@ func runSoakWorkload(ctx context.Context, rt *agentruntime.Runtime, cfg config.C
 	}
 	store := notification.Store{DB: rt.Storage.SQL}
 	_, err := store.PutWithPolicy(ctx, notification.Notification{
-		ID:        fmt.Sprintf("soak-note-%06d", iteration),
+		ID:        fmt.Sprintf("%s-note-%06d", runID, iteration),
 		Title:     "soak notification",
-		DedupKey:  fmt.Sprintf("soak-note-%06d", iteration),
+		DedupKey:  fmt.Sprintf("%s-note-%06d", runID, iteration),
 		Severity:  "info",
 		CreatedAt: now().UTC(),
 	}, notification.Policy{})

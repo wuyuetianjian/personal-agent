@@ -46,6 +46,31 @@ func TestRunSoakOfflineProducesPassingReport(t *testing.T) {
 	}
 }
 
+func TestRunSoakOfflineCanRunRepeatedlyOnSameDatabase(t *testing.T) {
+	dir := t.TempDir()
+	cfg := minimalSoakConfig(filepath.Join(dir, "soak.db"))
+	now := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	nextNow := func() time.Time {
+		now = now.Add(time.Second)
+		return now
+	}
+	for i := 0; i < 2; i++ {
+		report, err := RunSoak(context.Background(), SoakOptions{
+			Config:   cfg,
+			Duration: time.Nanosecond,
+			Interval: time.Nanosecond,
+			Offline:  true,
+			Now:      nextNow,
+		})
+		if err != nil {
+			t.Fatalf("RunSoak() iteration %d error = %v, report = %+v", i, err, report)
+		}
+		if report.Status != "pass" {
+			t.Fatalf("RunSoak() iteration %d status = %q, failures=%v", i, report.Status, report.Failures)
+		}
+	}
+}
+
 func minimalSoakConfig(dbPath string) config.Config {
 	enabled := false
 	return config.Config{
