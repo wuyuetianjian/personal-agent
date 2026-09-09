@@ -101,6 +101,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `GA-BLOCK-03` adds an executable soak gate through `pachat release soak`. The command must run a configured-duration Runtime workload, sample goroutine, heap, SQLite, workflow, notification, and external-artifact metrics, fail on stuck workflows or duplicate notifications, and write a JSON report when requested. The default offline gate must avoid hard dependencies on external model, browser, MCP, or coding CLI binaries while still exercising real local Runtime persistence.
 
+`GA-BLOCK-04` adds an executable data-loss recovery drill through `pachat release recovery-drill`. The command must seed disposable fixture state for Projects, Skills, Memory, Workflow, Trigger, Notification, and Approval records, create a backup with the production backup command path, delete the fixture SQLite files, restore the archive into a fresh database, run integrity validation, verify every required object class, and emit a JSON report when requested.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -144,3 +146,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - Functional RC E2E tests verify local RAG/memory zero-public-call execution, model-backed DAG planning, Browser read/write evidence, Codex-style diff/test evidence, Claude-style review evidence, MCP evidence, Privacy Gateway public escalation, restart/idempotency behavior, and false-to-true watcher notification deduplication.
 - Release check tests verify the mandatory Functional GA gate commands are included in `pachat release check`.
 - Soak tests verify `pachat release soak` produces a passing JSON report for the offline Runtime gate and records workflow, memory, goroutine, SQLite, notification, and external-artifact metrics.
+- Recovery drill tests verify `pachat release recovery-drill` performs backup, fixture database destruction, restore, integrity validation, and object-class verification for Projects, Skills, Memory, Workflow, Trigger, Notification, and Approval records.

@@ -350,6 +350,8 @@ The Functional RC E2E gate is executable with `go test ./internal/e2e -run Funct
 
 `pachat release soak --config <path>` runs an executable soak gate. The default offline mode exercises the real local Runtime and SQLite workflow path without requiring external model/browser/CLI binaries, samples goroutine, heap, SQLite, workflow, notification, and external-artifact metrics, and can write a JSON report with `--output <path>`. Use `--duration 24h --interval 1m --offline=false` for release-candidate environments with configured external backends.
 
+`pachat release recovery-drill --config <path>` runs the data-loss recovery drill against disposable fixture state. It seeds Projects, Skills, Memory, Workflow, Trigger, Notification, and Approval records, creates a backup through the normal backup command path, deletes the fixture SQLite files, restores into a fresh database, verifies SQLite integrity and every object class, and writes a JSON report when `--output <path>` is set.
+
 Public escalation is wired from enabled `public_remote` chat models in the model registry. If a public provider requires Privacy Gateway, `privacy.hmac_secret_env` must resolve or Runtime build fails closed. Secret-bearing payloads are blocked before provider calls.
 
 Task usage can be queried with `pachat task usage --config <path> --id <task_id>`. Usage is aggregated from workflow checkpoints at node, workflow, and task levels. Model providers with reliable usage use provider token counts; external CLI/tool usage remains marked as unknown when token counts are unavailable.
@@ -371,6 +373,7 @@ go test ./...
 go test ./internal/release
 go test ./internal/e2e -run FunctionalRC
 go run ./cmd/pachat release soak --config configs/config.example.yaml --duration 1s --interval 1s --output /tmp/pachat-soak.json
+go run ./cmd/pachat release recovery-drill --config configs/config.example.yaml --work-dir /tmp/pachat-recovery-drill --output /tmp/pachat-recovery-drill.json
 make build
 make smoke
 make release-build
@@ -738,6 +741,8 @@ Functional RC E2E gate 可通过 `go test ./internal/e2e -run FunctionalRC` 执�
 
 `pachat release soak --config <path>` 会执行可运行的 soak gate。默认 offline 模式不要求外部模型、browser 或 CLI 二进制，但会覆盖真实本地 Runtime 与 SQLite workflow 路径，采样 goroutine、heap、SQLite、workflow、notification 和 external-artifact 指标，并可用 `--output <path>` 写入 JSON 报告。在已配置外部 backend 的 release-candidate 环境中，可使用 `--duration 24h --interval 1m --offline=false`。
 
+`pachat release recovery-drill --config <path>` 会针对一次性 fixture 状态执行 data-loss recovery drill。它会写入 Projects、Skills、Memory、Workflow、Trigger、Notification 和 Approval 记录，通过正常 backup 命令路径创建备份，删除 fixture SQLite 文件，恢复到新的数据库，验证 SQLite integrity 与每类对象，并可用 `--output <path>` 写入 JSON 报告。
+
 Public escalation 会从 model registry 中启用的 `public_remote` chat model 接线。如果 public provider 要求 Privacy Gateway，`privacy.hmac_secret_env` 必须能解析，否则 Runtime build 会 fail closed。包含 secret 的 payload 会在调用 provider 前被阻断。
 
 可以使用 `pachat task usage --config <path> --id <task_id>` 查询 task usage。Usage 会从 workflow checkpoint 聚合到 node、workflow 和 task 层级。具备可靠 usage 的模型 provider 会使用 provider token count；外部 CLI/tool 在没有 token count 时会标记为 unknown。
@@ -759,6 +764,7 @@ go test ./...
 go test ./internal/release
 go test ./internal/e2e -run FunctionalRC
 go run ./cmd/pachat release soak --config configs/config.example.yaml --duration 1s --interval 1s --output /tmp/pachat-soak.json
+go run ./cmd/pachat release recovery-drill --config configs/config.example.yaml --work-dir /tmp/pachat-recovery-drill --output /tmp/pachat-recovery-drill.json
 make build
 make smoke
 make release-build

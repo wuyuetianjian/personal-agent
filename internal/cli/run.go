@@ -121,8 +121,10 @@ func releaseCommand(ctx context.Context, args []string, stdout io.Writer) error 
 		return releaseCheckCommand(ctx, args[1:], stdout)
 	case "soak":
 		return releaseSoakCommand(ctx, args[1:], stdout)
+	case "recovery-drill":
+		return releaseRecoveryDrillCommand(ctx, args[1:], stdout)
 	default:
-		return usageError("release requires check or soak")
+		return usageError("release requires check, soak, or recovery-drill")
 	}
 }
 

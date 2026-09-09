@@ -578,6 +578,29 @@ proactive:
 	}
 }
 
+func TestReleaseRecoveryDrillCommand(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	outputPath := filepath.Join(dir, "recovery-report.json")
+	writeConfig(t, configPath, filepath.Join(dir, "template.db"))
+	var stdout bytes.Buffer
+	err := Run(context.Background(), []string{"release", "recovery-drill", "--config", configPath, "--work-dir", filepath.Join(dir, "drill"), "--output", outputPath}, &stdout)
+	if err != nil {
+		t.Fatalf("release recovery-drill error = %v\n%s", err, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "status=pass") {
+		t.Fatalf("release recovery-drill output = %q, want status=pass", stdout.String())
+	}
+	for _, field := range []string{"verified_projects=true", "verified_skills=true", "verified_memory=true", "verified_workflows=true", "verified_triggers=true", "verified_notifications=true", "verified_approvals=true"} {
+		if !strings.Contains(stdout.String(), field) {
+			t.Fatalf("release recovery-drill output = %q, missing %s", stdout.String(), field)
+		}
+	}
+	if _, err := os.Stat(outputPath); err != nil {
+		t.Fatalf("recovery report not written: %v", err)
+	}
+}
+
 func TestMCPCommands(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
