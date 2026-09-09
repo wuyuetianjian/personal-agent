@@ -1,170 +1,561 @@
+# 配置架构版本；当前支持 1，用于严格校验示例文件格式。
+# Config schema version; currently supports 1 for strict example file validation.
 config_version: 1
 
+# 应用基础信息；用于命名本地资源、区分运行环境和定位运行数据。
+# Application basics; used to name local resources, separate environments, and locate runtime data.
 app:
+  # 应用名称；会出现在日志、诊断和本地资源标识中。
+  # Application name; appears in logs, diagnostics, and local resource identifiers.
   name: personal-agent
+  # 运行环境名称；示例为 local，可按部署环境改为 dev/staging/prod 等。
+  # Runtime environment name; local in this example, can be changed to dev/staging/prod, etc.
   environment: local
+  # 本地数据目录；SQLite、截图和运行态文件默认写入这里，生产部署应挂载该路径。
+  # Local data directory; SQLite, screenshots, and runtime files default here, mount this path in production.
   data_dir: ./data
 
+# 本地 HTTP 服务配置；控制 dashboard、API、健康检查和 SSE 端点。
+# Local HTTP server settings; controls dashboard, API, health checks, and SSE endpoints.
 server:
+  # 是否启用本地 HTTP 服务；false 时仅使用 CLI 路径。
+  # Enables the local HTTP server; false keeps operation CLI-only.
   enabled: true
+  # 监听地址；默认只绑定 127.0.0.1，避免暴露到局域网或公网。
+  # Listen address; defaults to 127.0.0.1 to avoid LAN or public exposure.
   listen_addr: 127.0.0.1:8787
+  # 单个 HTTP 请求超时时间；使用 Go duration 格式，如 30s、2m。
+  # Per-request HTTP timeout; uses Go duration syntax such as 30s or 2m.
   request_timeout: 120s
 
+# 持久化存储配置；运行时状态、记忆、任务、工作流和审计记录写入这里。
+# Persistent storage settings; runtime state, memory, tasks, workflows, and audit records are written here.
 storage:
+  # 存储驱动；支持 sqlite 或 postgres，本地优先示例使用 sqlite。
+  # Storage driver; supports sqlite or postgres, this local-first example uses sqlite.
   driver: sqlite
+  # SQLite 配置；当 storage.driver 为 sqlite 时生效。
+  # SQLite settings; used when storage.driver is sqlite.
   sqlite:
+    # SQLite 数据库文件路径；生产部署应放在可挂载数据目录中。
+    # SQLite database file path; in production keep it under a mounted data directory.
     path: ./data/personal-agent.db
+  # PostgreSQL 配置；当 storage.driver 为 postgres 时生效。
+  # PostgreSQL settings; used when storage.driver is postgres.
   postgres:
+    # PostgreSQL DSN 的环境变量名；避免在配置文件中写入数据库凭据。
+    # Environment variable name for the PostgreSQL DSN; avoids placing database credentials in this file.
     dsn_env: PERSONAL_AGENT_POSTGRES_DSN
 
+# 隐私网关配置；用于 public remote 模型调用前的脱敏和 fail-closed 策略。
+# Privacy gateway settings; used for redaction and fail-closed policy before public remote model calls.
 privacy:
+  # HMAC 密钥所在环境变量名；用于稳定 pseudonymization，不应把密钥写入 YAML。
+  # Environment variable name containing the HMAC secret; used for stable pseudonymization, never inline the secret in YAML.
   hmac_secret_env: PERSONAL_AGENT_PRIVACY_HMAC_SECRET
+  # public remote 模型需要隐私网关时是否缺失即失败；true 可防止未脱敏外发。
+  # Fails when a public remote model requires the privacy gateway but it is unavailable; true prevents unredacted egress.
   fail_closed_for_public_models: true
 
+# 模型配置；定义 provider、模型注册表、trust level、capability 和价格。
+# Model settings; defines providers, model registry, trust levels, capabilities, and pricing.
 models:
+  # 默认 provider ID；必须指向 models.providers 下的一个 provider。
+  # Default provider ID; must reference one provider under models.providers.
   default_provider: local-ollama
+  # Provider 映射；键名是 provider ID，模型注册表通过该 ID 引用 provider。
+  # Provider map; each key is a provider ID referenced by the model registry.
   providers:
+    # 本地 Ollama OpenAI-compatible provider；默认用于本地私有推理。
+    # Local Ollama OpenAI-compatible provider; default for local private inference.
     local-ollama:
+      # Provider 类型；当前示例使用 OpenAI-compatible HTTP API。
+      # Provider type; this example uses an OpenAI-compatible HTTP API.
       type: openai_compatible
+      # Provider base URL；本地 Ollama 默认地址，可按本机服务修改。
+      # Provider base URL; default local Ollama endpoint, change for your local service.
       base_url: http://127.0.0.1:11434/v1
+      # API key 环境变量名；Ollama 通常不需要，但字段保留给兼容服务。
+      # API key environment variable name; Ollama usually does not need it, but compatible services can.
       api_key_env: OLLAMA_API_KEY
+      # Provider 信任等级；local_private 表示请求留在本机私有边界内。
+      # Provider trust level; local_private means requests stay inside the local private boundary.
       trust_level: local_private
+    # 公网 OpenAI-compatible provider 示例；默认关闭，启用前必须配置隐私网关和环境变量。
+    # Public OpenAI-compatible provider example; disabled by default, configure privacy gateway and env vars before enabling.
     public-openai-compatible:
+      # 是否启用该 provider；false 表示不会被 Runtime 使用。
+      # Enables this provider; false means the Runtime will not use it.
       enabled: false
+      # Provider 类型；当前仅展示 OpenAI-compatible HTTP API。
+      # Provider type; this example shows an OpenAI-compatible HTTP API.
       type: openai_compatible
+      # Provider base URL 的环境变量名；避免在配置中硬编码公网服务地址。
+      # Environment variable name for provider base URL; avoids hardcoding public service URLs.
       base_url_env: PUBLIC_OPENAI_COMPATIBLE_BASE_URL
+      # API key 环境变量名；避免把凭据写入配置文件。
+      # API key environment variable name; avoids writing credentials into the config file.
       api_key_env: PUBLIC_OPENAI_COMPATIBLE_API_KEY
+      # Provider 信任等级；public_remote 表示请求会离开本地私有边界。
+      # Provider trust level; public_remote means requests leave the local private boundary.
       trust_level: public_remote
+      # 是否要求隐私网关；true 时缺少网关或密钥会 fail closed。
+      # Requires the privacy gateway; true fails closed when gateway or secret is missing.
       require_privacy_gateway: true
+  # 模型注册表；每个条目定义一个可被角色、RAG 或 reranker 引用的模型。
+  # Model registry; each entry defines a model that roles, RAG, or reranker settings can reference.
   registry:
+    # 模型条目；id 必须唯一，并被 agent.*.model_id 引用。
+    # Model entry; id must be unique and can be referenced by agent.*.model_id.
     - id: local-planner
+      # Provider ID；必须匹配 models.providers 中的键名。
+      # Provider ID; must match a key under models.providers.
       provider: local-ollama
+      # 实际模型名称；按本机 Ollama 或兼容服务中的模型名修改。
+      # Actual model name; change to the model name available in local Ollama or a compatible service.
       model: qwen3.8:27b-mlx
+      # 模型信任等级；应与 provider 边界一致或更严格。
+      # Model trust level; should match or be stricter than the provider boundary.
       trust_level: local_private
+      # 上下文窗口 token 数；用于规划和压缩边界估算。
+      # Context window in tokens; used for planning and compression boundary estimates.
       context_window: 32768
+      # 模型能力列表；用于选择 chat、tool_calling、json_schema 等功能。
+      # Model capability list; used to select features such as chat, tool_calling, and json_schema.
       capabilities: [chat, tool_calling, json_schema]
+      # 价格配置；用于成本估算，本地模型示例为 0。
+      # Pricing settings; used for cost estimates, local model example is 0.
       pricing:
+        # 每 100 万输入 token 成本；本地私有模型默认记为 0。
+        # Cost per 1M input tokens; local private model defaults to 0.
         input_per_1m: 0
+        # 每 100 万输出 token 成本；本地私有模型默认记为 0。
+        # Cost per 1M output tokens; local private model defaults to 0.
+        output_per_1m: 0
+    # 本地 embedding 模型条目；供 rag.vector.embedding_model_id 在启用 vector 时引用。
+    # Local embedding model entry; referenced by rag.vector.embedding_model_id when vector retrieval is enabled.
+    - id: local-embedding
+      # Provider ID；embedding 请求会发送到该 provider。
+      # Provider ID; embedding requests are sent to this provider.
+      provider: local-ollama
+      # 实际 embedding 模型名称；按本机已安装的 embedding 模型修改。
+      # Actual embedding model name; change to the embedding model installed locally.
+      model: nomic-embed-text
+      # 模型信任等级；local_private 表示 embedding 输入留在本机私有边界内。
+      # Model trust level; local_private means embedding inputs stay inside the local private boundary.
+      trust_level: local_private
+      # 上下文窗口 token 数；用于估算单次 embedding 输入上限。
+      # Context window in tokens; used to estimate per-embedding input limits.
+      context_window: 8192
+      # 模型能力列表；embedding 模型必须包含 embedding capability。
+      # Model capability list; embedding models must include the embedding capability.
+      capabilities: [embedding]
+      # 价格配置；用于向量检索成本估算，本地模型示例为 0。
+      # Pricing settings; used for vector retrieval cost estimates, local model example is 0.
+      pricing:
+        # 每 100 万输入 token 成本；本地 embedding 默认记为 0。
+        # Cost per 1M input tokens; local embedding defaults to 0.
+        input_per_1m: 0
+        # 每 100 万输出 token 成本；embedding 通常没有生成输出，示例为 0。
+        # Cost per 1M output tokens; embeddings usually have no generated output, example is 0.
+        output_per_1m: 0
+    # 本地 reranker 模型条目；供 rag.reranker.model_id 在启用 reranker 时引用。
+    # Local reranker model entry; referenced by rag.reranker.model_id when reranking is enabled.
+    - id: local-reranker
+      # Provider ID；rerank 请求会发送到该 provider。
+      # Provider ID; rerank requests are sent to this provider.
+      provider: local-ollama
+      # 实际 reranker 模型名称；按本机或兼容服务中的 rerank 模型修改。
+      # Actual reranker model name; change to the rerank model available locally or through a compatible service.
+      model: local-reranker
+      # 模型信任等级；local_private 表示候选文档片段不会离开本机私有边界。
+      # Model trust level; local_private means candidate document snippets do not leave the local private boundary.
+      trust_level: local_private
+      # 上下文窗口 token 数；用于估算 rerank 候选上下文上限。
+      # Context window in tokens; used to estimate rerank candidate context limits.
+      context_window: 8192
+      # 模型能力列表；reranker 模型必须包含 rerank capability。
+      # Model capability list; reranker models must include the rerank capability.
+      capabilities: [rerank]
+      # 价格配置；用于 rerank 成本估算，本地模型示例为 0。
+      # Pricing settings; used for rerank cost estimates, local model example is 0.
+      pricing:
+        # 每 100 万输入 token 成本；本地 reranker 默认记为 0。
+        # Cost per 1M input tokens; local reranker defaults to 0.
+        input_per_1m: 0
+        # 每 100 万输出 token 成本；rerank 通常没有生成输出，示例为 0。
+        # Cost per 1M output tokens; rerank usually has no generated output, example is 0.
+        output_per_1m: 0
+    # 公网 chat 模型条目示例；provider 默认关闭，因此不会默认用于 public escalation。
+    # Public chat model entry example; provider is disabled by default, so it is not used for public escalation by default.
+    - id: public-chat-example
+      # Provider ID；必须指向上方默认关闭的 public-openai-compatible provider。
+      # Provider ID; must point to the disabled-by-default public-openai-compatible provider above.
+      provider: public-openai-compatible
+      # 实际公网模型名称；启用公网 provider 时按服务商模型名修改。
+      # Actual public model name; change to the provider's model name when enabling the public provider.
+      model: public-chat-model
+      # 模型信任等级；public_remote 表示 prompt 和输出会经过公网 provider 边界。
+      # Model trust level; public_remote means prompts and outputs cross a public provider boundary.
+      trust_level: public_remote
+      # 上下文窗口 token 数；用于公网 escalator 的上下文和预算估算。
+      # Context window in tokens; used for public escalator context and budget estimates.
+      context_window: 128000
+      # 模型能力列表；public escalation 当前需要 chat capability。
+      # Model capability list; public escalation currently requires the chat capability.
+      capabilities: [chat]
+      # 价格配置；按公网 provider 价格表填写，用于成本估算。
+      # Pricing settings; fill from the public provider price sheet for cost estimates.
+      pricing:
+        # 每 100 万输入 token 成本；示例保持 0，生产配置应填写真实价格。
+        # Cost per 1M input tokens; example stays 0, production config should use real pricing.
+        input_per_1m: 0
+        # 每 100 万输出 token 成本；示例保持 0，生产配置应填写真实价格。
+        # Cost per 1M output tokens; example stays 0, production config should use real pricing.
         output_per_1m: 0
 
+# Agent 角色配置；控制 Leader、Planner 和各 Sub-Agent 使用的模型与输出边界。
+# Agent role settings; controls models and output bounds for Leader, Planner, and Sub-Agents.
 agent:
+  # Leader 配置；用于交互式 chat、规划和默认推理入口。
+  # Leader settings; used for interactive chat, planning, and the default reasoning entrypoint.
   leader:
+    # Leader 模型 ID；必须指向 models.registry 中的一个模型。
+    # Leader model ID; must reference a model in models.registry.
     model_id: local-planner
+    # 采样温度；越低越稳定，越高越发散。
+    # Sampling temperature; lower is more deterministic, higher is more exploratory.
     temperature: 0.2
+    # 最大输出 token；限制单次模型响应大小。
+    # Maximum output tokens; bounds a single model response.
     max_output_tokens: 4096
+    # 最低信任等级要求；低于该边界的模型不能用于该角色。
+    # Minimum required trust level; models below this boundary cannot serve this role.
     trust_level_required: local_private
+  # Planner 配置；控制模型驱动 DAG 规划是否启用及最大节点数。
+  # Planner settings; controls model-driven DAG planning and the maximum node count.
   planner:
+    # 是否启用模型 Planner；false 时使用默认本地 workflow 路径。
+    # Enables the model planner; false uses the default local workflow path.
     enabled: true
+    # Planner 最大节点数；防止一次任务生成过大的 workflow。
+    # Maximum planner node count; prevents a task from creating an oversized workflow.
     max_nodes: 8
+  # Sub-Agent 配置；键名是角色名，每个角色可使用独立模型与输出限制。
+  # Sub-Agent settings; each key is a role name with independent model and output limits.
   subagents:
+    # Research 角色；用于检索、调查和资料整理类节点。
+    # Research role; used for retrieval, investigation, and note-gathering nodes.
     research:
+      # Research 模型 ID；必须指向 models.registry 中的模型。
+      # Research model ID; must reference a model in models.registry.
       model_id: local-planner
+      # Research 采样温度；低值减少检索解释漂移。
+      # Research sampling temperature; low values reduce retrieval explanation drift.
       temperature: 0.1
+      # Research 最大输出 token；限制单次结果大小。
+      # Research maximum output tokens; bounds one response.
       max_output_tokens: 2048
+      # Research 最低信任等级要求；默认保持本地私有。
+      # Research minimum required trust level; defaults to local private.
       trust_level_required: local_private
+    # Verification 角色；用于 claim/evidence 检查和置信度判断。
+    # Verification role; used for claim/evidence checks and confidence decisions.
     verification:
+      # Verification 模型 ID；必须指向 models.registry 中的模型。
+      # Verification model ID; must reference a model in models.registry.
       model_id: local-planner
+      # Verification 采样温度；0 表示尽量确定性输出。
+      # Verification sampling temperature; 0 favors deterministic output.
       temperature: 0
+      # Verification 最大输出 token；限制校验报告长度。
+      # Verification maximum output tokens; bounds verification report length.
       max_output_tokens: 1024
+      # Verification 最低信任等级要求；默认保持本地私有。
+      # Verification minimum required trust level; defaults to local private.
       trust_level_required: local_private
+    # Reasoning 角色；用于 workflow 中的本地推理节点。
+    # Reasoning role; used by local reasoning nodes in workflows.
     reasoning:
+      # Reasoning 模型 ID；必须指向 models.registry 中的模型。
+      # Reasoning model ID; must reference a model in models.registry.
       model_id: local-planner
+      # Reasoning 采样温度；低值保持回答稳定。
+      # Reasoning sampling temperature; low values keep responses stable.
       temperature: 0.1
+      # Reasoning 最大输出 token；限制 reasoning checkpoint 大小。
+      # Reasoning maximum output tokens; bounds reasoning checkpoint size.
       max_output_tokens: 1024
+      # Reasoning 最低信任等级要求；默认保持本地私有。
+      # Reasoning minimum required trust level; defaults to local private.
       trust_level_required: local_private
+    # Synthesis 角色；用于基于已验证 evidence 生成最终答案。
+    # Synthesis role; used to generate final answers from verified evidence.
     synthesis:
+      # Synthesis 模型 ID；必须指向 models.registry 中的模型。
+      # Synthesis model ID; must reference a model in models.registry.
       model_id: local-planner
+      # Synthesis 采样温度；适中值允许自然表达但保持稳定。
+      # Synthesis sampling temperature; moderate value allows natural wording while staying stable.
       temperature: 0.2
+      # Synthesis 最大输出 token；限制最终答案大小。
+      # Synthesis maximum output tokens; bounds final answer length.
       max_output_tokens: 2048
+      # Synthesis 最低信任等级要求；默认保持本地私有。
+      # Synthesis minimum required trust level; defaults to local private.
       trust_level_required: local_private
 
+# RAG 配置；本地 BM25 总是可作为 fallback，vector/reranker 为可选增强。
+# RAG settings; local BM25 remains the fallback while vector/reranker are optional enhancements.
 rag:
+  # 向量检索配置；启用后会通过 embedding 模型和 Qdrant 进行 hybrid retrieval。
+  # Vector retrieval settings; when enabled uses an embedding model and Qdrant for hybrid retrieval.
   vector:
+    # 是否启用向量检索；false 时仅使用本地 BM25 fallback。
+    # Enables vector retrieval; false uses only the local BM25 fallback.
     enabled: false
+    # Embedding 模型 ID；启用 vector 时必须指向 models.registry。
+    # Embedding model ID; when vector is enabled it must reference models.registry.
     embedding_model_id: local-embedding
+    # Qdrant base URL 环境变量名；避免硬编码部署地址。
+    # Environment variable name for Qdrant base URL; avoids hardcoding deployment URLs.
     qdrant_base_url_env: QDRANT_URL
+    # Qdrant collection 名称；存储本地知识 chunk 的向量索引。
+    # Qdrant collection name; stores vector indexes for local knowledge chunks.
     qdrant_collection: pachat
+    # Qdrant API key 环境变量名；避免在配置文件中写入凭据。
+    # Environment variable name for Qdrant API key; avoids writing credentials into this file.
     qdrant_api_key_env: QDRANT_API_KEY
+  # Reranker 配置；启用后会对候选检索结果重新排序。
+  # Reranker settings; when enabled reranks candidate retrieval results.
   reranker:
+    # 是否启用 reranker；false 时跳过 rerank，继续使用 BM25/vector 结果。
+    # Enables reranker; false skips reranking and keeps BM25/vector results.
     enabled: false
+    # Reranker 模型 ID；启用 reranker 时必须指向 models.registry。
+    # Reranker model ID; when enabled it must reference models.registry.
     model_id: local-reranker
 
+# 浏览器运行时配置；控制受治理的本地浏览器读写能力。
+# Browser runtime settings; controls governed local browser read/write capability.
 browser:
+  # 是否启用浏览器能力；false 时 browser.* capability 不会注册。
+  # Enables browser capability; false prevents browser.* capabilities from being registered.
   enabled: true
+  # 浏览器 runtime 实现；当前示例使用 chromedp。
+  # Browser runtime implementation; this example uses chromedp.
   runtime: chromedp
+  # 截图保存目录；应位于本地可挂载数据目录内。
+  # Screenshot output directory; should live under a local mounted data directory.
   screenshot_dir: ./data/browser/screenshots
+  # 浏览器 profile 复用配置；默认关闭以减少凭据和会话风险。
+  # Browser profile reuse settings; disabled by default to reduce credential and session risk.
   profile_reuse:
+    # 是否复用现有浏览器 profile；启用前需确认 profile 目录和域名白名单。
+    # Enables existing browser profile reuse; confirm profile directory and domain allowlist first.
     enabled: false
+    # Profile 目录环境变量名；避免把用户本机 profile 路径写入配置。
+    # Environment variable name for profile directory; avoids writing local user profile paths into config.
     profile_dir_env: PERSONAL_AGENT_BROWSER_PROFILE_DIR
+    # 允许复用 profile 的域名列表；空列表表示不允许任何域名。
+    # Domains allowed for profile reuse; empty list allows no domains.
     allowed_domains: []
+    # 复用 session 生命周期；使用 Go duration 格式，如 8h、30m。
+    # Reused session lifetime; uses Go duration syntax such as 8h or 30m.
     session_ttl: 8h
 
+# MCP 配置；定义受治理的 stdio MCP server 和暴露的工具。
+# MCP settings; defines governed stdio MCP servers and exposed tools.
 mcp:
+  # MCP server 映射；空对象表示默认不启用任何 MCP server。
+  # MCP server map; empty object means no MCP server is enabled by default.
   servers: {}
 
+# 本地工具配置；只允许运行 allowlist 中固定 program/args 的命令。
+# Local tool settings; only fixed program/args entries in the allowlist can run.
 tools:
+  # 本地工具 allowlist；空列表表示默认不允许运行外部本地命令。
+  # Local tool allowlist; empty list means no external local commands are allowed by default.
   allowlist: []
 
+# 权限配置；控制默认决策和按 action 的显式规则。
+# Permission settings; controls default decisions and explicit per-action rules.
 permissions:
+  # 默认权限决策；deny 表示没有明确允许时拒绝。
+  # Default permission decision; deny rejects actions unless explicitly allowed.
   default: deny
 
+# 外部 Coding Agent 配置；控制 Codex/Claude 风格 CLI backend 的治理边界。
+# External Coding Agent settings; controls governed Codex/Claude-style CLI backends.
 coding_agents:
+  # 默认 backend ID；必须指向 coding_agents.backends 中的键名。
+  # Default backend ID; must reference a key under coding_agents.backends.
   default_backend: codex
+  # Cross-review 配置；可要求第二个 backend 审查高风险或大 diff 任务。
+  # Cross-review settings; can require a second backend for high-risk or large-diff tasks.
   cross_review:
+    # 是否启用 cross-review；默认关闭，普通 coding 任务只用一个 backend。
+    # Enables cross-review; default false keeps ordinary coding tasks on one backend.
     enabled: false
+    # 触发大 diff 审查的字节阈值；0 或正整数，示例为 20000。
+    # Byte threshold that triggers large-diff review; 0 or positive integer, example is 20000.
     large_diff_bytes: 20000
+  # Backend 映射；键名会注册为 coding.<backend> capability。
+  # Backend map; each key registers as a coding.<backend> capability.
   backends:
+    # Codex CLI backend 示例；默认关闭。
+    # Codex CLI backend example; disabled by default.
     codex:
+      # 是否启用该 backend；false 时不会注册 coding.codex executor。
+      # Enables this backend; false prevents coding.codex executor registration.
       enabled: false
+      # Adapter 类型；codex 表示使用 Codex CLI 适配器。
+      # Adapter type; codex means the Codex CLI adapter.
       adapter: codex
+      # 默认二进制名称；可被 binary_env 指向的绝对路径覆盖。
+      # Default binary name; can be overridden by the absolute path from binary_env.
       binary: codex
+      # 二进制路径环境变量名；避免在配置中硬编码本机安装路径。
+      # Environment variable name for binary path; avoids hardcoding local install paths.
       binary_env: PACHAT_CODEX_CLI_PATH
+      # 单次 backend 执行超时；使用 Go duration 格式。
+      # Per-backend execution timeout; uses Go duration syntax.
       timeout: 10m
+      # 并发执行数上限；限制同时运行的该 backend 进程数。
+      # Maximum concurrency; limits simultaneous processes for this backend.
       concurrency: 1
+      # 执行位置；local 表示在本机受治理子进程中执行。
+      # Execution location; local means a governed local subprocess.
       execution_location: local
+      # 推理信任等级；public_remote 表示 backend 推理可能离开本地私有边界。
+      # Inference trust level; public_remote means backend inference may leave the local private boundary.
       inference_trust: public_remote
+      # 隐私策略；deny_confidential 会拒绝 confidential 代码库使用公网推理 backend。
+      # Privacy policy; deny_confidential blocks confidential repositories from public-inference backends.
       privacy_policy: deny_confidential
+      # Backend capability 列表；用于匹配 coding、review、test、debug 等任务。
+      # Backend capability list; used to match coding, review, test, and debug tasks.
       capabilities: [coding, code_review, code_test, code_debug]
+      # 是否允许 backend 直接写工作区；默认 false，保留隔离/证据边界。
+      # Allows backend to write directly to the workspace; default false preserves isolation and evidence boundaries.
       allow_direct_writes: false
+    # Claude CLI backend 示例；默认关闭。
+    # Claude CLI backend example; disabled by default.
     claude:
+      # 是否启用该 backend；false 时不会注册 coding.claude executor。
+      # Enables this backend; false prevents coding.claude executor registration.
       enabled: false
+      # Adapter 类型；claude 表示使用 Claude Code CLI 适配器。
+      # Adapter type; claude means the Claude Code CLI adapter.
       adapter: claude
+      # 默认二进制名称；可被 binary_env 指向的绝对路径覆盖。
+      # Default binary name; can be overridden by the absolute path from binary_env.
       binary: claude
+      # 二进制路径环境变量名；避免在配置中硬编码本机安装路径。
+      # Environment variable name for binary path; avoids hardcoding local install paths.
       binary_env: PACHAT_CLAUDE_CODE_CLI_PATH
+      # 单次 backend 执行超时；使用 Go duration 格式。
+      # Per-backend execution timeout; uses Go duration syntax.
       timeout: 10m
+      # 并发执行数上限；限制同时运行的该 backend 进程数。
+      # Maximum concurrency; limits simultaneous processes for this backend.
       concurrency: 1
+      # 执行位置；local 表示在本机受治理子进程中执行。
+      # Execution location; local means a governed local subprocess.
       execution_location: local
+      # 推理信任等级；public_remote 表示 backend 推理可能离开本地私有边界。
+      # Inference trust level; public_remote means backend inference may leave the local private boundary.
       inference_trust: public_remote
+      # 隐私策略；deny_confidential 会拒绝 confidential 代码库使用公网推理 backend。
+      # Privacy policy; deny_confidential blocks confidential repositories from public-inference backends.
       privacy_policy: deny_confidential
+      # Backend capability 列表；用于匹配 coding、review、test、debug 等任务。
+      # Backend capability list; used to match coding, review, test, and debug tasks.
       capabilities: [coding, code_review, code_test, code_debug]
+      # 是否允许 backend 直接写工作区；默认 false，保留隔离/证据边界。
+      # Allows backend to write directly to the workspace; default false preserves isolation and evidence boundaries.
       allow_direct_writes: false
 
+# Proactive daemon 配置；控制 serve 模式下的 trigger 轮询。
+# Proactive daemon settings; controls trigger polling in serve mode.
 proactive:
+  # 是否启用 proactive trigger 轮询；false 时 serve 不主动调度 trigger。
+  # Enables proactive trigger polling; false prevents serve from scheduling triggers automatically.
   enabled: true
+  # 轮询间隔；使用 Go duration 格式，如 30s、1m。
+  # Poll interval; uses Go duration syntax such as 30s or 1m.
   poll_interval: 30s
 
+# 安全配置；控制 API 认证、CORS、请求大小、限流和网络边界。
+# Security settings; controls API auth, CORS, body size, rate limiting, and network boundaries.
 security:
+  # API 安全配置；用于本地 HTTP 服务。
+  # API security settings; used by the local HTTP server.
   api:
+    # API bearer token 环境变量名；设置后用于保护本地 API。
+    # Environment variable name for API bearer token; when set it protects the local API.
     auth_token_env: PACHAT_API_TOKEN
+    # 允许的 CORS origin；默认只允许本地 dashboard 地址。
+    # Allowed CORS origins; defaults to the local dashboard origin.
     allowed_origins: [http://127.0.0.1:8787]
+    # 最大请求体字节数；防止过大请求耗尽本地资源。
+    # Maximum request body size in bytes; prevents oversized requests from exhausting local resources.
     max_body_bytes: 1048576
+    # 每分钟限流次数；0 或正整数，示例为 120。
+    # Per-minute rate limit; 0 or positive integer, example is 120.
     rate_limit_per_minute: 120
+  # 网络策略配置；用于治理外部 HTTP/工具访问边界。
+  # Network policy settings; governs external HTTP/tool access boundaries.
   network:
+    # 允许访问的域名列表；空列表表示默认不额外放开域名。
+    # Allowed domain list; empty list means no additional domains are allowed by default.
     allowed_domains: []
+    # 允许的 URL scheme；默认允许 http 和 https。
+    # Allowed URL schemes; defaults to http and https.
     allowed_schemes: [http, https]
+    # 是否允许访问私有网络地址；false 可降低 SSRF 和内网探测风险。
+    # Allows private network addresses; false reduces SSRF and internal network probing risk.
     allow_private_networks: false
 
+# 可靠性配置；控制资源上限和磁盘压力处理。
+# Reliability settings; controls resource limits and disk pressure handling.
 reliability:
+  # 资源上限；用于限制 Runtime 并发、外部调用和临时磁盘使用。
+  # Resource limits; bounds Runtime concurrency, external calls, and temporary disk usage.
   resources:
+    # 最大并发 workflow 数；限制同时运行的任务图数量。
+    # Maximum concurrent workflows; limits simultaneous task graphs.
     max_concurrent_workflows: 4
+    # 最大并发模型调用数；限制 provider 请求并发。
+    # Maximum concurrent model calls; limits provider request concurrency.
     max_model_calls: 4
+    # 最大浏览器 session 数；限制本地浏览器资源占用。
+    # Maximum browser sessions; limits local browser resource usage.
     max_browser_sessions: 2
+    # 最大 coding agent 并发数；限制外部 coding CLI 子进程。
+    # Maximum coding agents; limits external coding CLI subprocesses.
     max_coding_agents: 1
+    # 最大 MCP 调用并发数；限制 stdio MCP 子进程/请求压力。
+    # Maximum MCP calls; limits stdio MCP subprocess/request pressure.
     max_mcp_calls: 8
+    # 最大打开文件数；用于本地资源保护和诊断。
+    # Maximum open files; used for local resource protection and diagnostics.
     max_open_files: 256
+    # 最大临时磁盘字节数；限制外部工具和运行时临时产物。
+    # Maximum temporary disk bytes; limits external tool and runtime temporary artifacts.
     max_temporary_disk_bytes: 1073741824
+  # 磁盘压力配置；用于 readiness 和清理策略。
+  # Disk pressure settings; used by readiness and cleanup policy.
   disk:
+    # 需要监控的路径；默认监控本地数据目录。
+    # Paths to monitor; defaults to the local data directory.
     paths: [./data]
+    # 软限制字节数；超过后可触发临时文件清理或 readiness 降级。
+    # Soft limit in bytes; crossing it can trigger temp cleanup or readiness degradation.
     soft_limit_bytes: 5368709120
+    # 硬限制字节数；超过后应拒绝高成本写入或报告不可用。
+    # Hard limit in bytes; crossing it should reject expensive writes or report unavailable.
     hard_limit_bytes: 10737418240
+    # 达到软限制时是否清理临时文件；true 可优先回收本地临时产物。
+    # Cleans temporary files at the soft limit; true prioritizes reclaiming local temp artifacts.
     cleanup_temp_on_soft: true

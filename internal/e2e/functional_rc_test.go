@@ -55,7 +55,7 @@ func TestFunctionalRCMockBackedE2E(t *testing.T) {
 	if public.calls != 0 || result.RemoteCalls != 0 {
 		t.Fatalf("local evidence used public calls provider=%d result=%d", public.calls, result.RemoteCalls)
 	}
-	assertWorkflowCheckpoints(t, rt.Workflows, "task-rc-local", "memory", "retrieval", "reasoning", "verification", "synthesis")
+	assertWorkflowCheckpoints(t, rt.Workflows, "task-rc-local", "synthesis")
 
 	browserTool := &rcBrowserTool{}
 	rt.Executors.Register("browser.read", runtime.BrowserExecutor{Tool: browserTool, Evidence: rt.Evidence})

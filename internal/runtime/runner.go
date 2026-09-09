@@ -18,6 +18,12 @@ import (
 )
 
 func (r *Runtime) Run(ctx context.Context, req RunRequest) (*RunResult, error) {
+	return r.DispatchTask(ctx, req)
+}
+
+// DispatchTask is the single user-task entry point. It keeps local retrieval
+// ahead of model planning so weak local models are used only when needed.
+func (r *Runtime) DispatchTask(ctx context.Context, req RunRequest) (*RunResult, error) {
 	if req.TaskID == "" {
 		return nil, fmt.Errorf("runtime run requires task id")
 	}
@@ -142,10 +148,27 @@ func (r *Runtime) runViaWorkflow(ctx context.Context, req RunRequest) (*RunResul
 	if err != nil {
 		return nil, err
 	}
-	plan, err := r.planWorkflow(ctx, workflowID, req)
+	localEvidence, err := r.retrieveLocalEvidence(ctx, req)
 	if err != nil {
-		_ = r.Storage.FailTask(ctx, req.TaskID, "planning_failed", err.Error())
+		_ = r.Storage.FailTask(ctx, req.TaskID, "retrieval_failed", err.Error())
 		return nil, err
+	}
+	plan := workflowPlan{SkillID: "runtime.default", SkillVersion: "v1"}
+	if evidenceSufficient(localEvidence) {
+		plan.Nodes = []workflow.Node{{
+			WorkflowID:     workflowID,
+			NodeID:         "synthesis",
+			CapabilityID:   "synthesis.local",
+			Role:           string(agent.RoleSynthesis),
+			Status:         workflow.NodePending,
+			IdempotencyKey: workflowID + ":synthesis",
+		}}
+	} else {
+		plan, err = r.planWorkflow(ctx, workflowID, req)
+		if err != nil {
+			_ = r.Storage.FailTask(ctx, req.TaskID, "planning_failed", err.Error())
+			return nil, err
+		}
 	}
 	if err := r.Workflows.Create(ctx, workflow.Run{
 		ID:           workflowID,
@@ -227,6 +250,50 @@ func (r *Runtime) runViaWorkflow(ctx context.Context, req RunRequest) (*RunResul
 		result.RemoteCalls = 1
 	}
 	return result, nil
+}
+
+func (r *Runtime) retrieveLocalEvidence(ctx context.Context, req RunRequest) ([]Evidence, error) {
+	var memoryEvidence []Evidence
+	var err error
+	if r.Memory != nil {
+		memoryEvidence, err = r.Memory.Search(ctx, req.TaskID, req.Input, 8)
+		if err != nil {
+			return nil, err
+		}
+		if err := r.publish(ctx, req.TaskID, orchestrator.EventNodeCompleted, "memory", agent.RoleMemory, evidenceIDs(memoryEvidence)); err != nil {
+			return nil, err
+		}
+	}
+	var ragEvidence []Evidence
+	if r.RAG != nil {
+		ragEvidence, err = r.RAG.Retrieve(ctx, req.TaskID, req.Input, RetrieveOptions{TopK: 8})
+		if err != nil {
+			return nil, err
+		}
+		if err := r.publish(ctx, req.TaskID, orchestrator.EventNodeCompleted, "retrieval", agent.RoleRetrieval, evidenceIDs(ragEvidence)); err != nil {
+			return nil, err
+		}
+	}
+	allEvidence := dedupeEvidence(append(memoryEvidence, ragEvidence...))
+	for i := range allEvidence {
+		allEvidence[i].PrivacyClass = defaultPrivacyClass(allEvidence[i].PrivacyClass)
+		if allEvidence[i].TaskID == "" {
+			allEvidence[i].TaskID = req.TaskID
+		}
+	}
+	if err := putEvidence(ctx, r.Evidence, allEvidence); err != nil {
+		return nil, err
+	}
+	return allEvidence, nil
+}
+
+func evidenceSufficient(evidence []Evidence) bool {
+	for _, item := range evidence {
+		if strings.TrimSpace(item.Content) != "" && item.Score > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Runtime) latestCompletedCheckpoint(ctx context.Context, workflowID string, nodeID string) (workflow.Checkpoint, bool) {

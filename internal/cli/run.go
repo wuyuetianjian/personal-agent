@@ -484,7 +484,7 @@ func runTask(ctx context.Context, args []string, stdout io.Writer) error {
 	if *stream {
 		streamRunStarted(stdout, taskID)
 	}
-	result, err := rt.Run(ctx, runtime.RunRequest{
+	result, err := rt.DispatchTask(ctx, runtime.RunRequest{
 		TaskID:        taskID,
 		Input:         *taskInput,
 		ProjectID:     strings.TrimSpace(*projectID),
@@ -584,15 +584,18 @@ func chat(ctx context.Context, args []string, ioStreams IO) error {
 		}); err != nil {
 			return err
 		}
-		chatResult, err := rt.Chat(ctx, line)
+		result, err := rt.DispatchTask(ctx, runtime.RunRequest{
+			TaskID:        taskID,
+			Input:         line,
+			LeaderModelID: cfg.Agent.Leader.ModelID,
+			PrivacyClass:  "local_private",
+		})
 		if err != nil {
-			_ = rt.Storage.FailTask(ctx, taskID, "chat_model_failed", err.Error())
-			return err
+			_ = rt.Storage.FailTask(ctx, taskID, "task_dispatch_failed", err.Error())
+			fmt.Fprintf(ioStreams.Stdout, "task_id=%s error=%s\n", taskID, err)
+			continue
 		}
-		if err := rt.Storage.CompleteTask(ctx, taskID, chatResult.Answer, 0.9); err != nil {
-			return err
-		}
-		response := chatResult.Answer
+		response := result.Answer
 		if err := appendMessage(ctx, mem, sessionID, "assistant_message", response); err != nil {
 			return err
 		}

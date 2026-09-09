@@ -309,7 +309,11 @@ P14 is documented in `docs/p14_ga_release_requirements.md`, `docs/projdocs/P0_P1
 
 The default `configs/config.example.yaml` uses the locally available Ollama model `qwen3.8:27b-mlx`. Change `models.registry[].model` in the mountable config file when using a different local model.
 
-Interactive `pachat chat` now sends turns to the configured local OpenAI-compatible provider and uses `agent.leader.model_id` for model selection. The same configured Leader provider is also wired into `BoundedModelPlanner` when `agent.planner.enabled` is true and the selected model supports `chat` and `json_schema`. Planner output is bounded by `agent.planner.max_nodes`, validated against the Runtime capability registry, and rejected before workflow creation when it references unknown capabilities or invalid DAG dependencies. Provider connectivity or response errors are returned explicitly.
+`configs/config.example.yaml` is now self-documenting: each example key has Chinese and English comments explaining the setting, expected value shape where useful, and privacy or safety impact for sensitive provider, browser, network, storage, and external-tool options. `models.registry` includes complete representative entries for local chat/planning, local embedding, local reranking, and a disabled public remote chat model. The comments and extra disabled/optional registry examples do not change the default local-first behavior.
+
+OpenAI-compatible chat messages are serialized with the required lowercase `role` and `content` fields, so configured providers can accept planner, reasoning, synthesis, and interactive chat requests.
+
+Interactive `pachat chat` now dispatches every ordinary turn through the shared task workflow. Local memory/vector/BM25 retrieval runs first; sufficient local evidence invokes only the configured synthesis Sub-Agent, while insufficient evidence invokes the Leader planner and delegated Sub-Agents. The Leader provider remains selected by `agent.leader.model_id`; planner output is bounded by `agent.planner.max_nodes`, validated against the Runtime capability registry, and rejected before workflow creation when it references unknown capabilities or invalid DAG dependencies. Provider connectivity or response errors are returned explicitly.
 
 Planner configuration:
 
@@ -322,7 +326,7 @@ agent:
 
 Workflow reasoning and synthesis now reuse the configured private local model when `Runtime.ChatProvider` is available. `reasoning.local` emits bounded claims, evidence IDs, confidence, and provider usage without storing chain-of-thought. `synthesis.local` writes the final answer from verified evidence, and `Runtime.Run()` uses the completed synthesis checkpoint as the persisted task answer.
 
-Role-specific Sub-Agent model IDs are honored for workflow-backed reasoning and synthesis. Set `agent.subagents.reasoning.model_id` or `agent.subagents.synthesis.model_id` to a model in `models.registry` to use a different configured provider for those nodes. `pachat chat` is a direct interactive Leader chat path; use `pachat run` or workflow-backed execution to exercise reasoning and synthesis Sub-Agent providers.
+Role-specific Sub-Agent model IDs are honored for workflow-backed reasoning and synthesis. Set `agent.subagents.reasoning.model_id` or `agent.subagents.synthesis.model_id` to a model in `models.registry` to use a different configured provider for those nodes. `pachat chat` and `pachat run` both use the shared `Runtime.DispatchTask` workflow path; chat ordinary turns therefore invoke reasoning/synthesis when local retrieval is insufficient, while local evidence hits use only lightweight synthesis.
 
 Hybrid RAG production wiring is controlled by the mountable `rag` config. `rag.vector` composes an embedding model with Qdrant vector search; `rag.reranker` composes a configured rerank model when available. If vector search or reranking is disabled or unavailable, retrieval keeps the local BM25 fallback.
 
@@ -707,7 +711,11 @@ P14 已记录在 `docs/p14_ga_release_requirements.md`、`docs/projdocs/P0_P14_E
 
 默认配置 `configs/config.example.yaml` 已使用本地 Ollama 模型 `qwen3.8:27b-mlx`；如本机模型名称不同，请在可挂载配置文件中修改 `models.registry[].model`。
 
-交互式 `pachat chat` 现在会调用配置的本地 OpenAI-compatible provider，并使用 `agent.leader.model_id` 选择模型。当 `agent.planner.enabled` 为 true 且所选模型支持 `chat` 与 `json_schema` 时，同一个 Leader provider 也会接入 `BoundedModelPlanner`。Planner 输出受 `agent.planner.max_nodes` 约束，并会先通过 Runtime capability registry 与 DAG 依赖校验；引用未知 capability 或无效依赖时，会在创建 workflow 前失败。provider 连接或响应错误会明确返回。
+`configs/config.example.yaml` 现在是自说明示例配置：每个示例 key 都带有中文和英文注释，说明该配置项、必要时说明取值形态，并对 provider、browser、network、storage 和 external-tool 等敏感配置标注隐私或安全影响。`models.registry` 包含本地 chat/planning、本地 embedding、本地 reranking，以及默认禁用的 public remote chat 模型完整示例。注释和额外的禁用/可选 registry 示例不改变默认的本地优先行为。
+
+OpenAI-compatible chat message 现在会按协议要求序列化为小写的 `role` 和 `content` 字段，因此配置的 provider 可以正常接收 planner、reasoning、synthesis 和交互式 chat 请求。
+
+交互式 `pachat chat` 现在会把每条普通输入送入统一 task workflow。系统先检索本地 memory/vector/BM25；本地 evidence 足够时只调用配置的 synthesis Sub-Agent，不足时才调用 Leader planner 和后续 Sub-Agent。Leader provider 仍由 `agent.leader.model_id` 选择；Planner 输出受 `agent.planner.max_nodes` 约束，并会先通过 Runtime capability registry 与 DAG 依赖校验；引用未知 capability 或无效依赖时，会在创建 workflow 前失败。provider 连接或响应错误会明确返回。
 
 Planner 配置：
 
@@ -720,7 +728,7 @@ agent:
 
 Workflow 中的 reasoning 与 synthesis 现在会在 `Runtime.ChatProvider` 可用时复用配置的私有本地模型。`reasoning.local` 输出有界 claims、evidence IDs、confidence 和 provider usage，不保存 chain-of-thought。`synthesis.local` 基于已验证 evidence 写出最终答案，`Runtime.Run()` 会使用完成的 synthesis checkpoint 作为持久化 task answer。
 
-Workflow-backed reasoning 和 synthesis 会读取各自的 Sub-Agent model ID。将 `agent.subagents.reasoning.model_id` 或 `agent.subagents.synthesis.model_id` 指向 `models.registry` 中的模型，即可让这些节点使用不同的已配置 provider。`pachat chat` 是直接交互式 Leader chat 路径；要触发 reasoning/synthesis Sub-Agent provider，请使用 `pachat run` 或 workflow-backed 执行。
+Workflow-backed reasoning 和 synthesis 会读取各自的 Sub-Agent model ID。将 `agent.subagents.reasoning.model_id` 或 `agent.subagents.synthesis.model_id` 指向 `models.registry` 中的模型，即可让这些节点使用不同的已配置 provider。`pachat chat` 和 `pachat run` 都使用统一的 `Runtime.DispatchTask` workflow 路径；因此 chat 普通输入在本地检索不足时会调用 reasoning/synthesis，本地 evidence 命中时只调用轻量 synthesis。
 
 Hybrid RAG 生产接线由可挂载的 `rag` 配置控制。`rag.vector` 会组合 embedding 模型与 Qdrant 向量检索；`rag.reranker` 会在可用时组合配置的 rerank 模型。vector search 或 reranking 禁用/不可用时，检索会继续使用本地 BM25 fallback。
 

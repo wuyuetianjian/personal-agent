@@ -92,6 +92,9 @@ func TestPublicProviderSendsSanitizedChatPayload(t *testing.T) {
 	if len(body.Messages) != 1 {
 		t.Fatalf("request messages = %+v", body.Messages)
 	}
+	if body.Messages[0].Role != "user" {
+		t.Fatalf("request message role = %q, want user", body.Messages[0].Role)
+	}
 	content := body.Messages[0].Content
 	for _, leaked := range []string{"alice@example.com", "secret123"} {
 		if strings.Contains(content, leaked) {

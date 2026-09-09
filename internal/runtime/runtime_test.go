@@ -390,11 +390,11 @@ func TestRunUsesModelBackedReasoningAndSynthesisCheckpoint(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Index() error = %v", err)
 	}
-	if err := db.CreateTask(ctx, storage.Task{ID: "task-model", Title: "model", Input: "Use the local note", Status: "running", LeaderModelID: "local-planner", PrivacyClass: "local_private"}); err != nil {
+	if err := db.CreateTask(ctx, storage.Task{ID: "task-model", Title: "model", Input: "Ask about an unknown topic", Status: "running", LeaderModelID: "local-planner", PrivacyClass: "local_private"}); err != nil {
 		t.Fatal(err)
 	}
 
-	result, err := rt.Run(ctx, RunRequest{TaskID: "task-model", Input: "Use the local note", LeaderModelID: "local-planner"})
+	result, err := rt.Run(ctx, RunRequest{TaskID: "task-model", Input: "Ask about an unknown topic", LeaderModelID: "local-planner"})
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
@@ -450,6 +450,8 @@ func TestRunUsesRoleSpecificSubAgentModels(t *testing.T) {
 	rt := NewLocal(cfg, db, &orchestrator.InMemoryEvidenceBus{})
 	rt.ChatModel = model.ModelMetadata{ID: "leader-model", Model: "leader"}
 	rt.ChatProvider = &captureModelChatProvider{responses: []model.ChatResponse{{Content: "leader should not be called"}}}
+	planner := &countingPlanner{}
+	rt.Planner = planner
 	reasoningProvider := &captureModelChatProvider{responses: []model.ChatResponse{{Content: `{"claims":[],"decision_summary":"role reasoning","confidence":0.8,"evidence_ids":[]}`}}}
 	synthesisProvider := &captureModelChatProvider{responses: []model.ChatResponse{{Content: "role synthesis answer"}}}
 	rt.SubAgents = map[string]ModelAgent{
@@ -471,8 +473,11 @@ func TestRunUsesRoleSpecificSubAgentModels(t *testing.T) {
 	if result.Answer != "role synthesis answer" {
 		t.Fatalf("answer = %q, want role synthesis answer", result.Answer)
 	}
-	if got := reasoningProvider.modelIDs; len(got) != 1 || got[0] != "reasoning-model" {
-		t.Fatalf("reasoning model ids = %v, want [reasoning-model]", got)
+	if len(reasoningProvider.modelIDs) != 0 {
+		t.Fatalf("reasoning model ids = %v, want no reasoning call for sufficient local evidence", reasoningProvider.modelIDs)
+	}
+	if planner.calls != 0 {
+		t.Fatalf("planner calls = %d, want no planner call for sufficient local evidence", planner.calls)
 	}
 	if got := synthesisProvider.modelIDs; len(got) != 1 || got[0] != "synthesis-model" {
 		t.Fatalf("synthesis model ids = %v, want [synthesis-model]", got)
