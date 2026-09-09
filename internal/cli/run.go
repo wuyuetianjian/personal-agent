@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"agent/internal/config"
 	"agent/internal/memory"
@@ -112,14 +113,25 @@ func versionCommand(args []string, stdout io.Writer) error {
 }
 
 func releaseCommand(ctx context.Context, args []string, stdout io.Writer) error {
-	if len(args) == 0 || args[0] != "check" {
-		return usageError("release requires check")
+	if len(args) == 0 {
+		return usageError("release requires check or soak")
 	}
+	switch args[0] {
+	case "check":
+		return releaseCheckCommand(ctx, args[1:], stdout)
+	case "soak":
+		return releaseSoakCommand(ctx, args[1:], stdout)
+	default:
+		return usageError("release requires check or soak")
+	}
+}
+
+func releaseCheckCommand(ctx context.Context, args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("release check", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	quick := fs.Bool("quick", false, "skip release matrix and checksum generation")
 	jsonOutput := fs.Bool("json", false, "print JSON")
-	if err := fs.Parse(args[1:]); err != nil {
+	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	report, err := release.RunChecks(ctx, release.Options{Quick: *quick})
@@ -135,6 +147,55 @@ func releaseCommand(ctx context.Context, args []string, stdout io.Writer) error 
 			continue
 		}
 		fmt.Fprintf(stdout, "%s\t%s\t%s\n", check.Status, check.Name, check.Detail)
+	}
+	return err
+}
+
+func releaseSoakCommand(ctx context.Context, args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("release soak", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	configPath := fs.String("config", "", "config file path")
+	duration := fs.Duration("duration", 30*time.Second, "soak duration")
+	interval := fs.Duration("interval", time.Second, "sample interval")
+	output := fs.String("output", "", "write JSON report path")
+	offline := fs.Bool("offline", true, "disable external model/browser/CLI backends")
+	maxHeapGrowth := fs.Uint64("max-heap-growth-bytes", 64*1024*1024, "maximum heap growth")
+	maxGoroutineGrowth := fs.Int("max-goroutine-growth", 16, "maximum goroutine growth")
+	maxSQLiteGrowth := fs.Int64("max-sqlite-growth-bytes", 64*1024*1024, "maximum SQLite growth")
+	jsonOutput := fs.Bool("json", false, "print JSON report")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *configPath == "" {
+		return usageError("release soak requires --config")
+	}
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	report, err := release.RunSoak(ctx, release.SoakOptions{
+		Config:               cfg,
+		Duration:             *duration,
+		Interval:             *interval,
+		Offline:              *offline,
+		OutputPath:           *output,
+		MaxHeapGrowthBytes:   *maxHeapGrowth,
+		MaxGoroutineGrowth:   *maxGoroutineGrowth,
+		MaxSQLiteGrowthBytes: *maxSQLiteGrowth,
+	})
+	if *jsonOutput {
+		if writeErr := writePrettyJSON(stdout, report); writeErr != nil {
+			return writeErr
+		}
+		return err
+	}
+	fmt.Fprintf(stdout, "status=%s\niterations=%d\nheap_growth_bytes=%d\ngoroutine_growth=%d\nsqlite_growth_bytes=%d\nterminal_workflows=%d\nnon_terminal_workflows=%d\nnotifications=%d\nduplicate_notifications=%d\nchild_process_leaks=%d\nworktree_leaks=%d\nbrowser_artifact_leaks=%d\n",
+		report.Status, report.Iterations, report.HeapGrowthBytes, report.GoroutineGrowth, report.SQLiteGrowthBytes, report.TerminalWorkflows, report.NonTerminalWorkflows, report.NotificationCount, report.DuplicateNotifications, report.ChildProcessLeaks, report.WorktreeLeaks, report.BrowserArtifactLeaks)
+	if *output != "" {
+		fmt.Fprintf(stdout, "report=%s\n", *output)
+	}
+	for _, failure := range report.Failures {
+		fmt.Fprintf(stdout, "failure=%s\n", failure)
 	}
 	return err
 }

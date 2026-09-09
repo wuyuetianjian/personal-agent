@@ -348,6 +348,8 @@ The Functional RC E2E gate is executable with `go test ./internal/e2e -run Funct
 
 `pachat release check --quick` now includes mandatory Functional GA gates for the Functional RC E2E suite, runtime Leader planning, external executor registry wiring, workflow restart recovery, privacy escalation, early-stop cancellation, side-effect idempotency, and notification edge semantics. Real external CLI/browser binary validation remains opt-in for release candidates.
 
+`pachat release soak --config <path>` runs an executable soak gate. The default offline mode exercises the real local Runtime and SQLite workflow path without requiring external model/browser/CLI binaries, samples goroutine, heap, SQLite, workflow, notification, and external-artifact metrics, and can write a JSON report with `--output <path>`. Use `--duration 24h --interval 1m --offline=false` for release-candidate environments with configured external backends.
+
 Public escalation is wired from enabled `public_remote` chat models in the model registry. If a public provider requires Privacy Gateway, `privacy.hmac_secret_env` must resolve or Runtime build fails closed. Secret-bearing payloads are blocked before provider calls.
 
 Task usage can be queried with `pachat task usage --config <path> --id <task_id>`. Usage is aggregated from workflow checkpoints at node, workflow, and task levels. Model providers with reliable usage use provider token counts; external CLI/tool usage remains marked as unknown when token counts are unavailable.
@@ -368,6 +370,7 @@ Run:
 go test ./...
 go test ./internal/release
 go test ./internal/e2e -run FunctionalRC
+go run ./cmd/pachat release soak --config configs/config.example.yaml --duration 1s --interval 1s --output /tmp/pachat-soak.json
 make build
 make smoke
 make release-build
@@ -733,6 +736,8 @@ Functional RC E2E gate 可通过 `go test ./internal/e2e -run FunctionalRC` 执�
 
 `pachat release check --quick` 现在包含必过 Functional GA gate：Functional RC E2E、Runtime Leader planning、external executor registry 接线、workflow restart recovery、privacy escalation、early-stop cancellation、side-effect idempotency 和 notification edge semantics。真实外部 CLI/browser 二进制验证仍是 release candidate 的 opt-in 步骤。
 
+`pachat release soak --config <path>` 会执行可运行的 soak gate。默认 offline 模式不要求外部模型、browser 或 CLI 二进制，但会覆盖真实本地 Runtime 与 SQLite workflow 路径，采样 goroutine、heap、SQLite、workflow、notification 和 external-artifact 指标，并可用 `--output <path>` 写入 JSON 报告。在已配置外部 backend 的 release-candidate 环境中，可使用 `--duration 24h --interval 1m --offline=false`。
+
 Public escalation 会从 model registry 中启用的 `public_remote` chat model 接线。如果 public provider 要求 Privacy Gateway，`privacy.hmac_secret_env` 必须能解析，否则 Runtime build 会 fail closed。包含 secret 的 payload 会在调用 provider 前被阻断。
 
 可以使用 `pachat task usage --config <path> --id <task_id>` 查询 task usage。Usage 会从 workflow checkpoint 聚合到 node、workflow 和 task 层级。具备可靠 usage 的模型 provider 会使用 provider token count；外部 CLI/tool 在没有 token count 时会标记为 unknown。
@@ -753,6 +758,7 @@ P14 文档位于 `docs/release/`，覆盖 quickstart、用户操作、管理员�
 go test ./...
 go test ./internal/release
 go test ./internal/e2e -run FunctionalRC
+go run ./cmd/pachat release soak --config configs/config.example.yaml --duration 1s --interval 1s --output /tmp/pachat-soak.json
 make build
 make smoke
 make release-build

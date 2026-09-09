@@ -521,6 +521,63 @@ func TestPortableExportImportCommands(t *testing.T) {
 	}
 }
 
+func TestReleaseSoakCommand(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	dbPath := filepath.Join(dir, "soak.db")
+	outputPath := filepath.Join(dir, "soak-report.json")
+	if err := os.WriteFile(configPath, []byte(`
+config_version: 1
+app:
+  name: personal-agent
+  environment: test
+  data_dir: `+dir+`
+storage:
+  driver: sqlite
+  sqlite:
+    path: `+dbPath+`
+models:
+  default_provider: local
+  providers:
+    local:
+      enabled: false
+      type: openai_compatible
+      base_url: http://127.0.0.1:1/v1
+      trust_level: local_private
+  registry:
+    - id: local-test
+      provider: local
+      model: local-test
+      trust_level: local_private
+      capabilities: [chat]
+agent:
+  leader:
+    model_id: local-test
+  planner:
+    enabled: false
+    max_nodes: 8
+mcp:
+  servers: {}
+coding_agents:
+  backends: {}
+proactive:
+  enabled: false
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout bytes.Buffer
+	err := Run(context.Background(), []string{"release", "soak", "--config", configPath, "--duration", "1ns", "--interval", "1ns", "--output", outputPath}, &stdout)
+	if err != nil {
+		t.Fatalf("release soak error = %v\n%s", err, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "status=pass") {
+		t.Fatalf("release soak output = %q, want status=pass", stdout.String())
+	}
+	if _, err := os.Stat(outputPath); err != nil {
+		t.Fatalf("soak report not written: %v", err)
+	}
+}
+
 func TestMCPCommands(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")

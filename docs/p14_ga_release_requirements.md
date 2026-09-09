@@ -99,6 +99,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `GA-BLOCK-02` extends `pachat release check` with mandatory Functional GA checks for runtime Leader planning, external executor registry wiring, workflow restart recovery, privacy escalation, early-stop cancellation, side-effect idempotency, notification edge semantics, and the Functional RC E2E gate. The check must also keep the `make build` prerequisite pointed at the canonical CLI entrypoint, `./cmd/pachat`. Real external CLI/browser binary execution remains an opt-in release-candidate validation step outside the default release check.
 
+`GA-BLOCK-03` adds an executable soak gate through `pachat release soak`. The command must run a configured-duration Runtime workload, sample goroutine, heap, SQLite, workflow, notification, and external-artifact metrics, fail on stuck workflows or duplicate notifications, and write a JSON report when requested. The default offline gate must avoid hard dependencies on external model, browser, MCP, or coding CLI binaries while still exercising real local Runtime persistence.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -141,3 +143,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - API tests verify paginated and filtered REST lists for tasks, workflows, events, notifications, projects, triggers, and skills.
 - Functional RC E2E tests verify local RAG/memory zero-public-call execution, model-backed DAG planning, Browser read/write evidence, Codex-style diff/test evidence, Claude-style review evidence, MCP evidence, Privacy Gateway public escalation, restart/idempotency behavior, and false-to-true watcher notification deduplication.
 - Release check tests verify the mandatory Functional GA gate commands are included in `pachat release check`.
+- Soak tests verify `pachat release soak` produces a passing JSON report for the offline Runtime gate and records workflow, memory, goroutine, SQLite, notification, and external-artifact metrics.
