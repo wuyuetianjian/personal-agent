@@ -82,6 +82,10 @@ func RunWithIO(ctx context.Context, args []string, ioStreams IO) error {
 		return serveCommand(ctx, args[1:], ioStreams.Stdout)
 	case "backup":
 		return backupCommand(ctx, args[1:], ioStreams.Stdout)
+	case "export":
+		return exportCommand(ctx, args[1:], ioStreams.Stdout)
+	case "import":
+		return importCommand(ctx, args[1:], ioStreams.Stdout)
 	case "retention":
 		return retentionCommand(ctx, args[1:], ioStreams.Stdout)
 	case "storage":

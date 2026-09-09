@@ -1,7 +1,10 @@
 package cli
 
 import (
+	"agent/internal/memory"
 	"agent/internal/project"
+	"agent/internal/rag"
+	"agent/internal/skill"
 	"agent/internal/storage"
 	"agent/internal/workflow"
 	"bytes"
@@ -332,6 +335,158 @@ workflow:
 	}
 	if !strings.Contains(disableOut.String(), "status=disabled") {
 		t.Fatalf("disable output = %q", disableOut.String())
+	}
+}
+
+func TestPortableExportImportCommands(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	dbPath := filepath.Join(dir, "agent.db")
+	writeConfig(t, configPath, dbPath)
+
+	db, err := storage.OpenSQLite(context.Background(), dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := storage.Migrate(context.Background(), db.SQL); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := (project.Store{DB: db.SQL}).Save(ctx, project.Project{
+		ID:                  "proj-portable",
+		Name:                "Portable Project",
+		PrivacyClass:        "local_private",
+		RepositoryRefs:      []string{"repo://portable"},
+		KnowledgeScopes:     []string{"portable"},
+		MemoryScope:         "portable",
+		AllowedSkills:       []string{"skill.portable"},
+		AllowedCapabilities: []string{"memory.search"},
+		AllowedModels:       []string{"local-planner"},
+		BudgetPolicy:        "standard",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := (skill.Store{DB: db.SQL}).Import(ctx, skill.Manifest{
+		ID:          "skill.portable",
+		Version:     "1.0.0",
+		Name:        "Portable Skill",
+		Description: "portable export skill",
+		Status:      skill.StatusActive,
+		Permissions: skill.PermissionPolicy{
+			MaxLevel: "read_only",
+		},
+		Privacy: skill.PrivacyPolicy{
+			MaxExternalTrust: "local_private",
+		},
+		Requires: skill.Requirements{Capabilities: []string{"memory.search"}},
+		Workflow: skill.Workflow{Nodes: []skill.Node{{
+			ID:         "memory",
+			Capability: "memory.search",
+			Role:       "memory",
+		}}},
+	}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := memory.NewStore(db.SQL).Append(ctx, memory.EpisodicEvent{
+		ID:           "mem-portable",
+		TaskID:       "task-portable",
+		EventType:    "note",
+		Summary:      "portable summary token=secret-token",
+		Payload:      map[string]string{"body": "remember api_key=secret-api-key"},
+		EvidenceIDs:  []string{"ev-portable"},
+		PrivacyClass: "local_private",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := memory.NewSemanticStore(db.SQL, nil).Upsert(ctx, memory.SemanticFact{
+		ID:           "sem-portable",
+		Scope:        "portable",
+		Subject:      "Project",
+		Predicate:    "needs",
+		Object:       "portable import",
+		Source:       "test",
+		EvidenceIDs:  []string{"ev-portable"},
+		PrivacyClass: "local_private",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rag.NewSQLiteStore(db.SQL, rag.Chunker{MaxTokens: 100}).Index(ctx, rag.Document{
+		ID:           "doc-portable",
+		SourceURI:    "file://portable",
+		Title:        "Portable Doc",
+		Text:         "do not export this raw document chunk password=chunk-secret",
+		Metadata:     map[string]string{"scope": "portable"},
+		PrivacyClass: "local_private",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	exportPath := filepath.Join(dir, "portable.json")
+	var exportOut bytes.Buffer
+	if err := Run(context.Background(), []string{"export", "--config", configPath, "--output", exportPath, "--memory-limit", "20"}, &exportOut); err != nil {
+		t.Fatalf("export error = %v", err)
+	}
+	if !strings.Contains(exportOut.String(), "projects=1") || !strings.Contains(exportOut.String(), "knowledge_metadata=1") {
+		t.Fatalf("export output = %q", exportOut.String())
+	}
+	raw, err := os.ReadFile(exportPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exported := string(raw)
+	for _, forbidden := range []string{"chunk-secret", "secret-token", "secret-api-key"} {
+		if strings.Contains(exported, forbidden) {
+			t.Fatalf("export contains forbidden secret %q: %s", forbidden, exported)
+		}
+	}
+	if !strings.Contains(exported, "document chunk text") || !strings.Contains(exported, "Portable Project") || !strings.Contains(exported, "skill.portable") {
+		t.Fatalf("export missing expected portable content: %s", exported)
+	}
+
+	restoreConfig := filepath.Join(dir, "restore.yaml")
+	restoreDBPath := filepath.Join(dir, "restore.db")
+	writeConfig(t, restoreConfig, restoreDBPath)
+	var importOut bytes.Buffer
+	if err := Run(context.Background(), []string{"import", "--config", restoreConfig, "--input", exportPath}, &importOut); err != nil {
+		t.Fatalf("import error = %v", err)
+	}
+	if !strings.Contains(importOut.String(), "projects=1") || !strings.Contains(importOut.String(), "skills=1") {
+		t.Fatalf("import output = %q", importOut.String())
+	}
+	restored, err := storage.OpenSQLite(context.Background(), restoreDBPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored.Close()
+	gotProject, err := (project.Store{DB: restored.SQL}).Get(context.Background(), "proj-portable")
+	if err != nil {
+		t.Fatalf("restored project missing: %v", err)
+	}
+	if gotProject.Name != "Portable Project" {
+		t.Fatalf("restored project = %#v", gotProject)
+	}
+	if _, err := (skill.Store{DB: restored.SQL}).GetManifest(context.Background(), "skill.portable", "1.0.0"); err != nil {
+		t.Fatalf("restored skill missing: %v", err)
+	}
+	var episodicCount int
+	if err := restored.SQL.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM memory_episodic WHERE id='mem-portable'`).Scan(&episodicCount); err != nil {
+		t.Fatal(err)
+	}
+	var semanticCount int
+	if err := restored.SQL.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM memory_semantic WHERE id='sem-portable'`).Scan(&semanticCount); err != nil {
+		t.Fatal(err)
+	}
+	var documentCount int
+	if err := restored.SQL.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM documents WHERE id='doc-portable'`).Scan(&documentCount); err != nil {
+		t.Fatal(err)
+	}
+	var chunkCount int
+	if err := restored.SQL.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM document_chunks WHERE document_id='doc-portable'`).Scan(&chunkCount); err != nil {
+		t.Fatal(err)
+	}
+	if episodicCount != 1 || semanticCount != 1 || documentCount != 1 || chunkCount != 0 {
+		t.Fatalf("restored counts episodic=%d semantic=%d document=%d chunks=%d", episodicCount, semanticCount, documentCount, chunkCount)
 	}
 }
 

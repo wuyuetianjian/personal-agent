@@ -129,6 +129,8 @@ curl http://127.0.0.1:8787/metrics
 curl http://127.0.0.1:8787/dashboard
 curl http://127.0.0.1:8787/models/discover
 bin/pachat backup create --config configs/config.example.yaml
+bin/pachat export --config configs/config.example.yaml --output portable.json
+bin/pachat import --config configs/config.example.yaml --input portable.json
 bin/pachat storage integrity --config configs/config.example.yaml
 ```
 
@@ -330,6 +332,8 @@ Configured MCP servers are registered as `mcp.<server>.<tool>` executors and cal
 
 `OP-06` completes full backup restore execution with temporary database validation, migration compatibility checks, SQLite integrity checks, existing database pre-restore copies, and rollback on failed final validation.
 
+`OP-07` adds portable data export/import. `pachat export` writes Projects, Skills and versions, selected episodic/semantic memory, and knowledge document metadata to a versioned JSON artifact. `pachat import` validates that artifact and upserts those objects into the configured local database. It does not export credentials, browser cookies, browser passwords, browser profile data, coding CLI credential stores, or raw document chunk text.
+
 Public escalation is wired from enabled `public_remote` chat models in the model registry. If a public provider requires Privacy Gateway, `privacy.hmac_secret_env` must resolve or Runtime build fails closed. Secret-bearing payloads are blocked before provider calls.
 
 Task usage can be queried with `pachat task usage --config <path> --id <task_id>`. Usage is aggregated from workflow checkpoints at node, workflow, and task levels. Model providers with reliable usage use provider token counts; external CLI/tool usage remains marked as unknown when token counts are unavailable.
@@ -358,6 +362,7 @@ go run ./cmd/pachat release check --quick
 ### Safety Defaults
 
 - Browser sessions, cookies, tokens, passwords, and profile data remain local.
+- Portable exports include user-operable local data only and exclude credentials, browser cookie/password/profile data, coding CLI credential stores, and raw document chunk text.
 - Public LLM browser planning can receive only Privacy Gateway redacted summaries.
 - Browser actions pass through the Permission Layer before execution.
 - High-risk actions such as login submission, payment, deletion, sending messages, uploads, OAuth grants, and legal acceptance require confirmation or elevated policy.
@@ -493,6 +498,8 @@ curl http://127.0.0.1:8787/metrics
 curl http://127.0.0.1:8787/dashboard
 curl http://127.0.0.1:8787/models/discover
 bin/pachat backup create --config configs/config.example.yaml
+bin/pachat export --config configs/config.example.yaml --output portable.json
+bin/pachat import --config configs/config.example.yaml --input portable.json
 bin/pachat storage integrity --config configs/config.example.yaml
 ```
 
@@ -694,6 +701,8 @@ Runtime capability executor 现在通过本地 executor registry 注册。启用
 
 `OP-06` 完成完整 backup restore 执行：临时数据库校验、migration compatibility check、SQLite integrity check、现有数据库 pre-restore copy，以及最终校验失败时 rollback。
 
+`OP-07` 增加便携数据导出/导入。`pachat export` 会把 Project、Skill 及版本、选定 episodic/semantic memory 和 knowledge document metadata 写入版本化 JSON artifact。`pachat import` 会校验 artifact，并把这些对象 upsert 到配置指向的本地数据库。它不会导出 credential、浏览器 cookie、浏览器密码、浏览器 profile data、coding CLI credential store 或原始 document chunk text。
+
 Public escalation 会从 model registry 中启用的 `public_remote` chat model 接线。如果 public provider 要求 Privacy Gateway，`privacy.hmac_secret_env` 必须能解析，否则 Runtime build 会 fail closed。包含 secret 的 payload 会在调用 provider 前被阻断。
 
 可以使用 `pachat task usage --config <path> --id <task_id>` 查询 task usage。Usage 会从 workflow checkpoint 聚合到 node、workflow 和 task 层级。具备可靠 usage 的模型 provider 会使用 provider token count；外部 CLI/tool 在没有 token count 时会标记为 unknown。
@@ -722,6 +731,7 @@ go run ./cmd/pachat release check --quick
 ### 默认安全策略
 
 - 浏览器 session、cookie、token、密码和 profile 数据仅保留在本地。
+- 便携导出只包含用户可操作的本地数据，排除 credential、浏览器 cookie/password/profile data、coding CLI credential store 和原始 document chunk text。
 - 公网 LLM 参与浏览器规划时，只能接收 Privacy Gateway 脱敏后的摘要。
 - 所有浏览器动作执行前都必须经过 Permission Layer。
 - 登录提交、支付、删除、发送消息、上传、OAuth 授权、接受法律条款等高风险动作需要用户确认或更高权限策略。
