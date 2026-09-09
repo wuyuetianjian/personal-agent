@@ -15,7 +15,9 @@ LDFLAGS := -X agent/internal/version.Version=$(VERSION) \
 .PHONY: build test smoke release-build checksums release-check clean
 
 build:
+	mkdir -p bin
 	go build -ldflags "$(LDFLAGS)" -o bin/pachat ./cmd/pachat
+	cp configs/config.example.yaml bin/config.example.yaml
 
 test:
 	go test ./...

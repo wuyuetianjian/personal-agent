@@ -49,6 +49,8 @@ Build:
 make build
 ```
 
+`make build` also copies the safe local-first example config to `bin/config.example.yaml`, so running from `bin/` can use `./pachat chat --config config.example.yaml`. Public remote providers are disabled in the copied example; enable them only after setting the required environment variables, including `PERSONAL_AGENT_PRIVACY_HMAC_SECRET`.
+
 Run a no-op task:
 
 ```sh
@@ -442,6 +444,8 @@ go run ./cmd/pachat release check --quick
 ```sh
 make build
 ```
+
+`make build` 也会把安全的本地优先示例配置复制到 `bin/config.example.yaml`，因此在 `bin/` 目录中可以使用 `./pachat chat --config config.example.yaml`。复制后的示例默认关闭 public remote provider；只有在设置所需环境变量（包括 `PERSONAL_AGENT_PRIVACY_HMAC_SECRET`）后才启用。
 
 运行 no-op 任务：
 
