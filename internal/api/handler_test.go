@@ -247,6 +247,99 @@ func TestTriggerAndEventEndpoints(t *testing.T) {
 	}
 }
 
+func TestRESTListPaginationAndFiltering(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	server := NewServer(db, nil, permission.NewInMemoryConfirmationStore(), "local-planner")
+	server.Triggers = trigger.Store{DB: db.SQL}
+	server.EventStore = agentEvent.Store{DB: db.SQL}
+	server.Notifications = notification.Store{DB: db.SQL}
+	handler := server.Handler()
+	now := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
+
+	if err := db.CreateTask(ctx, storage.Task{ID: "task-open", Title: "Alpha Task", Input: "alpha", Status: "running", CreatedAt: now, UpdatedAt: now, LeaderModelID: "local-planner", PrivacyClass: "local_private"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateTask(ctx, storage.Task{ID: "task-done", Title: "Beta Task", Input: "beta", Status: "completed", CreatedAt: now.Add(time.Minute), UpdatedAt: now.Add(time.Minute), LeaderModelID: "local-planner", PrivacyClass: "local_private"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := (workflow.Store{DB: db.SQL}).Create(ctx, workflow.Run{ID: "wf-open", TaskID: "task-open", ProjectID: "proj-alpha", SkillID: "skill.alpha", Status: workflow.StatusRunning, StartedAt: now}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := (workflow.Store{DB: db.SQL}).Create(ctx, workflow.Run{ID: "wf-done", TaskID: "task-done", ProjectID: "proj-beta", SkillID: "skill.beta", Status: workflow.StatusCompleted, StartedAt: now.Add(time.Minute)}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.EventStore.Put(ctx, agentEvent.Event{ID: "event-alpha", Source: "github", Type: "push", ProjectID: "proj-alpha", Payload: []byte(`{"message":"alpha token=event-secret"}`)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.EventStore.Put(ctx, agentEvent.Event{ID: "event-beta", Source: "timer", Type: "tick", ProjectID: "proj-beta", Payload: []byte(`{"message":"beta"}`)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Notifications.Put(ctx, notification.Notification{ID: "note-alpha", ProjectID: "proj-alpha", Title: "Alpha note", Severity: "warning", Status: "unread", CreatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Notifications.Put(ctx, notification.Notification{ID: "note-beta", ProjectID: "proj-beta", Title: "Beta note", Severity: "info", Status: "read", CreatedAt: now.Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := (project.Store{DB: db.SQL}).Save(ctx, project.Project{ID: "proj-alpha", Name: "Alpha Project", PrivacyClass: "local_private"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := (project.Store{DB: db.SQL}).Save(ctx, project.Project{ID: "proj-beta", Name: "Beta Project", PrivacyClass: "confidential"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Triggers.Put(ctx, trigger.Trigger{ID: "trigger-alpha", ProjectID: "proj-alpha", Type: trigger.TypeManual, Enabled: true, SkillID: "skill.alpha", CreatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Triggers.Put(ctx, trigger.Trigger{ID: "trigger-beta", ProjectID: "proj-beta", Type: trigger.TypeInterval, Enabled: false, SkillID: "skill.beta", Schedule: trigger.ScheduleSpec{Interval: time.Minute}, CreatedAt: now.Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := (skill.Store{DB: db.SQL}).Import(ctx, skill.Manifest{ID: "skill.alpha", Version: "1.0.0", Name: "Alpha Skill", Description: "alpha", Status: skill.StatusActive}, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if err := (skill.Store{DB: db.SQL}).Import(ctx, skill.Manifest{ID: "skill.beta", Version: "1.0.0", Name: "Beta Skill", Description: "beta", Status: skill.StatusDraft}, "test"); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		path       string
+		want       string
+		notWant    string
+		collection string
+	}{
+		{"/tasks?status=running&limit=1&offset=0", "task-open", "task-done", `"tasks"`},
+		{"/workflows?project_id=proj-alpha&status=running&limit=1", "wf-open", "wf-done", `"workflows"`},
+		{"/events?project_id=proj-alpha&type=push&source=github&limit=1", "event-alpha", "event-beta", `"events"`},
+		{"/notifications?project_id=proj-alpha&status=unread&severity=warning&limit=1", "note-alpha", "note-beta", `"notifications"`},
+		{"/projects?privacy_class=confidential&q=Beta&limit=1", "proj-beta", "proj-alpha", `"projects"`},
+		{"/triggers?project_id=proj-alpha&type=manual&enabled=true&skill_id=skill.alpha&limit=1", "trigger-alpha", "trigger-beta", `"triggers"`},
+		{"/skills?status=active&q=Alpha&limit=1", "skill.alpha", "skill.beta", `"skills"`},
+	} {
+		resp := httptest.NewRecorder()
+		handler.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, tc.path, nil))
+		if resp.Code != http.StatusOK {
+			t.Fatalf("%s status=%d body=%s", tc.path, resp.Code, resp.Body.String())
+		}
+		body := resp.Body.String()
+		for _, want := range []string{tc.collection, `"pagination"`, `"limit":1`, `"offset":0`, tc.want} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("%s response missing %s: %s", tc.path, want, body)
+			}
+		}
+		if strings.Contains(body, tc.notWant) {
+			t.Fatalf("%s response included filtered item %s: %s", tc.path, tc.notWant, body)
+		}
+		if strings.Contains(body, "event-secret") {
+			t.Fatalf("%s response leaked event secret: %s", tc.path, body)
+		}
+	}
+
+	bad := httptest.NewRecorder()
+	handler.ServeHTTP(bad, httptest.NewRequest(http.MethodGet, "/tasks?limit=500", nil))
+	if bad.Code != http.StatusBadRequest {
+		t.Fatalf("invalid limit status=%d body=%s", bad.Code, bad.Body.String())
+	}
+}
+
 func TestDashboardUIIncludesOperatorSections(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

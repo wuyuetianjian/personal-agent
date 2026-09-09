@@ -129,6 +129,11 @@ curl http://127.0.0.1:8787/readyz
 curl http://127.0.0.1:8787/metrics
 curl http://127.0.0.1:8787/dashboard
 curl http://127.0.0.1:8787/models/discover
+curl "http://127.0.0.1:8787/tasks?limit=20&offset=0&status=running"
+curl "http://127.0.0.1:8787/workflows?limit=20&offset=0&project_id=default"
+curl "http://127.0.0.1:8787/events?limit=20&offset=0&type=push"
+curl "http://127.0.0.1:8787/projects?limit=20&offset=0&q=local"
+curl "http://127.0.0.1:8787/skills?limit=20&offset=0&status=active"
 bin/pachat backup create --config configs/config.example.yaml
 bin/pachat export --config configs/config.example.yaml --output portable.json
 bin/pachat import --config configs/config.example.yaml --input portable.json
@@ -337,6 +342,8 @@ Configured MCP servers are registered as `mcp.<server>.<tool>` executors and cal
 
 `OP-08` adds foreground streaming for `pachat run --stream`. The stream reports planning, workflow progress, node state, tool-like node progress, approval wait state, and final answer deltas with secret-like text redacted. It does not expose chain-of-thought or raw reasoning checkpoint fields.
 
+`OP-09` adds paginated and filtered REST list APIs for tasks, workflows, events, notifications, projects, triggers, and skills. List endpoints accept bounded `limit` and `offset` plus resource-specific filters such as `status`, `project_id`, `type`, `enabled`, `privacy_class`, `skill_id`, `source`, `severity`, and `q`.
+
 Public escalation is wired from enabled `public_remote` chat models in the model registry. If a public provider requires Privacy Gateway, `privacy.hmac_secret_env` must resolve or Runtime build fails closed. Secret-bearing payloads are blocked before provider calls.
 
 Task usage can be queried with `pachat task usage --config <path> --id <task_id>`. Usage is aggregated from workflow checkpoints at node, workflow, and task levels. Model providers with reliable usage use provider token counts; external CLI/tool usage remains marked as unknown when token counts are unavailable.
@@ -501,6 +508,11 @@ curl http://127.0.0.1:8787/readyz
 curl http://127.0.0.1:8787/metrics
 curl http://127.0.0.1:8787/dashboard
 curl http://127.0.0.1:8787/models/discover
+curl "http://127.0.0.1:8787/tasks?limit=20&offset=0&status=running"
+curl "http://127.0.0.1:8787/workflows?limit=20&offset=0&project_id=default"
+curl "http://127.0.0.1:8787/events?limit=20&offset=0&type=push"
+curl "http://127.0.0.1:8787/projects?limit=20&offset=0&q=local"
+curl "http://127.0.0.1:8787/skills?limit=20&offset=0&status=active"
 bin/pachat backup create --config configs/config.example.yaml
 bin/pachat export --config configs/config.example.yaml --output portable.json
 bin/pachat import --config configs/config.example.yaml --input portable.json
@@ -708,6 +720,8 @@ Runtime capability executor 现在通过本地 executor registry 注册。启用
 `OP-07` 增加便携数据导出/导入。`pachat export` 会把 Project、Skill 及版本、选定 episodic/semantic memory 和 knowledge document metadata 写入版本化 JSON artifact。`pachat import` 会校验 artifact，并把这些对象 upsert 到配置指向的本地数据库。它不会导出 credential、浏览器 cookie、浏览器密码、浏览器 profile data、coding CLI credential store 或原始 document chunk text。
 
 `OP-08` 为 `pachat run --stream` 增加前台 streaming。stream 会报告 planning、workflow progress、node state、tool-like node progress、approval wait state 和 final answer delta，并对 secret-like 文本脱敏。它不会暴露 chain-of-thought 或原始 reasoning checkpoint 字段。
+
+`OP-09` 为 tasks、workflows、events、notifications、projects、triggers 和 skills 增加带分页与过滤的 REST list API。列表 endpoint 支持有界 `limit` 和 `offset`，以及 `status`、`project_id`、`type`、`enabled`、`privacy_class`、`skill_id`、`source`、`severity`、`q` 等资源相关过滤参数。
 
 Public escalation 会从 model registry 中启用的 `public_remote` chat model 接线。如果 public provider 要求 Privacy Gateway，`privacy.hmac_secret_env` 必须能解析，否则 Runtime build 会 fail closed。包含 secret 的 payload 会在调用 provider 前被阻断。
 

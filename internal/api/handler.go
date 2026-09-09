@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -61,10 +60,14 @@ func (s Server) Handler() http.Handler {
 	mux.HandleFunc("POST /tasks/{id}/cancel", s.cancelTask)
 	mux.HandleFunc("GET /tasks/{id}/events", s.listEvents)
 	mux.HandleFunc("POST /events", s.createEvent)
+	mux.HandleFunc("GET /events", s.listStoredEvents)
 	mux.HandleFunc("GET /evidence", s.listEvidence)
 	mux.HandleFunc("GET /evidence/{id}", s.getEvidence)
 	mux.HandleFunc("GET /dashboard", s.dashboard)
 	mux.HandleFunc("GET /dashboard/events", s.dashboardEvents)
+	mux.HandleFunc("GET /workflows", s.listWorkflows)
+	mux.HandleFunc("GET /projects", s.listProjects)
+	mux.HandleFunc("GET /skills", s.listSkills)
 	mux.HandleFunc("GET /models/discover", s.discoverModels)
 	mux.HandleFunc("GET /notifications", s.listNotifications)
 	mux.HandleFunc("POST /notifications/{id}/read", s.markNotificationRead)
@@ -232,16 +235,17 @@ func (s Server) createTask(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s Server) listTasks(w http.ResponseWriter, r *http.Request) {
-	limit := 20
-	if raw := r.URL.Query().Get("limit"); raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil || parsed < 1 || parsed > 100 {
-			writeError(w, http.StatusBadRequest, "invalid_limit")
-			return
-		}
-		limit = parsed
+	page, err := parseListQuery(r, 20, 100)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
 	}
-	tasks, err := s.Tasks.ListTasks(r.Context(), limit)
+	var tasks []storage.Task
+	if db := s.sqlDB(); db != nil {
+		tasks, err = listTaskRows(r.Context(), db, page)
+	} else {
+		tasks, err = s.Tasks.ListTasks(r.Context(), page.Limit)
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "task_list_failed")
 		return
@@ -250,7 +254,7 @@ func (s Server) listTasks(w http.ResponseWriter, r *http.Request) {
 	for _, task := range tasks {
 		responses = append(responses, taskToResponse(task))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"tasks": responses})
+	writeJSON(w, http.StatusOK, paginatedResponse("tasks", responses, page))
 }
 
 func (s Server) getTask(w http.ResponseWriter, r *http.Request) {
@@ -340,6 +344,24 @@ func (s Server) createEvent(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"id": event.ID, "status": "accepted"})
 }
 
+func (s Server) listStoredEvents(w http.ResponseWriter, r *http.Request) {
+	if s.EventStore.DB == nil {
+		writeError(w, http.StatusServiceUnavailable, "event_store_unavailable")
+		return
+	}
+	page, err := parseListQuery(r, 20, 100)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	events, err := listEventRows(r.Context(), s.EventStore.DB, page)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "event_list_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, paginatedResponse("events", events, page))
+}
+
 func (s Server) discoverModels(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"models": append([]string(nil), s.ModelRegistry...)})
 }
@@ -349,12 +371,17 @@ func (s Server) listNotifications(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "notification_store_unavailable")
 		return
 	}
-	items, err := s.Notifications.List(r.Context(), 50)
+	page, err := parseListQuery(r, 20, 100)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	items, err := listNotificationRows(r.Context(), s.Notifications.DB, page)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "notification_list_failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"notifications": items})
+	writeJSON(w, http.StatusOK, paginatedResponse("notifications", items, page))
 }
 
 func (s Server) markNotificationRead(w http.ResponseWriter, r *http.Request) {
@@ -406,12 +433,74 @@ func (s Server) listTriggers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "trigger_store_unavailable")
 		return
 	}
-	triggers, err := s.Triggers.List(r.Context())
+	page, err := parseListQuery(r, 20, 100)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	triggers, err := listTriggerRows(r.Context(), s.Triggers.DB, page)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "trigger_list_failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"triggers": triggers})
+	writeJSON(w, http.StatusOK, paginatedResponse("triggers", triggers, page))
+}
+
+func (s Server) listWorkflows(w http.ResponseWriter, r *http.Request) {
+	db := s.sqlDB()
+	if db == nil {
+		writeError(w, http.StatusServiceUnavailable, "workflow_store_unavailable")
+		return
+	}
+	page, err := parseListQuery(r, 20, 100)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	workflows, err := listWorkflowRows(r.Context(), db, page)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "workflow_list_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, paginatedResponse("workflows", workflows, page))
+}
+
+func (s Server) listProjects(w http.ResponseWriter, r *http.Request) {
+	db := s.sqlDB()
+	if db == nil {
+		writeError(w, http.StatusServiceUnavailable, "project_store_unavailable")
+		return
+	}
+	page, err := parseListQuery(r, 20, 100)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	projects, err := listProjectRows(r.Context(), db, page)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "project_list_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, paginatedResponse("projects", projects, page))
+}
+
+func (s Server) listSkills(w http.ResponseWriter, r *http.Request) {
+	db := s.sqlDB()
+	if db == nil {
+		writeError(w, http.StatusServiceUnavailable, "skill_store_unavailable")
+		return
+	}
+	page, err := parseListQuery(r, 20, 100)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	skills, err := listSkillRows(r.Context(), db, page)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "skill_list_failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, paginatedResponse("skills", skills, page))
 }
 
 func (s Server) getTrigger(w http.ResponseWriter, r *http.Request) {

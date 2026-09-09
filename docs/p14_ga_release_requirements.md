@@ -93,6 +93,8 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 
 `OP-08` adds a streaming CLI mode for foreground task runs. `pachat run --stream` emits redacted line-oriented progress for planning, workflow/node state, tool-like node progress, approval wait state, and final answer deltas. The stream intentionally avoids chain-of-thought and does not expose raw reasoning checkpoint payloads.
 
+`OP-09` adds REST pagination and filtering for operator list APIs covering tasks, workflows, events, notifications, projects, triggers, and skills. List endpoints accept bounded `limit` and `offset` parameters plus resource-specific filters such as status, project, type, enabled, privacy, skill, source, severity, and text query where applicable.
+
 ## Acceptance
 
 - `go test ./...` passes.
@@ -132,3 +134,4 @@ The planner is enabled by `agent.planner.enabled` and bounded by `agent.planner.
 - CLI restore tests verify dry-run validation, schema compatibility through migrations, integrity checks, existing database protection, force restore, restored data reads, and pre-restore backup creation.
 - CLI portable-data tests verify `pachat export/import` round-trips Projects, Skills, selected memory, and knowledge metadata while excluding credentials, browser cookie/password material, coding CLI credential stores, and raw document chunk text.
 - CLI streaming tests verify `pachat run --stream` emits planning, workflow progress, node state, approval wait, and answer stream records while redacting secret-like output and omitting chain-of-thought fields.
+- API tests verify paginated and filtered REST lists for tasks, workflows, events, notifications, projects, triggers, and skills.
