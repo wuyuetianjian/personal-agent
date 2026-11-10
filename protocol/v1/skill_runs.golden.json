@@ -1,0 +1,218 @@
+{
+  "blocked": {
+    "schema_version": 1,
+    "namespace": "runtime-rebuild-v1",
+    "operation_id": "preview",
+    "session_id": "session",
+    "catalog_id": "skill-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "revision_id": "skill-rev-12345678-1234-4123-8123-123456789abc",
+    "scope_id": "scope",
+    "root_identity": "root",
+    "policy_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "expected_generation": "12345678-1234-4123-8123-123456789abc",
+    "expected_revision": 1,
+    "review": {
+      "execution_profile": "readonly-workspace-v1",
+      "eligibility": "blocked",
+      "reason": "selection_unavailable",
+      "inputs_sha256": "8209c9c439ce8946844d5b33ab2154b92fb8b6447bbc17df9570adb2986bc462",
+      "plan_sha256": "5e1788bb3ce26a03f6fd44f52a3b17a732b0081dbb1f045d5da752c79bd343d8",
+      "nodes": [
+        {
+          "node_id": "readme",
+          "capability": "workspace.read",
+          "depends_on": [],
+          "call": {
+            "ID": "readme",
+            "Name": "read",
+            "Arguments": "{\"path\":\"note.txt\",\"scope\":\"scope\"}"
+          }
+        }
+      ],
+      "budgets": {
+        "max_attempts": 1,
+        "duration_ms": 120000,
+        "max_ordinary_events": 512,
+        "max_control_events": 64,
+        "max_input_bytes": 32768,
+        "max_result_bytes": 65536,
+        "max_output_bytes": 1048576
+      },
+      "evaluation": "not_run",
+      "verification_status": "not_evaluated"
+    },
+    "expires_at_ms": 12345,
+    "digest": "ea5b41a2d7203ad8d9aee8861e220d0e3652c4d6bcefcb8bc6b6027c2f6e5b54",
+    "state": "pending",
+    "decision": "",
+    "decision_request_id": "",
+    "run_id": "",
+    "reason": "selection_unavailable"
+  },
+  "completed": {
+    "schema_version": 1,
+    "session_id": "session",
+    "run_id": "12345678-1234-4123-8123-123456789abc",
+    "pin": {
+      "schema_version": 1,
+      "session_id": "session",
+      "run_id": "12345678-1234-4123-8123-123456789abc",
+      "catalog_id": "skill-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "revision_id": "skill-rev-12345678-1234-4123-8123-123456789abc",
+      "catalog_generation": "12345678-1234-4123-8123-123456789abc",
+      "scope_id": "scope",
+      "root_identity": "root",
+      "policy_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "review_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "inputs_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "plan_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "execution_profile": "readonly-workspace-v1",
+      "admission_time_ms": 1000,
+      "deadline_ms": 121000,
+      "budgets": {
+        "max_attempts": 1,
+        "duration_ms": 120000,
+        "max_ordinary_events": 512,
+        "max_control_events": 64,
+        "max_input_bytes": 32768,
+        "max_result_bytes": 65536,
+        "max_output_bytes": 1048576
+      }
+    },
+    "execution": "completed",
+    "evaluation": "not_run",
+    "verification_status": "not_evaluated",
+    "revoked": false,
+    "nodes": [
+      {
+        "node_id": "readme",
+        "capability": "workspace.read",
+        "proposal_id": "proposal",
+        "outcome": "success",
+        "reason": "",
+        "result": {
+          "Content": "owned fixture",
+          "IsError": false
+        }
+      }
+    ]
+  },
+  "control": {
+    "schema_version": 1,
+    "session_id": "session",
+    "request_id": "stop",
+    "run_id": "12345678-1234-4123-8123-123456789abc",
+    "action": "cancel",
+    "state": "completed",
+    "phase": "cancelling"
+  },
+  "page": {
+    "schema_version": 1,
+    "session_id": "session",
+    "runs": [
+      {
+        "schema_version": 1,
+        "session_id": "session",
+        "run_id": "12345678-1234-4123-8123-123456789abc",
+        "pin": {
+          "schema_version": 1,
+          "session_id": "session",
+          "run_id": "12345678-1234-4123-8123-123456789abc",
+          "catalog_id": "skill-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "revision_id": "skill-rev-12345678-1234-4123-8123-123456789abc",
+          "catalog_generation": "12345678-1234-4123-8123-123456789abc",
+          "scope_id": "scope",
+          "root_identity": "root",
+          "policy_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "content_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "review_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "inputs_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "plan_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "execution_profile": "readonly-workspace-v1",
+          "admission_time_ms": 1000,
+          "deadline_ms": 121000,
+          "budgets": {
+            "max_attempts": 1,
+            "duration_ms": 120000,
+            "max_ordinary_events": 512,
+            "max_control_events": 64,
+            "max_input_bytes": 32768,
+            "max_result_bytes": 65536,
+            "max_output_bytes": 1048576
+          }
+        },
+        "execution": "completed",
+        "evaluation": "not_run",
+        "verification_status": "not_evaluated",
+        "revoked": false,
+        "nodes": [
+          {
+            "node_id": "readme",
+            "capability": "workspace.read",
+            "proposal_id": "proposal",
+            "outcome": "success",
+            "reason": "",
+            "result": {
+              "Content": "owned fixture",
+              "IsError": false
+            }
+          }
+        ]
+      }
+    ],
+    "next_cursor": ""
+  },
+  "pending": {
+    "schema_version": 1,
+    "namespace": "runtime-rebuild-v1",
+    "operation_id": "preview",
+    "session_id": "session",
+    "catalog_id": "skill-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "revision_id": "skill-rev-12345678-1234-4123-8123-123456789abc",
+    "scope_id": "scope",
+    "root_identity": "root",
+    "policy_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "expected_generation": "12345678-1234-4123-8123-123456789abc",
+    "expected_revision": 1,
+    "review": {
+      "execution_profile": "readonly-workspace-v1",
+      "eligibility": "ready",
+      "reason": "ready",
+      "inputs_sha256": "8209c9c439ce8946844d5b33ab2154b92fb8b6447bbc17df9570adb2986bc462",
+      "plan_sha256": "5e1788bb3ce26a03f6fd44f52a3b17a732b0081dbb1f045d5da752c79bd343d8",
+      "nodes": [
+        {
+          "node_id": "readme",
+          "capability": "workspace.read",
+          "depends_on": [],
+          "call": {
+            "ID": "readme",
+            "Name": "read",
+            "Arguments": "{\"path\":\"note.txt\",\"scope\":\"scope\"}"
+          }
+        }
+      ],
+      "budgets": {
+        "max_attempts": 1,
+        "duration_ms": 120000,
+        "max_ordinary_events": 512,
+        "max_control_events": 64,
+        "max_input_bytes": 32768,
+        "max_result_bytes": 65536,
+        "max_output_bytes": 1048576
+      },
+      "evaluation": "not_run",
+      "verification_status": "not_evaluated"
+    },
+    "expires_at_ms": 12345,
+    "digest": "8827240358c69c70430a5d6542d97e398b0111aae71295f91bb17dfa6f73c0d0",
+    "state": "pending",
+    "decision": "",
+    "decision_request_id": "",
+    "run_id": "",
+    "reason": "ready"
+  }
+}

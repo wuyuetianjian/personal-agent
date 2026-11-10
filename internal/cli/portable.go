@@ -18,6 +18,8 @@ import (
 	"agent/internal/skill"
 )
 
+var errPortableProjectPolicy = errors.New("portable project import is unsupported: external records cannot provision execution authority; preserve the source unchanged")
+
 const (
 	portableArtifactType    = "personal-agent.portable"
 	portableArtifactVersion = 1
@@ -112,6 +114,15 @@ func importCommand(ctx context.Context, args []string, stdout io.Writer) error {
 func buildPortableArtifact(ctx context.Context, db *sql.DB, memoryLimit int) (portableArtifact, error) {
 	if memoryLimit <= 0 {
 		memoryLimit = defaultMemoryLimit
+	}
+	// Inspect the whole catalog, not merely the bounded export page. No artifact
+	// containing a metadata-only project is emitted by this unsupported format.
+	var unsupported int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM projects p LEFT JOIN project_execution_classification c ON c.project_id=p.id WHERE c.execution_class IS NULL OR c.execution_class<>'legacy_policy'`).Scan(&unsupported); err != nil {
+		return portableArtifact{}, err
+	}
+	if unsupported != 0 {
+		return portableArtifact{}, errors.New("portable export of classified metadata-only projects is unsupported")
 	}
 	projects, err := (project.Store{DB: db}).List(ctx, 10000)
 	if err != nil {
@@ -261,6 +272,9 @@ func readPortableArtifact(path string) (portableArtifact, error) {
 	if artifact.Version != portableArtifactVersion {
 		return portableArtifact{}, fmt.Errorf("unsupported portable artifact version %d", artifact.Version)
 	}
+	if len(artifact.Projects) != 0 {
+		return portableArtifact{}, errPortableProjectPolicy
+	}
 	return artifact, nil
 }
 
@@ -292,34 +306,11 @@ func importPortableArtifact(ctx context.Context, db *sql.DB, artifact portableAr
 }
 
 func importProjects(ctx context.Context, tx *sql.Tx, projects []project.Project) error {
-	for _, item := range projects {
-		repos, err := json.Marshal(item.RepositoryRefs)
-		if err != nil {
-			return err
-		}
-		scopes, err := json.Marshal(item.KnowledgeScopes)
-		if err != nil {
-			return err
-		}
-		skills, err := json.Marshal(item.AllowedSkills)
-		if err != nil {
-			return err
-		}
-		caps, err := json.Marshal(item.AllowedCapabilities)
-		if err != nil {
-			return err
-		}
-		agents, err := json.Marshal(item.AllowedCodingAgents)
-		if err != nil {
-			return err
-		}
-		models, err := json.Marshal(item.AllowedModels)
-		if err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO projects (id,name,privacy_class,repository_refs_json,knowledge_scopes_json,memory_scope,allowed_skills_json,allowed_capabilities_json,allowed_coding_agents_json,allowed_models_json,budget_policy) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name, privacy_class=excluded.privacy_class, repository_refs_json=excluded.repository_refs_json, knowledge_scopes_json=excluded.knowledge_scopes_json, memory_scope=excluded.memory_scope, allowed_skills_json=excluded.allowed_skills_json, allowed_capabilities_json=excluded.allowed_capabilities_json, allowed_coding_agents_json=excluded.allowed_coding_agents_json, allowed_models_json=excluded.allowed_models_json, budget_policy=excluded.budget_policy`, item.ID, item.Name, item.PrivacyClass, string(repos), string(scopes), item.MemoryScope, string(skills), string(caps), string(agents), string(models), item.BudgetPolicy); err != nil {
-			return err
-		}
+	// A portable JSON field cannot attest legacy policy provenance. Refuse all
+	// project-bearing imports, even absent/spoofed legacy_policy classifications,
+	// rather than laundering metadata-only records into unrestricted copies.
+	if len(projects) != 0 {
+		return errPortableProjectPolicy
 	}
 	return nil
 }

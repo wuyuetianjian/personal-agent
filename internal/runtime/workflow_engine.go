@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -60,6 +59,11 @@ func (e *WorkflowEngine) RunWorkflow(ctx context.Context, workflowID string) err
 	if err != nil {
 		return err
 	}
+	proj, err := e.project(ctx, run.ProjectID)
+	if err != nil {
+		_ = e.Workflows.UpdateStatus(ctx, workflowID, workflow.StatusFailed)
+		return err
+	}
 	input := parseWorkflowInput(run.InputJSON)
 	nodes, err := e.Workflows.Recover(ctx, workflowID)
 	if err != nil {
@@ -67,11 +71,6 @@ func (e *WorkflowEngine) RunWorkflow(ctx context.Context, workflowID string) err
 	}
 	if len(nodes) == 0 {
 		return e.Workflows.UpdateStatus(ctx, workflowID, workflow.StatusCompleted)
-	}
-	proj, err := e.project(ctx, run.ProjectID)
-	if err != nil {
-		_ = e.Workflows.UpdateStatus(ctx, workflowID, workflow.StatusFailed)
-		return err
 	}
 	taskNodes := make([]agent.TaskNode, 0, len(nodes))
 	for _, node := range nodes {
@@ -181,10 +180,10 @@ func (e *WorkflowEngine) project(ctx context.Context, projectID string) (project
 		return project.Project{}, nil
 	}
 	proj, err := e.Projects.Get(ctx, projectID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return project.Project{}, nil
+	if err != nil || !proj.ExecutionAllowed() {
+		return project.Project{}, ErrWorkflowProjectDenied
 	}
-	return proj, err
+	return proj, nil
 }
 
 func (e *WorkflowEngine) validateNode(ctx context.Context, proj project.Project, node workflow.Node) error {
@@ -254,9 +253,19 @@ func (a workflowSubAgent) Execute(ctx context.Context, node agent.TaskNode) (age
 		return result, ErrWorkflowBudgetExceeded
 	}
 
+	// MCP effects always need caller-owned durable exclusion, even if a
+	// manually constructed node omitted its key or untrusted metadata says read_only.
+	isMCP := strings.HasPrefix(node.Type, "mcp.")
+	if isMCP && (a.engine.Runtime.SideEffects == nil || a.workflowID == "" || node.ID == "") {
+		err := errors.New("MCP requires a durable workflow effect claim")
+		return agent.Result{ErrorCategory: agent.ErrorBlockedMissingInput, ErrorMessage: err.Error()}, err
+	}
 	sideEffectKey := ""
 	if a.requiresSideEffectClaim(node) {
 		sideEffectKey = node.Metadata["idempotency_key"]
+		if isMCP && strings.TrimSpace(sideEffectKey) == "" {
+			sideEffectKey = a.workflowID + ":" + node.ID
+		}
 		record, claimed, claimErr := a.engine.Runtime.SideEffects.Claim(ctx, SideEffectRecord{
 			IdempotencyKey: sideEffectKey,
 			WorkflowID:     a.workflowID,
@@ -305,10 +314,18 @@ func (a workflowSubAgent) Execute(ctx context.Context, node agent.TaskNode) (age
 		ResultRef:   resultRef,
 		UsageJSON:   usageJSON(result),
 	}); cpErr != nil && err == nil {
+		if isMCP {
+			result.ErrorCategory = agent.ErrorVerificationFailed
+			result.ErrorMessage = "MCP returned but checkpoint persistence failed; reconcile without repeating the tool"
+		}
 		return result, cpErr
 	}
 	if sideEffectKey != "" && err == nil && result.ErrorCategory == "" {
 		if completeErr := a.engine.Runtime.SideEffects.Complete(ctx, sideEffectKey, resultRef); completeErr != nil {
+			if isMCP {
+				result.ErrorCategory = agent.ErrorVerificationFailed
+				result.ErrorMessage = "MCP returned but effect completion persistence failed; reconcile without repeating the tool"
+			}
 			return result, completeErr
 		}
 	}
@@ -316,6 +333,9 @@ func (a workflowSubAgent) Execute(ctx context.Context, node agent.TaskNode) (age
 }
 
 func (a workflowSubAgent) requiresSideEffectClaim(node agent.TaskNode) bool {
+	if strings.HasPrefix(node.Type, "mcp.") {
+		return true
+	}
 	if a.engine == nil || a.engine.Runtime == nil || a.engine.Runtime.SideEffects == nil || a.engine.Runtime.Capabilities == nil {
 		return false
 	}

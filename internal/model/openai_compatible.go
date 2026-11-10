@@ -90,6 +90,40 @@ func (c *OpenAICompatibleClient) enforcePrivacy(messages []ChatMessage) error {
 			return err
 		}
 		messages[i].Content = result.Text
+		// Do not mutate caller-owned slices or silently rewrite protocol identifiers.
+		messages[i].ToolCalls = append([]ChatToolCall(nil), messages[i].ToolCalls...)
+		structural := []string{messages[i].Role, messages[i].ToolCallID}
+		for j := range messages[i].ToolCalls {
+			call := &messages[i].ToolCalls[j]
+			structural = append(structural, call.ID, call.Type, call.Function.Name)
+			var args any
+			decoder := json.NewDecoder(strings.NewReader(call.Function.Arguments))
+			decoder.UseNumber()
+			if err := decoder.Decode(&args); err != nil {
+				return err
+			}
+			safe, err := transformToolStrings(c, args)
+			if err != nil {
+				return err
+			}
+			raw, err := json.Marshal(safe)
+			if err != nil {
+				return err
+			}
+			call.Function.Arguments = string(raw)
+		}
+		for _, value := range structural {
+			safe, err := c.Privacy.TransformText(value)
+			if err != nil {
+				if err == privacy.ErrPayloadBlocked {
+					return ErrPrivacyBlocked
+				}
+				return err
+			}
+			if safe.Text != value {
+				return ErrPrivacyBlocked
+			}
+		}
 	}
 	return nil
 }

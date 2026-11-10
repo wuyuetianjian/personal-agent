@@ -17,6 +17,9 @@ func (s TriggerWorkflowStarter) StartTriggerWorkflow(ctx context.Context, tr tri
 	if s.Runtime == nil {
 		return "", ErrWorkflowEngineUnavailable
 	}
+	if _, err := s.Runtime.projectForRun(ctx, tr.ProjectID); err != nil {
+		return "", err
+	}
 	taskID, err := randomID("task")
 	if err != nil {
 		return "", err

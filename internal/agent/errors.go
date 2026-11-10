@@ -3,6 +3,7 @@ package agent
 type ErrorCategory string
 
 const (
+	ErrorEffectUnknown       ErrorCategory = "effect_outcome_unknown"
 	ErrorRetryable           ErrorCategory = "retryable_error"
 	ErrorBlockedMissingInput ErrorCategory = "blocked_missing_input"
 	ErrorPermissionDenied    ErrorCategory = "permission_denied"

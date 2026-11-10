@@ -53,6 +53,9 @@ type SoakReport struct {
 }
 
 type SoakSample struct {
+	// Phase identifies the appended terminal sample. Earlier samples remain raw
+	// observations, including transient goroutine spikes during SQL cleanup.
+	Phase                  string    `json:"phase,omitempty"`
 	At                     time.Time `json:"at"`
 	Goroutines             int       `json:"goroutines"`
 	HeapAllocBytes         uint64    `json:"heap_alloc_bytes"`
@@ -124,8 +127,13 @@ func RunSoak(ctx context.Context, opts SoakOptions) (SoakReport, error) {
 		case <-timer.C:
 		}
 	}
-	report.CompletedAt = now().UTC()
 	report.Iterations = iteration
+	settled, err := collectSettledSoakSample(ctx, rt.Storage.SQL, cfg.Storage.SQLite.Path, report.Samples[0].Goroutines, now)
+	report.CompletedAt = now().UTC()
+	if err != nil {
+		return report, err
+	}
+	report.Samples = append(report.Samples, settled)
 	report.finish(ctx, rt.Storage.SQL, cfg, browserArtifactsAtStart, worktreesAtStart)
 	report.applyThresholds(opts)
 	if opts.OutputPath != "" {
@@ -206,6 +214,37 @@ func collectSoakSample(ctx context.Context, db *sql.DB, sqlitePath string, now f
 		NotificationCount:      countRows(ctx, db, "notification_inbox"),
 		DuplicateNotifications: countDuplicateNotifications(ctx, db),
 	}
+}
+
+// collectSettledSoakSample lets canceled database/sql and SQLite cleanup finish
+// before measuring terminal resource growth. Raw workload samples are retained;
+// only the appended settled sample is used by the terminal growth gates. The
+// grace window uses wall time (not the injectable workload clock), never exceeds
+// 100ms of intentional waiting, and does not create polling goroutines.
+func collectSettledSoakSample(ctx context.Context, db *sql.DB, sqlitePath string, baselineGoroutines int, now func() time.Time) (SoakSample, error) {
+	deadline := time.NewTimer(100 * time.Millisecond)
+	defer deadline.Stop()
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for stdruntime.NumGoroutine() > baselineGoroutines {
+		select {
+		case <-ctx.Done():
+			return SoakSample{}, ctx.Err()
+		case <-deadline.C:
+			goto settled
+		case <-ticker.C:
+		}
+	}
+settled:
+	if err := ctx.Err(); err != nil {
+		return SoakSample{}, err
+	}
+	sample := collectSoakSample(ctx, db, sqlitePath, now)
+	sample.Phase = "settled"
+	if err := ctx.Err(); err != nil {
+		return SoakSample{}, err
+	}
+	return sample, nil
 }
 
 func (r *SoakReport) finish(ctx context.Context, db *sql.DB, cfg config.Config, browserArtifactsAtStart int64, worktreesAtStart int64) {

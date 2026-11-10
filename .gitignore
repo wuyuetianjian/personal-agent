@@ -36,3 +36,13 @@ browser-profiles/
 profiles/
 cookies/
 sessions/
+
+# TypeScript workspace build/cache
+node_modules/
+packages/*/dist/
+apps/*/dist/
+*.tsbuildinfo
+
+# Generated embedded Web client, rebuilt explicitly by make web-assets
+internal/webui/dist/*
+!internal/webui/dist/placeholder.txt

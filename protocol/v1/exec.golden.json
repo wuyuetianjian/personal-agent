@@ -1,0 +1,128 @@
+{
+  "review": {
+    "kind": "exec",
+    "exec": {
+      "environment_changes": [],
+      "launch_mechanism": "Linux pinned executable at /proc/self/fd/3",
+      "warning": "NON-SANDBOXED: runs with current OS-user access, including files, network and credentials available to that user. Cwd is not confinement; a minimal environment is not secret isolation. Cancellation may leave descendants running; direct-child exit does not prove all descendants stopped.",
+      "scope": "scope",
+      "root_identity": "fixture-root",
+      "program": "/usr/bin/printf",
+      "executable_identity": "fixture-executable",
+      "executable_sha256": "fixture-hash",
+      "argv": [
+        "%s",
+        "hello 世界"
+      ],
+      "cwd": "/fixture/workspace",
+      "cwd_identity": "fixture-cwd",
+      "environment_policy": "replace environment; no host variables inherited; fixed PATH=/usr/bin:/bin and LANG=C.UTF-8, plus exact explicit changes",
+      "environment": [
+        {
+          "name": "LANG",
+          "value": "C.UTF-8"
+        },
+        {
+          "name": "PATH",
+          "value": "/usr/bin:/bin"
+        }
+      ],
+      "timeout_ms": 1000,
+      "output_limit_bytes": 4096,
+      "termination_scope": "direct child only; descendants not attested stopped"
+    }
+  },
+  "snapshot": {
+    "schema_version": 1,
+    "session": {
+      "non_sandbox_exec": true,
+      "exec_warning": "NON-SANDBOXED: runs with current OS-user access, including files, network and credentials available to that user. Cwd is not confinement; a minimal environment is not secret isolation. Cancellation may leave descendants running; direct-child exit does not prove all descendants stopped.",
+      "id": "s",
+      "model_id": "fixture",
+      "mode": "acceptEdits",
+      "files": true,
+      "tools": true,
+      "reason": ""
+    },
+    "cursor": 4,
+    "runs": [
+      {
+        "id": "r",
+        "request_id": "q",
+        "input": "run",
+        "state": "running",
+        "phase": "executing",
+        "text": "",
+        "draft": "",
+        "tools": [
+          {
+            "id": "p",
+            "name": "exec",
+            "arguments": "{\"program\":\"/usr/bin/printf\",\"argv\":[\"%s\",\"hello 世界\"]}",
+            "state": "executing"
+          }
+        ]
+      }
+    ],
+    "has_older": false
+  },
+  "replay": [
+    {
+      "schema_version": 1,
+      "session_id": "s",
+      "run_id": "r",
+      "sequence": 5,
+      "type": "tool.uncertain",
+      "data": {
+        "call_id": "c",
+        "content": "{\"stdout\":\"hello 世界\",\"stderr\":\"\",\"exit_code\":0,\"direct_child_waited\":true,\"descendants_stopped\":false,\"outcome\":\"unknown_requires_reconciliation\"}",
+        "id": "p",
+        "is_error": true
+      }
+    },
+    {
+      "schema_version": 1,
+      "session_id": "s",
+      "run_id": "r",
+      "sequence": 6,
+      "type": "run.needs_reconciliation",
+      "data": {}
+    }
+  ],
+  "final": {
+    "schema_version": 1,
+    "session": {
+      "non_sandbox_exec": true,
+      "exec_warning": "NON-SANDBOXED: runs with current OS-user access, including files, network and credentials available to that user. Cwd is not confinement; a minimal environment is not secret isolation. Cancellation may leave descendants running; direct-child exit does not prove all descendants stopped.",
+      "id": "s",
+      "model_id": "fixture",
+      "mode": "acceptEdits",
+      "files": true,
+      "tools": true,
+      "reason": ""
+    },
+    "cursor": 6,
+    "runs": [
+      {
+        "id": "r",
+        "request_id": "q",
+        "input": "run",
+        "state": "running",
+        "phase": "needs_reconciliation",
+        "text": "",
+        "draft": "",
+        "tools": [
+          {
+            "id": "p",
+            "name": "exec",
+            "arguments": "{\"program\":\"/usr/bin/printf\",\"argv\":[\"%s\",\"hello 世界\"]}",
+            "state": "unknown",
+            "result": "{\"stdout\":\"hello 世界\",\"stderr\":\"\",\"exit_code\":0,\"direct_child_waited\":true,\"descendants_stopped\":false,\"outcome\":\"unknown_requires_reconciliation\"}",
+            "is_error": true
+          }
+        ]
+      }
+    ],
+    "has_older": false
+  }
+}

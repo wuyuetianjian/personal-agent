@@ -1,0 +1,159 @@
+{
+  "snapshot": {
+    "schema_version": 1,
+    "session": {
+      "mcp": {
+        "enabled": true,
+        "warning": "NON-SANDBOXED: configured MCP server runs as the current OS user, with access to that user's files, network and credentials. Minimal environment is not secret isolation. Cancellation is intent, not proof of stopped effects or descendants.",
+        "limits": "stdio only; at most 8 configured servers and 16 live processes; 64 tools/server; 64 KiB arguments; 1 MiB frames; 30s maximum request deadline; direct-child cleanup only. HTTP, Tasks and interactive continuation unsupported.",
+        "servers": [
+          {
+            "id": "owned",
+            "state": "discovered",
+            "reason": "Discovery is not a tool call.",
+            "protocol_version": "2026-07-28",
+            "config_fingerprint": "config-digest",
+            "tools": 1
+          }
+        ]
+      },
+      "id": "s",
+      "model_id": "fixture",
+      "mode": "default",
+      "files": true,
+      "tools": true,
+      "reason": ""
+    },
+    "cursor": 6,
+    "runs": [
+      {
+        "id": "r",
+        "request_id": "q",
+        "input": "mcp",
+        "state": "running",
+        "phase": "waiting_approval",
+        "text": "",
+        "draft": "",
+        "tools": [
+          {
+            "id": "p",
+            "name": "mcp_owned",
+            "arguments": "{\"value\":\"hello 世界\"}",
+            "state": "proposed"
+          }
+        ],
+        "approval": {
+          "id": "p",
+          "digest": "approval-digest",
+          "expires_at": "2030-01-01T00:00:00Z",
+          "decision": "pending"
+        }
+      }
+    ],
+    "has_older": false
+  },
+  "review": {
+    "kind": "mcp",
+    "mcp": {
+      "server_id": "owned",
+      "tool": "write",
+      "arguments": "{\"value\":\"hello 世界\"}",
+      "schema_digest": "schema-digest",
+      "config_fingerprint": "config-digest",
+      "protocol_version": "2026-07-28",
+      "generation": "process-generation",
+      "command": "/owned/helper",
+      "environment_policy": "complete declared environment only; no inherited host/model/auth variables (Windows may add SystemRoot)",
+      "effect_class": "unknown/writable",
+      "warning": "NON-SANDBOXED: configured MCP server runs as the current OS user, with access to that user's files, network and credentials. Minimal environment is not secret isolation. Cancellation is intent, not proof of stopped effects or descendants.",
+      "unavailable_reason": ""
+    }
+  },
+  "replay": [
+    {
+      "schema_version": 1,
+      "session_id": "s",
+      "run_id": "r",
+      "sequence": 7,
+      "type": "tool.started",
+      "data": {
+        "arguments": "{\"value\":\"hello 世界\"}",
+        "digest": "approval-digest",
+        "expires_at": "2030-01-01T00:00:00Z",
+        "id": "p",
+        "name": "mcp_owned",
+        "requires_approval": true
+      }
+    },
+    {
+      "schema_version": 1,
+      "session_id": "s",
+      "run_id": "r",
+      "sequence": 8,
+      "type": "tool.uncertain",
+      "data": {
+        "call_id": "c",
+        "content": "{\"server_id\":\"owned\",\"tool\":\"write\",\"certainty\":\"possibly_sent\",\"outcome\":\"unknown_requires_reconciliation\"}",
+        "id": "p",
+        "is_error": true
+      }
+    },
+    {
+      "schema_version": 1,
+      "session_id": "s",
+      "run_id": "r",
+      "sequence": 9,
+      "type": "run.needs_reconciliation",
+      "data": {}
+    }
+  ],
+  "final": {
+    "schema_version": 1,
+    "session": {
+      "mcp": {
+        "enabled": true,
+        "warning": "NON-SANDBOXED: configured MCP server runs as the current OS user, with access to that user's files, network and credentials. Minimal environment is not secret isolation. Cancellation is intent, not proof of stopped effects or descendants.",
+        "limits": "stdio only; at most 8 configured servers and 16 live processes; 64 tools/server; 64 KiB arguments; 1 MiB frames; 30s maximum request deadline; direct-child cleanup only. HTTP, Tasks and interactive continuation unsupported.",
+        "servers": [
+          {
+            "id": "owned",
+            "state": "discovered",
+            "reason": "Discovery is not a tool call.",
+            "protocol_version": "2026-07-28",
+            "config_fingerprint": "config-digest",
+            "tools": 1
+          }
+        ]
+      },
+      "id": "s",
+      "model_id": "fixture",
+      "mode": "default",
+      "files": true,
+      "tools": true,
+      "reason": ""
+    },
+    "cursor": 9,
+    "runs": [
+      {
+        "id": "r",
+        "request_id": "q",
+        "input": "mcp",
+        "state": "running",
+        "phase": "needs_reconciliation",
+        "text": "",
+        "draft": "",
+        "tools": [
+          {
+            "id": "p",
+            "name": "mcp_owned",
+            "arguments": "{\"value\":\"hello 世界\"}",
+            "state": "unknown",
+            "result": "{\"server_id\":\"owned\",\"tool\":\"write\",\"certainty\":\"possibly_sent\",\"outcome\":\"unknown_requires_reconciliation\"}",
+            "is_error": true
+          }
+        ]
+      }
+    ],
+    "has_older": false
+  }
+}

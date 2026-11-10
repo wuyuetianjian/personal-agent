@@ -1,0 +1,108 @@
+{
+  "snapshot": {
+    "schema_version": 1,
+    "session": {
+      "id": "s",
+      "model_id": "fixture",
+      "mode": "default",
+      "files": true,
+      "tools": true,
+      "reason": ""
+    },
+    "cursor": 10,
+    "runs": [
+      {
+        "id": "r",
+        "request_id": "q",
+        "input": "edit",
+        "state": "running",
+        "phase": "cancelling",
+        "text": "",
+        "draft": "",
+        "tools": [
+          {
+            "id": "old",
+            "name": "read",
+            "arguments": "{}",
+            "state": "completed",
+            "result": "preimage"
+          },
+          {
+            "id": "p",
+            "name": "apply_patch",
+            "arguments": "{\"path\":\"note.txt\",\"content\":\"new\"}",
+            "state": "executing"
+          }
+        ]
+      }
+    ],
+    "has_older": false
+  },
+  "replay": [
+    {
+      "schema_version": 1,
+      "session_id": "s",
+      "run_id": "r",
+      "sequence": 11,
+      "type": "tool.recovered",
+      "data": {
+        "call_id": "c",
+        "content": "applied exact replacement",
+        "id": "p",
+        "is_error": false
+      }
+    },
+    {
+      "schema_version": 1,
+      "session_id": "s",
+      "run_id": "r",
+      "sequence": 12,
+      "type": "run.cancelled",
+      "data": {
+        "input": "edit",
+        "request_id": "q",
+        "state": "cancelled"
+      }
+    }
+  ],
+  "final": {
+    "schema_version": 1,
+    "session": {
+      "id": "s",
+      "model_id": "fixture",
+      "mode": "default",
+      "files": true,
+      "tools": true,
+      "reason": ""
+    },
+    "cursor": 12,
+    "runs": [
+      {
+        "id": "r",
+        "request_id": "q",
+        "input": "edit",
+        "state": "cancelled",
+        "phase": "cancelled",
+        "text": "",
+        "draft": "",
+        "tools": [
+          {
+            "id": "old",
+            "name": "read",
+            "arguments": "{}",
+            "state": "completed",
+            "result": "preimage"
+          },
+          {
+            "id": "p",
+            "name": "apply_patch",
+            "arguments": "{\"path\":\"note.txt\",\"content\":\"new\"}",
+            "state": "completed",
+            "result": "applied exact replacement"
+          }
+        ]
+      }
+    ],
+    "has_older": false
+  }
+}

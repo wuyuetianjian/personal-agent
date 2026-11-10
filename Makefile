@@ -36,3 +36,12 @@ release-check:
 
 clean:
 	rm -rf bin dist
+
+# Explicit opt-in: generated assets are ignored; source remains the TS app.
+.PHONY: web-assets build-agent-web
+web-assets:
+	pnpm --filter @personal-agent/web build
+	rm -rf internal/webui/dist/assets internal/webui/dist/index.html
+	cp -R apps/web/dist/. internal/webui/dist/
+build-agent-web: web-assets
+	go build -tags webui -o bin/pachat ./cmd/pachat

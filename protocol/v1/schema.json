@@ -1,0 +1,2842 @@
+{
+  "$defs": {
+    "ApprovalReview": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "edit": {
+              "$ref": "#/$defs/EditReview"
+            },
+            "kind": {
+              "const": "edit"
+            }
+          },
+          "required": [
+            "kind",
+            "edit"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "exec": {
+              "$ref": "#/$defs/ExecReview"
+            },
+            "kind": {
+              "const": "exec"
+            }
+          },
+          "required": [
+            "kind",
+            "exec"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "mcp"
+            },
+            "mcp": {
+              "$ref": "#/$defs/MCPReview"
+            }
+          },
+          "required": [
+            "kind",
+            "mcp"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ApprovalView": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "expires_at": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "digest",
+        "expires_at",
+        "decision"
+      ],
+      "type": "object"
+    },
+    "ChatToolCall": {
+      "additionalProperties": false,
+      "properties": {
+        "function": {
+          "$ref": "#/$defs/ChatToolFunction"
+        },
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "function"
+      ],
+      "type": "object"
+    },
+    "ChatToolFunction": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "arguments"
+      ],
+      "type": "object"
+    },
+    "ContextMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "tool_call_id": {
+          "type": "string"
+        },
+        "tool_calls": {
+          "items": {
+            "$ref": "#/$defs/ChatToolCall"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "role",
+        "content"
+      ],
+      "type": "object"
+    },
+    "ContextVersion": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "omitted_messages": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "source_cursor": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "session_id",
+        "source_cursor",
+        "method",
+        "omitted_messages"
+      ],
+      "type": "object"
+    },
+    "EditCheckpoint": {
+      "additionalProperties": false,
+      "properties": {
+        "disposition": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "review": {
+          "$ref": "#/$defs/EditReview"
+        },
+        "root": {
+          "type": "string"
+        },
+        "root_identity": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "source_run_id": {
+          "type": "string"
+        },
+        "undo_run_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "session_id",
+        "source_run_id",
+        "scope",
+        "root",
+        "root_identity",
+        "review",
+        "disposition"
+      ],
+      "type": "object"
+    },
+    "EditCheckpointInventory": {
+      "additionalProperties": false,
+      "properties": {
+        "checkpoints": {
+          "items": {
+            "$ref": "#/$defs/EditCheckpoint"
+          },
+          "type": "array"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "supported": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session_id",
+        "supported",
+        "reason",
+        "checkpoints"
+      ],
+      "type": "object"
+    },
+    "EditReview": {
+      "additionalProperties": false,
+      "properties": {
+        "new_content": {
+          "type": "string"
+        },
+        "new_sha256": {
+          "type": "string"
+        },
+        "old_content": {
+          "type": "string"
+        },
+        "old_sha256": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        },
+        "root_identity": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "source_run_id": {
+          "type": "string"
+        },
+        "undo_of": {
+          "type": "string"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "path",
+        "old_content",
+        "new_content",
+        "old_sha256",
+        "new_sha256"
+      ],
+      "type": "object"
+    },
+    "EnvironmentChange": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "type": "object"
+    },
+    "ExecReview": {
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "cwd_identity": {
+          "type": "string"
+        },
+        "environment": {
+          "items": {
+            "$ref": "#/$defs/EnvironmentChange"
+          },
+          "type": "array"
+        },
+        "environment_changes": {
+          "items": {
+            "$ref": "#/$defs/EnvironmentChange"
+          },
+          "type": "array"
+        },
+        "environment_policy": {
+          "type": "string"
+        },
+        "executable_identity": {
+          "type": "string"
+        },
+        "executable_sha256": {
+          "type": "string"
+        },
+        "launch_mechanism": {
+          "type": "string"
+        },
+        "output_limit_bytes": {
+          "type": "integer"
+        },
+        "program": {
+          "type": "string"
+        },
+        "root_identity": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "termination_scope": {
+          "type": "string"
+        },
+        "timeout_ms": {
+          "type": "integer"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "environment_changes",
+        "launch_mechanism",
+        "warning",
+        "scope",
+        "root_identity",
+        "program",
+        "executable_identity",
+        "executable_sha256",
+        "argv",
+        "cwd",
+        "cwd_identity",
+        "environment_policy",
+        "environment",
+        "timeout_ms",
+        "output_limit_bytes",
+        "termination_scope"
+      ],
+      "type": "object"
+    },
+    "Job": {
+      "additionalProperties": false,
+      "properties": {
+        "blocked_reason": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "effects": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "origin_run_id": {
+          "type": "string"
+        },
+        "origin_session_id": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "policy_digest": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "origin_session_id",
+        "origin_run_id",
+        "session_id",
+        "run_id",
+        "request_id",
+        "content",
+        "effects",
+        "state",
+        "phase",
+        "blocked_reason",
+        "policy_digest"
+      ],
+      "type": "object"
+    },
+    "JobArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "integer"
+        },
+        "content": {
+          "type": "string"
+        },
+        "encoding": {
+          "type": "string"
+        },
+        "job_id": {
+          "type": "string"
+        },
+        "origin_session_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "origin_session_id",
+        "job_id",
+        "session_id",
+        "artifact_id",
+        "bytes",
+        "encoding",
+        "content"
+      ],
+      "type": "object"
+    },
+    "JobDetail": {
+      "additionalProperties": false,
+      "properties": {
+        "job": {
+          "$ref": "#/$defs/Job"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/Snapshot"
+        }
+      },
+      "required": [
+        "schema_version",
+        "job",
+        "snapshot"
+      ],
+      "type": "object"
+    },
+    "JobOperationRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "job": {
+          "$ref": "#/$defs/Job"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "payload": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session_id",
+        "request_id",
+        "kind",
+        "payload",
+        "job"
+      ],
+      "type": "object"
+    },
+    "JobView": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/Job"
+          },
+          "type": "array"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "origin_session_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "origin_session_id",
+        "limit",
+        "items"
+      ],
+      "type": "object"
+    },
+    "KnowledgeIntent": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "document_id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "source_kind": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "kind",
+        "document_id",
+        "source_kind",
+        "source",
+        "content"
+      ],
+      "type": "object"
+    },
+    "KnowledgeItem": {
+      "additionalProperties": false,
+      "properties": {
+        "content_bytes": {
+          "type": "integer"
+        },
+        "content_sha256": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "index_revision": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "scope_id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "source_kind": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "scope_id",
+        "source_kind",
+        "source",
+        "content_sha256",
+        "content_bytes",
+        "revision",
+        "index_revision",
+        "state"
+      ],
+      "type": "object"
+    },
+    "KnowledgeMatch": {
+      "additionalProperties": false,
+      "properties": {
+        "chunk_id": {
+          "type": "string"
+        },
+        "document_id": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "score": {
+          "type": "number"
+        },
+        "source": {
+          "type": "string"
+        },
+        "source_kind": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "chunk_id",
+        "revision",
+        "source_kind",
+        "source",
+        "text",
+        "score"
+      ],
+      "type": "object"
+    },
+    "KnowledgeOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "content_bytes": {
+          "type": "integer"
+        },
+        "content_sha256": {
+          "type": "string"
+        },
+        "decision": {
+          "type": "string"
+        },
+        "decision_request_id": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "document_id": {
+          "type": "string"
+        },
+        "excerpt": {
+          "type": "string"
+        },
+        "expected_index_revision": {
+          "type": "string"
+        },
+        "expected_revision": {
+          "type": "string"
+        },
+        "expires_at_ms": {
+          "type": "integer"
+        },
+        "index_policy": {
+          "type": "string"
+        },
+        "index_state": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "operation_id": {
+          "type": "string"
+        },
+        "policy_digest": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "result_revision": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "scope_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "source_kind": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "namespace",
+        "operation_id",
+        "session_id",
+        "scope_id",
+        "policy_digest",
+        "kind",
+        "document_id",
+        "source_kind",
+        "source",
+        "content_sha256",
+        "content_bytes",
+        "excerpt",
+        "index_policy",
+        "expected_revision",
+        "expected_index_revision",
+        "result_revision",
+        "index_state",
+        "expires_at_ms",
+        "digest",
+        "state",
+        "decision",
+        "decision_request_id",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "KnowledgePage": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/KnowledgeItem"
+          },
+          "type": "array"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "next_cursor": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "scope_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "namespace",
+        "session_id",
+        "scope_id",
+        "items",
+        "next_cursor"
+      ],
+      "type": "object"
+    },
+    "KnowledgeSearch": {
+      "additionalProperties": false,
+      "properties": {
+        "engine": {
+          "type": "string"
+        },
+        "matches": {
+          "items": {
+            "$ref": "#/$defs/KnowledgeMatch"
+          },
+          "type": "array"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "scope_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "namespace",
+        "session_id",
+        "scope_id",
+        "query",
+        "engine",
+        "matches"
+      ],
+      "type": "object"
+    },
+    "MCPReview": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "type": "string"
+        },
+        "command": {
+          "type": "string"
+        },
+        "config_fingerprint": {
+          "type": "string"
+        },
+        "effect_class": {
+          "type": "string"
+        },
+        "environment_policy": {
+          "type": "string"
+        },
+        "generation": {
+          "type": "string"
+        },
+        "protocol_version": {
+          "type": "string"
+        },
+        "schema_digest": {
+          "type": "string"
+        },
+        "server_id": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "unavailable_reason": {
+          "type": "string"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "server_id",
+        "tool",
+        "arguments",
+        "schema_digest",
+        "config_fingerprint",
+        "protocol_version",
+        "generation",
+        "command",
+        "environment_policy",
+        "effect_class",
+        "warning",
+        "unavailable_reason"
+      ],
+      "type": "object"
+    },
+    "MCPServerView": {
+      "additionalProperties": false,
+      "properties": {
+        "config_fingerprint": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "protocol_version": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "tools": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "state",
+        "reason",
+        "protocol_version",
+        "config_fingerprint",
+        "tools"
+      ],
+      "type": "object"
+    },
+    "MCPStatus": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "limits": {
+          "type": "string"
+        },
+        "servers": {
+          "items": {
+            "$ref": "#/$defs/MCPServerView"
+          },
+          "type": "array"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "enabled",
+        "warning",
+        "limits",
+        "servers"
+      ],
+      "type": "object"
+    },
+    "OperatorAction": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "availability": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "action",
+        "availability",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "OperatorDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "operation_id": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "operation_id",
+        "digest",
+        "decision"
+      ],
+      "type": "object"
+    },
+    "OperatorField": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "type": "object"
+    },
+    "OperatorIntent": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "new_value": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "target_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "kind",
+        "target_id",
+        "new_value"
+      ],
+      "type": "object"
+    },
+    "OperatorOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "type": "string"
+        },
+        "decision_request_id": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "execution_class": {
+          "type": "string"
+        },
+        "expires_at_ms": {
+          "type": "integer"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "new_value": {
+          "type": "string"
+        },
+        "old_value": {
+          "type": "string"
+        },
+        "operation_id": {
+          "type": "string"
+        },
+        "policy_digest": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "scope_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "target_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "namespace",
+        "operation_id",
+        "session_id",
+        "scope_id",
+        "policy_digest",
+        "kind",
+        "target_id",
+        "old_value",
+        "new_value",
+        "revision",
+        "expires_at_ms",
+        "digest",
+        "state",
+        "decision",
+        "decision_request_id",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "OperatorPage": {
+      "additionalProperties": false,
+      "properties": {
+        "actions": {
+          "items": {
+            "$ref": "#/$defs/OperatorAction"
+          },
+          "type": "array"
+        },
+        "filter": {
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/OperatorRecord"
+          },
+          "type": "array"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "next_cursor": {
+          "type": "string"
+        },
+        "notice": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "resource": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "scope_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "namespace",
+        "session_id",
+        "scope_id",
+        "resource",
+        "owner",
+        "filter",
+        "notice",
+        "items",
+        "actions",
+        "next_cursor"
+      ],
+      "type": "object"
+    },
+    "OperatorRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "items": {
+            "$ref": "#/$defs/OperatorField"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "state",
+        "fields"
+      ],
+      "type": "object"
+    },
+    "ProjectLabel": {
+      "additionalProperties": false,
+      "properties": {
+        "generation": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "project_id": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "project_id",
+        "generation",
+        "revision",
+        "name"
+      ],
+      "type": "object"
+    },
+    "QueueItem": {
+      "additionalProperties": false,
+      "properties": {
+        "blocked_reason": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "policy_digest": {
+          "type": "string"
+        },
+        "position": {
+          "type": "integer"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "session_id",
+        "request_id",
+        "content",
+        "state",
+        "run_id",
+        "position",
+        "phase",
+        "blocked_reason",
+        "policy_digest"
+      ],
+      "type": "object"
+    },
+    "QueueOperationRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "item": {
+          "$ref": "#/$defs/QueueItem"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session_id",
+        "request_id",
+        "kind",
+        "item"
+      ],
+      "type": "object"
+    },
+    "QueueView": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/QueueItem"
+          },
+          "type": "array"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session_id",
+        "limit",
+        "items"
+      ],
+      "type": "object"
+    },
+    "RunView": {
+      "additionalProperties": false,
+      "properties": {
+        "approval": {
+          "$ref": "#/$defs/ApprovalView"
+        },
+        "draft": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "input": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "tools": {
+          "items": {
+            "$ref": "#/$defs/ToolView"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "request_id",
+        "input",
+        "state",
+        "phase",
+        "text",
+        "draft",
+        "tools"
+      ],
+      "type": "object"
+    },
+    "SessionAdmissionView": {
+      "additionalProperties": false,
+      "properties": {
+        "mcp_opt_in": {
+          "type": "boolean"
+        },
+        "project_label": {
+          "$ref": "#/$defs/ProjectLabel"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "session_id",
+        "state",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "SessionContextView": {
+      "additionalProperties": false,
+      "properties": {
+        "original": {
+          "items": {
+            "$ref": "#/$defs/ContextMessage"
+          },
+          "type": "array"
+        },
+        "provenance": {
+          "$ref": "#/$defs/SessionProvenance"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "selected": {
+          "items": {
+            "$ref": "#/$defs/ContextMessage"
+          },
+          "type": "array"
+        },
+        "selection": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "version": {
+          "$ref": "#/$defs/ContextVersion"
+        },
+        "warning": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "schema_version",
+        "selection",
+        "original",
+        "selected",
+        "warning"
+      ],
+      "type": "object"
+    },
+    "SessionOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "boundary_run_id": {
+          "type": "string"
+        },
+        "expected_cursor": {
+          "type": "integer"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "kind",
+        "boundary_run_id",
+        "expected_cursor"
+      ],
+      "type": "object"
+    },
+    "SessionOperationRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "action_run_id": {
+          "type": "string"
+        },
+        "operation": {
+          "$ref": "#/$defs/SessionOperation"
+        },
+        "provenance": {
+          "$ref": "#/$defs/SessionProvenance"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "version": {
+          "$ref": "#/$defs/ContextVersion"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session_id",
+        "operation"
+      ],
+      "type": "object"
+    },
+    "SessionProvenance": {
+      "additionalProperties": false,
+      "properties": {
+        "boundary_run_id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "parent_session_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "source_cursor": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "session_id",
+        "parent_session_id",
+        "boundary_run_id",
+        "source_cursor",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "SessionView": {
+      "additionalProperties": false,
+      "properties": {
+        "exec_warning": {
+          "type": "string"
+        },
+        "files": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "mcp": {
+          "$ref": "#/$defs/MCPStatus"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "model_id": {
+          "type": "string"
+        },
+        "non_sandbox_exec": {
+          "type": "boolean"
+        },
+        "project_label": {
+          "$ref": "#/$defs/ProjectLabel"
+        },
+        "provenance": {
+          "$ref": "#/$defs/SessionProvenance"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "tool_capability": {
+          "type": "string"
+        },
+        "tools": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "model_id",
+        "mode",
+        "files",
+        "tools",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "SkillBudget": {
+      "additionalProperties": false,
+      "properties": {
+        "max_iterations": {
+          "type": "integer"
+        },
+        "max_tool_calls": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_iterations",
+        "max_tool_calls"
+      ],
+      "type": "object"
+    },
+    "SkillCatalogEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "declared_id": {
+          "type": "string"
+        },
+        "evaluation": {
+          "type": "string"
+        },
+        "execution": {
+          "type": "string"
+        },
+        "execution_reason": {
+          "type": "string"
+        },
+        "generation": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "selected_revision": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "declared_id",
+        "generation",
+        "revision",
+        "state",
+        "selected_revision",
+        "evaluation",
+        "execution",
+        "execution_reason"
+      ],
+      "type": "object"
+    },
+    "SkillCatalogPage": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/SkillCatalogEntry"
+          },
+          "type": "array"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "next_cursor": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "namespace",
+        "session_id",
+        "items",
+        "next_cursor"
+      ],
+      "type": "object"
+    },
+    "SkillField": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "type": "object"
+    },
+    "SkillIntent": {
+      "additionalProperties": false,
+      "properties": {
+        "catalog_id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "manifest_text": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "revision_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "kind",
+        "manifest_text",
+        "catalog_id",
+        "revision_id"
+      ],
+      "type": "object"
+    },
+    "SkillManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "budget": {
+          "$ref": "#/$defs/SkillBudget"
+        },
+        "description": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "inputs": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/SkillField"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "permissions": {
+          "$ref": "#/$defs/SkillPermissions"
+        },
+        "privacy": {
+          "$ref": "#/$defs/SkillPrivacy"
+        },
+        "requires": {
+          "$ref": "#/$defs/SkillRequirements"
+        },
+        "status": {
+          "type": "string"
+        },
+        "verification": {
+          "$ref": "#/$defs/SkillVerification"
+        },
+        "version": {
+          "type": "string"
+        },
+        "workflow": {
+          "$ref": "#/$defs/SkillWorkflow"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "name",
+        "description",
+        "status",
+        "inputs",
+        "requires",
+        "permissions",
+        "privacy",
+        "budget",
+        "verification",
+        "workflow"
+      ],
+      "type": "object"
+    },
+    "SkillNode": {
+      "additionalProperties": false,
+      "properties": {
+        "capability": {
+          "type": "string"
+        },
+        "depends_on": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "capability",
+        "role",
+        "depends_on"
+      ],
+      "type": "object"
+    },
+    "SkillOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "catalog_id": {
+          "type": "string"
+        },
+        "decision": {
+          "type": "string"
+        },
+        "decision_request_id": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "expected_generation": {
+          "type": "string"
+        },
+        "expected_revision": {
+          "type": "integer"
+        },
+        "expires_at_ms": {
+          "type": "integer"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "new_selected_revision": {
+          "type": "string"
+        },
+        "new_state": {
+          "type": "string"
+        },
+        "old_selected_revision": {
+          "type": "string"
+        },
+        "old_state": {
+          "type": "string"
+        },
+        "operation_id": {
+          "type": "string"
+        },
+        "parser_version": {
+          "type": "string"
+        },
+        "policy_digest": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "result_generation": {
+          "type": "string"
+        },
+        "result_revision": {
+          "type": "integer"
+        },
+        "review": {
+          "$ref": "#/$defs/SkillReview"
+        },
+        "review_sha256": {
+          "type": "string"
+        },
+        "review_version": {
+          "type": "string"
+        },
+        "revision_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "scope_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "namespace",
+        "operation_id",
+        "session_id",
+        "scope_id",
+        "policy_digest",
+        "kind",
+        "catalog_id",
+        "revision_id",
+        "expected_generation",
+        "expected_revision",
+        "old_state",
+        "old_selected_revision",
+        "new_state",
+        "new_selected_revision",
+        "parser_version",
+        "review_version",
+        "review",
+        "review_sha256",
+        "expires_at_ms",
+        "digest",
+        "state",
+        "decision",
+        "decision_request_id",
+        "result_generation",
+        "result_revision",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "SkillPermissions": {
+      "additionalProperties": false,
+      "properties": {
+        "max_level": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "max_level"
+      ],
+      "type": "object"
+    },
+    "SkillPrivacy": {
+      "additionalProperties": false,
+      "properties": {
+        "max_external_trust": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "max_external_trust"
+      ],
+      "type": "object"
+    },
+    "SkillProvenance": {
+      "additionalProperties": false,
+      "properties": {
+        "imported_at_ms": {
+          "type": "integer"
+        },
+        "operation_id": {
+          "type": "string"
+        },
+        "scope_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "source_kind": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_kind",
+        "operation_id",
+        "session_id",
+        "scope_id",
+        "imported_at_ms"
+      ],
+      "type": "object"
+    },
+    "SkillRequirements": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "capabilities"
+      ],
+      "type": "object"
+    },
+    "SkillReview": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_sha256": {
+          "type": "string"
+        },
+        "canonical_manifest": {
+          "type": "string"
+        },
+        "content_bytes": {
+          "type": "integer"
+        },
+        "content_sha256": {
+          "type": "string"
+        },
+        "evaluation": {
+          "type": "string"
+        },
+        "execution": {
+          "type": "string"
+        },
+        "execution_reason": {
+          "type": "string"
+        },
+        "manifest": {
+          "$ref": "#/$defs/SkillManifest"
+        },
+        "notice": {
+          "type": "string"
+        },
+        "parser_version": {
+          "type": "string"
+        },
+        "review_version": {
+          "type": "string"
+        },
+        "targets": {
+          "items": {
+            "$ref": "#/$defs/SkillTargetReview"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "parser_version",
+        "review_version",
+        "artifact_sha256",
+        "content_sha256",
+        "content_bytes",
+        "canonical_manifest",
+        "manifest",
+        "targets",
+        "evaluation",
+        "execution",
+        "execution_reason",
+        "notice"
+      ],
+      "type": "object"
+    },
+    "SkillRevisionRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "catalog_id": {
+          "type": "string"
+        },
+        "declared_version": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "manifest_text": {
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/SkillProvenance"
+        },
+        "review": {
+          "$ref": "#/$defs/SkillReview"
+        }
+      },
+      "required": [
+        "id",
+        "catalog_id",
+        "declared_version",
+        "manifest_text",
+        "review",
+        "provenance"
+      ],
+      "type": "object"
+    },
+    "SkillRunBudgets": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_ms": {
+          "type": "integer"
+        },
+        "max_attempts": {
+          "type": "integer"
+        },
+        "max_control_events": {
+          "type": "integer"
+        },
+        "max_input_bytes": {
+          "type": "integer"
+        },
+        "max_ordinary_events": {
+          "type": "integer"
+        },
+        "max_output_bytes": {
+          "type": "integer"
+        },
+        "max_result_bytes": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_attempts",
+        "duration_ms",
+        "max_ordinary_events",
+        "max_control_events",
+        "max_input_bytes",
+        "max_result_bytes",
+        "max_output_bytes"
+      ],
+      "type": "object"
+    },
+    "SkillRunControlReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session_id",
+        "request_id",
+        "run_id",
+        "action",
+        "state",
+        "phase"
+      ],
+      "type": "object"
+    },
+    "SkillRunIntent": {
+      "additionalProperties": false,
+      "properties": {
+        "catalog_id": {
+          "type": "string"
+        },
+        "execution_profile": {
+          "type": "string"
+        },
+        "inputs": {},
+        "request_id": {
+          "type": "string"
+        },
+        "revision_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "catalog_id",
+        "revision_id",
+        "execution_profile",
+        "inputs"
+      ],
+      "type": "object"
+    },
+    "SkillRunNode": {
+      "additionalProperties": false,
+      "properties": {
+        "call": {
+          "$ref": "#/$defs/ToolCall"
+        },
+        "capability": {
+          "type": "string"
+        },
+        "depends_on": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "node_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_id",
+        "capability",
+        "depends_on",
+        "call"
+      ],
+      "type": "object"
+    },
+    "SkillRunNodeResult": {
+      "additionalProperties": false,
+      "properties": {
+        "capability": {
+          "type": "string"
+        },
+        "node_id": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "proposal_id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "node_id",
+        "capability",
+        "proposal_id",
+        "outcome",
+        "reason",
+        "result"
+      ],
+      "type": "object"
+    },
+    "SkillRunOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "catalog_id": {
+          "type": "string"
+        },
+        "decision": {
+          "type": "string"
+        },
+        "decision_request_id": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "expected_generation": {
+          "type": "string"
+        },
+        "expected_revision": {
+          "type": "integer"
+        },
+        "expires_at_ms": {
+          "type": "integer"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "operation_id": {
+          "type": "string"
+        },
+        "policy_digest": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "review": {
+          "$ref": "#/$defs/SkillRunReview"
+        },
+        "revision_id": {
+          "type": "string"
+        },
+        "root_identity": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "scope_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "namespace",
+        "operation_id",
+        "session_id",
+        "catalog_id",
+        "revision_id",
+        "scope_id",
+        "root_identity",
+        "policy_digest",
+        "expected_generation",
+        "expected_revision",
+        "review",
+        "expires_at_ms",
+        "digest",
+        "state",
+        "decision",
+        "decision_request_id",
+        "run_id",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "SkillRunPage": {
+      "additionalProperties": false,
+      "properties": {
+        "next_cursor": {
+          "type": "string"
+        },
+        "runs": {
+          "items": {
+            "$ref": "#/$defs/SkillRunRecord"
+          },
+          "type": "array"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session_id",
+        "runs",
+        "next_cursor"
+      ],
+      "type": "object"
+    },
+    "SkillRunPin": {
+      "additionalProperties": false,
+      "properties": {
+        "admission_time_ms": {
+          "type": "integer"
+        },
+        "artifact_sha256": {
+          "type": "string"
+        },
+        "budgets": {
+          "$ref": "#/$defs/SkillRunBudgets"
+        },
+        "catalog_generation": {
+          "type": "string"
+        },
+        "catalog_id": {
+          "type": "string"
+        },
+        "content_sha256": {
+          "type": "string"
+        },
+        "deadline_ms": {
+          "type": "integer"
+        },
+        "execution_profile": {
+          "type": "string"
+        },
+        "inputs_sha256": {
+          "type": "string"
+        },
+        "plan_sha256": {
+          "type": "string"
+        },
+        "policy_digest": {
+          "type": "string"
+        },
+        "review_sha256": {
+          "type": "string"
+        },
+        "revision_id": {
+          "type": "string"
+        },
+        "root_identity": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "scope_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session_id",
+        "run_id",
+        "catalog_id",
+        "revision_id",
+        "catalog_generation",
+        "scope_id",
+        "root_identity",
+        "policy_digest",
+        "artifact_sha256",
+        "content_sha256",
+        "review_sha256",
+        "inputs_sha256",
+        "plan_sha256",
+        "execution_profile",
+        "admission_time_ms",
+        "deadline_ms",
+        "budgets"
+      ],
+      "type": "object"
+    },
+    "SkillRunRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluation": {
+          "type": "string"
+        },
+        "execution": {
+          "type": "string"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/SkillRunNodeResult"
+          },
+          "type": "array"
+        },
+        "pin": {
+          "$ref": "#/$defs/SkillRunPin"
+        },
+        "revoked": {
+          "type": "boolean"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "verification_status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session_id",
+        "run_id",
+        "pin",
+        "execution",
+        "evaluation",
+        "verification_status",
+        "revoked",
+        "nodes"
+      ],
+      "type": "object"
+    },
+    "SkillRunReview": {
+      "additionalProperties": false,
+      "properties": {
+        "budgets": {
+          "$ref": "#/$defs/SkillRunBudgets"
+        },
+        "eligibility": {
+          "type": "string"
+        },
+        "evaluation": {
+          "type": "string"
+        },
+        "execution_profile": {
+          "type": "string"
+        },
+        "inputs_sha256": {
+          "type": "string"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/SkillRunNode"
+          },
+          "type": "array"
+        },
+        "plan_sha256": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "verification_status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "execution_profile",
+        "eligibility",
+        "reason",
+        "inputs_sha256",
+        "plan_sha256",
+        "nodes",
+        "budgets",
+        "evaluation",
+        "verification_status"
+      ],
+      "type": "object"
+    },
+    "SkillTargetReview": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "node_id": {
+          "type": "string"
+        },
+        "support": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "node_id",
+        "kind",
+        "id",
+        "support"
+      ],
+      "type": "object"
+    },
+    "SkillVerification": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_conflicts": {
+          "type": "boolean"
+        },
+        "min_coverage": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "min_coverage",
+        "allow_conflicts"
+      ],
+      "type": "object"
+    },
+    "SkillVersionEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_sha256": {
+          "type": "string"
+        },
+        "catalog_id": {
+          "type": "string"
+        },
+        "content_bytes": {
+          "type": "integer"
+        },
+        "content_sha256": {
+          "type": "string"
+        },
+        "declared_version": {
+          "type": "string"
+        },
+        "evaluation": {
+          "type": "string"
+        },
+        "execution": {
+          "type": "string"
+        },
+        "execution_reason": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "parser_version": {
+          "type": "string"
+        },
+        "review_version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "catalog_id",
+        "declared_version",
+        "artifact_sha256",
+        "content_sha256",
+        "content_bytes",
+        "parser_version",
+        "review_version",
+        "evaluation",
+        "execution",
+        "execution_reason"
+      ],
+      "type": "object"
+    },
+    "SkillVersionPage": {
+      "additionalProperties": false,
+      "properties": {
+        "catalog_id": {
+          "type": "string"
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/SkillVersionEntry"
+          },
+          "type": "array"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "next_cursor": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "namespace",
+        "session_id",
+        "catalog_id",
+        "items",
+        "next_cursor"
+      ],
+      "type": "object"
+    },
+    "SkillWorkflow": {
+      "additionalProperties": false,
+      "properties": {
+        "nodes": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/SkillNode"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "nodes"
+      ],
+      "type": "object"
+    },
+    "Snapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "integer"
+        },
+        "has_older": {
+          "type": "boolean"
+        },
+        "next_before": {
+          "type": "integer"
+        },
+        "runs": {
+          "items": {
+            "$ref": "#/$defs/RunView"
+          },
+          "type": "array"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "session": {
+          "$ref": "#/$defs/SessionView"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session",
+        "cursor",
+        "runs",
+        "has_older"
+      ],
+      "type": "object"
+    },
+    "ToolCall": {
+      "additionalProperties": false,
+      "properties": {
+        "Arguments": {
+          "type": "string"
+        },
+        "ID": {
+          "type": "string"
+        },
+        "Name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ID",
+        "Name",
+        "Arguments"
+      ],
+      "type": "object"
+    },
+    "ToolResult": {
+      "additionalProperties": false,
+      "properties": {
+        "Content": {
+          "type": "string"
+        },
+        "IsError": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "Content",
+        "IsError"
+      ],
+      "type": "object"
+    },
+    "ToolView": {
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "is_error": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "result": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "arguments",
+        "state"
+      ],
+      "type": "object"
+    },
+    "WireEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {},
+        "run_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": "integer"
+        },
+        "sequence": {
+          "type": "integer"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session_id",
+        "run_id",
+        "sequence",
+        "type",
+        "data"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "personal-agent:interaction:v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

@@ -1,20 +1,15 @@
 package runtime
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"os/exec"
-	"strconv"
-	"strings"
 	"time"
 
 	"agent/internal/agent"
 	"agent/internal/config"
+	"agent/internal/mcp"
 	"agent/internal/security"
 )
 
@@ -39,6 +34,10 @@ func (e MCPExecutor) Execute(ctx context.Context, node agent.TaskNode, input wor
 		err := errors.New("mcp executor disabled")
 		return agent.Result{ErrorCategory: agent.ErrorBlockedMissingInput, ErrorMessage: err.Error(), Usage: agentUsage(node.Input, "")}, err
 	}
+	if e.Evidence == nil {
+		err := errors.New("mcp executor evidence store is required before execution")
+		return agent.Result{ErrorCategory: agent.ErrorBlockedMissingInput, ErrorMessage: err.Error(), Usage: agentUsage(node.Input, "")}, err
+	}
 	client := e.Client
 	if client == nil {
 		spec := security.CommandSpec{Program: e.Config.Command, Args: e.Config.Args}
@@ -52,15 +51,26 @@ func (e MCPExecutor) Execute(ctx context.Context, node agent.TaskNode, input wor
 	if err := json.Unmarshal([]byte(node.Input), &parsed); err == nil && len(parsed.Arguments) > 0 {
 		args = parsed.Arguments
 	}
-	output, err := client.Call(ctx, e.ServerID, e.ToolName, args)
-	if err != nil {
-		return agent.Result{ErrorCategory: agent.ErrorRetryable, ErrorMessage: err.Error(), Usage: agentUsage(node.Input, string(output))}, err
+	output, callErr := client.Call(ctx, e.ServerID, e.ToolName, args)
+	category := agent.ErrorCategory("")
+	if callErr != nil {
+		// An old injected client has no certainty contract. Treat untyped failures
+		// conservatively; neither transport errors nor known tool failures imply rollback.
+		category = agent.ErrorEffectUnknown
+		var ce *mcp.CallError
+		if errors.As(callErr, &ce) {
+			if ce.Certainty == mcp.NotSent {
+				category = agent.ErrorBlockedMissingInput
+			}
+			if ce.Certainty == mcp.KnownResponse {
+				category = agent.ErrorVerificationFailed
+			}
+		}
+		if category == agent.ErrorBlockedMissingInput || len(output) == 0 {
+			return agent.Result{ErrorCategory: category, ErrorMessage: callErr.Error(), Usage: agentUsage(node.Input, string(output))}, callErr
+		}
 	}
 	content := "UNTRUSTED OBSERVATION\nmcp_server: " + e.ServerID + "\nmcp_tool: " + e.ToolName + "\noutput:\n" + string(output)
-	if e.Evidence == nil {
-		err := errors.New("mcp executor evidence store is required")
-		return agent.Result{ErrorCategory: agent.ErrorBlockedMissingInput, ErrorMessage: err.Error(), Usage: agentUsage(node.Input, content)}, err
-	}
 	evidence := Evidence{
 		ID:           stableEvidenceID(node.TaskID, string(SourceTool), node.Type+":"+node.ID),
 		TaskID:       node.TaskID,
@@ -75,9 +85,22 @@ func (e MCPExecutor) Execute(ctx context.Context, node agent.TaskNode, input wor
 		CreatedAt:    time.Now().UTC(),
 	}
 	if err := e.Evidence.Put(ctx, evidence); err != nil {
-		return agent.Result{ErrorCategory: agent.ErrorRetryable, ErrorMessage: err.Error(), Usage: agentUsage(node.Input, content)}, err
+		// The effect has already happened (or its outcome is uncertain). Retrying
+		// this executor would repeat the tool, not merely repair the evidence write.
+		if category == "" {
+			category = agent.ErrorVerificationFailed
+		}
+		storeErr := errors.New("mcp observation could not be persisted; reconcile evidence without repeating the tool")
+		if callErr != nil {
+			storeErr = errors.Join(callErr, storeErr)
+		}
+		return agent.Result{Text: content, ErrorCategory: category, ErrorMessage: storeErr.Error(), Usage: agentUsage(node.Input, content)}, storeErr
 	}
-	return agent.Result{Text: content, EvidenceIDs: []string{evidence.ID}, Usage: agentUsage(node.Input, content)}, nil
+	result := agent.Result{Text: content, EvidenceIDs: []string{evidence.ID}, Usage: agentUsage(node.Input, content), ErrorCategory: category}
+	if callErr != nil {
+		result.ErrorMessage = callErr.Error()
+	}
+	return result, callErr
 }
 
 type stdioMCPClient struct {
@@ -91,121 +114,23 @@ func (c stdioMCPClient) Call(ctx context.Context, serverID string, toolName stri
 		runCtx, cancel = context.WithTimeout(ctx, c.Config.Timeout.Duration)
 	}
 	defer cancel()
-	cmd := exec.CommandContext(runCtx, c.Config.Command, c.Config.Args...)
-	stdin, err := cmd.StdinPipe()
+	if err := runCtx.Err(); err != nil {
+		return nil, mcp.PreflightError(err)
+	}
+	// Resolve only the explicitly configured command. No shell, installation,
+	// inherited environment credentials, HTTP endpoint, or automatic reconnection.
+	command, err := exec.LookPath(c.Config.Command)
 	if err != nil {
-		return nil, err
+		return nil, mcp.PreflightError(err)
 	}
-	stdout, err := cmd.StdoutPipe()
+	client, err := mcp.OpenStdio(runCtx, mcp.StdioConfig{Command: command, Args: c.Config.Args, RequestTimeout: c.Config.Timeout.Duration})
 	if err != nil {
-		return nil, err
+		return nil, mcp.PreflightError(err)
 	}
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Start(); err != nil {
-		return nil, err
+	defer client.Close()
+	if len(input) == 0 {
+		input = json.RawMessage(`{}`)
 	}
-	defer func() { _ = cmd.Process.Kill() }()
-
-	reader := bufio.NewReader(stdout)
-	if err := writeMCPMessage(stdin, 1, "initialize", map[string]any{
-		"protocolVersion": "2024-11-05",
-		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]any{"name": "pachat", "version": "1"},
-	}); err != nil {
-		return nil, err
-	}
-	if _, err := readMCPMessage(reader); err != nil {
-		return nil, err
-	}
-	if err := writeMCPNotification(stdin, "notifications/initialized", map[string]any{}); err != nil {
-		return nil, err
-	}
-	if err := writeMCPMessage(stdin, 2, "tools/list", map[string]any{}); err != nil {
-		return nil, err
-	}
-	if _, err := readMCPMessage(reader); err != nil {
-		return nil, err
-	}
-	if err := writeMCPMessage(stdin, 3, "tools/call", map[string]any{"name": toolName, "arguments": rawJSONMap(input)}); err != nil {
-		return nil, err
-	}
-	response, err := readMCPMessage(reader)
-	if err != nil {
-		return nil, err
-	}
-	if err := cmd.Process.Kill(); err == nil {
-		_ = cmd.Wait()
-	}
-	if stderr.Len() > 0 && len(response) == 0 {
-		return nil, errors.New(stderr.String())
-	}
-	return response, nil
-}
-
-func writeMCPMessage(w io.Writer, id int, method string, params any) error {
-	return writeMCPPayload(w, map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params})
-}
-
-func writeMCPNotification(w io.Writer, method string, params any) error {
-	return writeMCPPayload(w, map[string]any{"jsonrpc": "2.0", "method": method, "params": params})
-}
-
-func writeMCPPayload(w io.Writer, payload any) error {
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	_, err = fmt.Fprintf(w, "Content-Length: %d\r\n\r\n%s", len(raw), raw)
-	return err
-}
-
-func readMCPMessage(r *bufio.Reader) (json.RawMessage, error) {
-	length := 0
-	for {
-		line, err := r.ReadString('\n')
-		if err != nil {
-			return nil, err
-		}
-		line = strings.TrimSpace(line)
-		if line == "" {
-			break
-		}
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) == 2 && strings.EqualFold(strings.TrimSpace(parts[0]), "Content-Length") {
-			length, _ = strconv.Atoi(strings.TrimSpace(parts[1]))
-		}
-	}
-	if length <= 0 {
-		return nil, errors.New("mcp response missing content length")
-	}
-	raw := make([]byte, length)
-	if _, err := io.ReadFull(r, raw); err != nil {
-		return nil, err
-	}
-	var envelope struct {
-		Result json.RawMessage `json:"result"`
-		Error  any             `json:"error"`
-	}
-	if err := json.Unmarshal(raw, &envelope); err != nil {
-		return nil, err
-	}
-	if envelope.Error != nil {
-		return nil, fmt.Errorf("mcp error: %v", envelope.Error)
-	}
-	if len(envelope.Result) == 0 {
-		return json.RawMessage(raw), nil
-	}
-	return envelope.Result, nil
-}
-
-func rawJSONMap(raw json.RawMessage) map[string]any {
-	if len(raw) == 0 {
-		return map[string]any{}
-	}
-	var out map[string]any
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return map[string]any{"input": string(raw)}
-	}
-	return out
+	result, err := client.CallTool(runCtx, toolName, input)
+	return result.Raw, err
 }

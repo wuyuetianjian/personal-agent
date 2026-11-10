@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"agent/internal/memory"
@@ -82,12 +83,24 @@ type SQLiteMemoryService struct {
 }
 
 func (s SQLiteMemoryService) Search(ctx context.Context, taskID string, query string, limit int) ([]Evidence, error) {
+	return s.search(ctx, taskID, query, limit, "project", true)
+}
+
+// SearchProject excludes all legacy generic-project facts and unscoped episodic
+// events. Only an exact, trusted ingestion scope is eligible.
+func (s SQLiteMemoryService) SearchProject(ctx context.Context, projectID, query string, limit int) ([]Evidence, error) {
+	if projectID == "" {
+		return nil, fmt.Errorf("project scope required")
+	}
+	return s.search(ctx, projectID, query, limit, "project:"+projectID, false)
+}
+func (s SQLiteMemoryService) search(ctx context.Context, taskID string, query string, limit int, scope string, includeEpisodic bool) ([]Evidence, error) {
 	if limit <= 0 {
 		limit = 8
 	}
 	query = strings.ToLower(strings.TrimSpace(query))
 	var out []Evidence
-	facts, err := s.Semantic.FindByScope(ctx, "project", limit)
+	facts, err := s.Semantic.FindByScope(ctx, scope, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -110,6 +123,9 @@ func (s SQLiteMemoryService) Search(ctx context.Context, taskID string, query st
 		if len(out) >= limit {
 			return out, nil
 		}
+	}
+	if !includeEpisodic {
+		return out, nil
 	}
 	events, err := s.Episodic.Recent(ctx, limit)
 	if err != nil {

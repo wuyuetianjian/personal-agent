@@ -1,0 +1,169 @@
+{
+  "snapshot": {
+    "schema_version": 1,
+    "session": {
+      "id": "s",
+      "model_id": "fixture",
+      "mode": "default",
+      "files": true,
+      "tools": true,
+      "reason": ""
+    },
+    "cursor": 6,
+    "runs": [
+      {
+        "id": "r",
+        "request_id": "q",
+        "input": "edit",
+        "state": "running",
+        "phase": "waiting_approval",
+        "text": "准备",
+        "draft": "",
+        "tools": [
+          {
+            "id": "p",
+            "name": "apply_patch",
+            "arguments": "{\"path\":\"note.txt\",\"content\":\"new\"}",
+            "state": "proposed"
+          }
+        ],
+        "approval": {
+          "id": "p",
+          "digest": "digest",
+          "expires_at": "2030-01-01T00:00:00Z",
+          "decision": "pending"
+        }
+      }
+    ],
+    "has_older": false
+  },
+  "replay": [
+    {
+      "schema_version": 1,
+      "session_id": "s",
+      "run_id": "r",
+      "sequence": 7,
+      "type": "approval.decided",
+      "data": {
+        "id": "p",
+        "digest": "digest",
+        "decision": "approved"
+      }
+    },
+    {
+      "schema_version": 1,
+      "session_id": "s",
+      "run_id": "r",
+      "sequence": 8,
+      "type": "tool.started",
+      "data": {
+        "arguments": "{\"path\":\"note.txt\",\"content\":\"new\"}",
+        "digest": "digest",
+        "expires_at": "2030-01-01T00:00:00Z",
+        "id": "p",
+        "name": "apply_patch",
+        "requires_approval": true
+      }
+    },
+    {
+      "schema_version": 1,
+      "session_id": "s",
+      "run_id": "r",
+      "sequence": 9,
+      "type": "tool.completed",
+      "data": {
+        "content": "changed",
+        "is_error": false
+      }
+    },
+    {
+      "schema_version": 1,
+      "session_id": "s",
+      "run_id": "r",
+      "sequence": 10,
+      "type": "model.started",
+      "data": {}
+    },
+    {
+      "schema_version": 1,
+      "session_id": "s",
+      "run_id": "r",
+      "sequence": 11,
+      "type": "model.text_delta",
+      "data": {
+        "text": "完成"
+      }
+    },
+    {
+      "schema_version": 1,
+      "session_id": "s",
+      "run_id": "r",
+      "sequence": 12,
+      "type": "model.completed",
+      "data": {
+        "text": "完成",
+        "usage": null
+      }
+    },
+    {
+      "schema_version": 1,
+      "session_id": "s",
+      "run_id": "r",
+      "sequence": 13,
+      "type": "future.unknown",
+      "data": {}
+    },
+    {
+      "schema_version": 1,
+      "session_id": "s",
+      "run_id": "r",
+      "sequence": 14,
+      "type": "run.completed",
+      "data": {
+        "input": "edit",
+        "request_id": "q",
+        "state": "completed"
+      }
+    }
+  ],
+  "final": {
+    "schema_version": 1,
+    "session": {
+      "id": "s",
+      "model_id": "fixture",
+      "mode": "default",
+      "files": true,
+      "tools": true,
+      "reason": ""
+    },
+    "cursor": 14,
+    "runs": [
+      {
+        "id": "r",
+        "request_id": "q",
+        "input": "edit",
+        "state": "completed",
+        "phase": "completed",
+        "text": "准备完成",
+        "draft": "",
+        "tools": [
+          {
+            "id": "p",
+            "name": "apply_patch",
+            "arguments": "{\"path\":\"note.txt\",\"content\":\"new\"}",
+            "state": "completed",
+            "result": "changed"
+          }
+        ]
+      }
+    ],
+    "has_older": false
+  },
+  "error": {
+    "error": {
+      "code": "provider_changed",
+      "message": "provider_changed"
+    },
+    "schema_version": 1
+  }
+}

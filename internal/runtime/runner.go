@@ -30,6 +30,11 @@ func (r *Runtime) DispatchTask(ctx context.Context, req RunRequest) (*RunResult,
 	if strings.TrimSpace(req.Input) == "" {
 		return nil, fmt.Errorf("runtime run requires input")
 	}
+	// Admission precedes all retrieval, tracing, planning and executor work,
+	// including the non-workflow path and local-evidence fast path.
+	if _, err := r.projectForRun(ctx, req.ProjectID); err != nil {
+		return nil, err
+	}
 	release, err := r.Governor.Acquire("workflow", 1)
 	if err != nil {
 		return nil, err
@@ -397,12 +402,12 @@ func (r *Runtime) skillIsReadOnly(manifest skill.Manifest) bool {
 }
 
 func (r *Runtime) projectForRun(ctx context.Context, projectID string) (project.Project, error) {
-	if strings.TrimSpace(projectID) == "" {
+	if projectID == "" {
 		return project.Project{}, nil
 	}
 	proj, err := r.Projects.Get(ctx, projectID)
-	if err != nil {
-		return project.Project{}, err
+	if err != nil || !proj.ExecutionAllowed() {
+		return project.Project{}, ErrWorkflowProjectDenied
 	}
 	return proj, nil
 }

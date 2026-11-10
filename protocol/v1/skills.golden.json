@@ -1,0 +1,339 @@
+{
+  "manifest_text": "id: local.lookup\nversion: \"1.0\"\nname: Local lookup\ndescription: \"\u003cscript\u003ealert(1)\u003c/script\u003e\"\nstatus: active\ninputs: {}\nrequires: {capabilities: []}\npermissions: {max_level: read_only}\nprivacy: {max_external_trust: local_private}\nbudget: {max_iterations: 3, max_tool_calls: 4}\nverification: {min_coverage: 0.8, allow_conflicts: false}\nworkflow: {nodes: [{id: explain, role: reasoning}]}\n",
+  "review": {
+    "parser_version": "strict-manifest-v1",
+    "review_version": "catalog-no-execution-v1",
+    "artifact_sha256": "3fa07501531ed88d523538e2cc27ce4a577b3ff16d1fc49e76355a245c8339bf",
+    "content_sha256": "1f419f873dd937e69b5a469b7d6809d5e23d84dfc6d0629b973ccdf7e16eabb0",
+    "content_bytes": 385,
+    "canonical_manifest": "{\"id\":\"local.lookup\",\"version\":\"1.0\",\"name\":\"Local lookup\",\"description\":\"\\u003cscript\\u003ealert(1)\\u003c/script\\u003e\",\"status\":\"active\",\"inputs\":{},\"requires\":{\"capabilities\":[]},\"permissions\":{\"max_level\":\"read_only\"},\"privacy\":{\"max_external_trust\":\"local_private\"},\"budget\":{\"max_iterations\":3,\"max_tool_calls\":4},\"verification\":{\"min_coverage\":0.8,\"allow_conflicts\":false},\"workflow\":{\"nodes\":[{\"id\":\"explain\",\"capability\":\"\",\"role\":\"reasoning\",\"depends_on\":null}]}}",
+    "manifest": {
+      "id": "local.lookup",
+      "version": "1.0",
+      "name": "Local lookup",
+      "description": "\u003cscript\u003ealert(1)\u003c/script\u003e",
+      "status": "active",
+      "inputs": {},
+      "requires": {
+        "capabilities": []
+      },
+      "permissions": {
+        "max_level": "read_only"
+      },
+      "privacy": {
+        "max_external_trust": "local_private"
+      },
+      "budget": {
+        "max_iterations": 3,
+        "max_tool_calls": 4
+      },
+      "verification": {
+        "min_coverage": 0.8,
+        "allow_conflicts": false
+      },
+      "workflow": {
+        "nodes": [
+          {
+            "id": "explain",
+            "capability": "",
+            "role": "reasoning",
+            "depends_on": null
+          }
+        ]
+      }
+    },
+    "targets": [
+      {
+        "node_id": "explain",
+        "kind": "role",
+        "id": "reasoning",
+        "support": "unsupported"
+      }
+    ],
+    "evaluation": "not_run",
+    "execution": "unavailable",
+    "execution_reason": "bridge_not_implemented",
+    "notice": "Service-local metadata only. Manifest text, labels and declared policies are untrusted descriptions, not grants. Input status is ignored for activation. Enabled means an explicitly selected immutable revision only; evaluation not_run; execution unavailable: bridge_not_implemented. No provider, tool, process, retrieval or workflow calls."
+  },
+  "empty_review": {
+    "parser_version": "strict-manifest-v1",
+    "review_version": "catalog-no-execution-v1",
+    "artifact_sha256": "",
+    "content_sha256": "",
+    "content_bytes": 0,
+    "canonical_manifest": "",
+    "manifest": {
+      "id": "",
+      "version": "",
+      "name": "",
+      "description": "",
+      "status": "",
+      "inputs": null,
+      "requires": {
+        "capabilities": null
+      },
+      "permissions": {
+        "max_level": ""
+      },
+      "privacy": {
+        "max_external_trust": ""
+      },
+      "budget": {
+        "max_iterations": 0,
+        "max_tool_calls": 0
+      },
+      "verification": {
+        "min_coverage": 0,
+        "allow_conflicts": false
+      },
+      "workflow": {
+        "nodes": null
+      }
+    },
+    "targets": [],
+    "evaluation": "not_run",
+    "execution": "unavailable",
+    "execution_reason": "bridge_not_implemented",
+    "notice": "Service-local metadata only. Manifest text, labels and declared policies are untrusted descriptions, not grants. Input status is ignored for activation. Enabled means an explicitly selected immutable revision only; evaluation not_run; execution unavailable: bridge_not_implemented. No provider, tool, process, retrieval or workflow calls."
+  },
+  "review_sha256": "08ad34cb2f52b8fc823e92d2b09ce87c265106d515646d0c7d1b106b0f2872c1",
+  "empty_review_sha256": "993246d213187a9856a9eef1fc40462ddd910eb158aaee52f27649536ab557b1",
+  "numeric_reviews": [
+    {
+      "manifest_text": "id: local.lookup\nversion: \"1.0\"\nname: Local lookup\ndescription: \"\u003cscript\u003ealert(1)\u003c/script\u003e\"\nstatus: active\ninputs: {}\nrequires: {capabilities: []}\npermissions: {max_level: read_only}\nprivacy: {max_external_trust: local_private}\nbudget: {max_iterations: 3, max_tool_calls: 4}\nverification: {min_coverage: -0.0, allow_conflicts: false}\nworkflow: {nodes: [{id: explain, role: reasoning}]}\n",
+      "review": {
+        "parser_version": "strict-manifest-v1",
+        "review_version": "catalog-no-execution-v1",
+        "artifact_sha256": "4134a5c404431744237f9ff4dd89d1a794654110523d8ab672a1328b91c6c545",
+        "content_sha256": "ffde7a942628563e828e62b2c82bf33781d7b231aa63ae714cb4f123a2671e31",
+        "content_bytes": 386,
+        "canonical_manifest": "{\"id\":\"local.lookup\",\"version\":\"1.0\",\"name\":\"Local lookup\",\"description\":\"\\u003cscript\\u003ealert(1)\\u003c/script\\u003e\",\"status\":\"active\",\"inputs\":{},\"requires\":{\"capabilities\":[]},\"permissions\":{\"max_level\":\"read_only\"},\"privacy\":{\"max_external_trust\":\"local_private\"},\"budget\":{\"max_iterations\":3,\"max_tool_calls\":4},\"verification\":{\"min_coverage\":-0,\"allow_conflicts\":false},\"workflow\":{\"nodes\":[{\"id\":\"explain\",\"capability\":\"\",\"role\":\"reasoning\",\"depends_on\":null}]}}",
+        "manifest": {
+          "id": "local.lookup",
+          "version": "1.0",
+          "name": "Local lookup",
+          "description": "\u003cscript\u003ealert(1)\u003c/script\u003e",
+          "status": "active",
+          "inputs": {},
+          "requires": {
+            "capabilities": []
+          },
+          "permissions": {
+            "max_level": "read_only"
+          },
+          "privacy": {
+            "max_external_trust": "local_private"
+          },
+          "budget": {
+            "max_iterations": 3,
+            "max_tool_calls": 4
+          },
+          "verification": {
+            "min_coverage": -0,
+            "allow_conflicts": false
+          },
+          "workflow": {
+            "nodes": [
+              {
+                "id": "explain",
+                "capability": "",
+                "role": "reasoning",
+                "depends_on": null
+              }
+            ]
+          }
+        },
+        "targets": [
+          {
+            "node_id": "explain",
+            "kind": "role",
+            "id": "reasoning",
+            "support": "unsupported"
+          }
+        ],
+        "evaluation": "not_run",
+        "execution": "unavailable",
+        "execution_reason": "bridge_not_implemented",
+        "notice": "Service-local metadata only. Manifest text, labels and declared policies are untrusted descriptions, not grants. Input status is ignored for activation. Enabled means an explicitly selected immutable revision only; evaluation not_run; execution unavailable: bridge_not_implemented. No provider, tool, process, retrieval or workflow calls."
+      },
+      "review_sha256": "63c9a6ff00c8462702651e13e089dc10ee852690fd790a00d3b42c306c9a4269"
+    },
+    {
+      "manifest_text": "id: local.lookup\nversion: \"1.0\"\nname: Local lookup\ndescription: \"\u003cscript\u003ealert(1)\u003c/script\u003e\"\nstatus: active\ninputs: {}\nrequires: {capabilities: []}\npermissions: {max_level: read_only}\nprivacy: {max_external_trust: local_private}\nbudget: {max_iterations: 3, max_tool_calls: 4}\nverification: {min_coverage: 0.000000001, allow_conflicts: false}\nworkflow: {nodes: [{id: explain, role: reasoning}]}\n",
+      "review": {
+        "parser_version": "strict-manifest-v1",
+        "review_version": "catalog-no-execution-v1",
+        "artifact_sha256": "e0560dac43f4a9194df965058aca60a8408ef72427f37bc81ed83c0c72bee3d9",
+        "content_sha256": "27224f57c4e83cf005d7f7394b9018fef791eef3bd1ba09d339c7b87fe3528e9",
+        "content_bytes": 393,
+        "canonical_manifest": "{\"id\":\"local.lookup\",\"version\":\"1.0\",\"name\":\"Local lookup\",\"description\":\"\\u003cscript\\u003ealert(1)\\u003c/script\\u003e\",\"status\":\"active\",\"inputs\":{},\"requires\":{\"capabilities\":[]},\"permissions\":{\"max_level\":\"read_only\"},\"privacy\":{\"max_external_trust\":\"local_private\"},\"budget\":{\"max_iterations\":3,\"max_tool_calls\":4},\"verification\":{\"min_coverage\":1e-9,\"allow_conflicts\":false},\"workflow\":{\"nodes\":[{\"id\":\"explain\",\"capability\":\"\",\"role\":\"reasoning\",\"depends_on\":null}]}}",
+        "manifest": {
+          "id": "local.lookup",
+          "version": "1.0",
+          "name": "Local lookup",
+          "description": "\u003cscript\u003ealert(1)\u003c/script\u003e",
+          "status": "active",
+          "inputs": {},
+          "requires": {
+            "capabilities": []
+          },
+          "permissions": {
+            "max_level": "read_only"
+          },
+          "privacy": {
+            "max_external_trust": "local_private"
+          },
+          "budget": {
+            "max_iterations": 3,
+            "max_tool_calls": 4
+          },
+          "verification": {
+            "min_coverage": 1e-9,
+            "allow_conflicts": false
+          },
+          "workflow": {
+            "nodes": [
+              {
+                "id": "explain",
+                "capability": "",
+                "role": "reasoning",
+                "depends_on": null
+              }
+            ]
+          }
+        },
+        "targets": [
+          {
+            "node_id": "explain",
+            "kind": "role",
+            "id": "reasoning",
+            "support": "unsupported"
+          }
+        ],
+        "evaluation": "not_run",
+        "execution": "unavailable",
+        "execution_reason": "bridge_not_implemented",
+        "notice": "Service-local metadata only. Manifest text, labels and declared policies are untrusted descriptions, not grants. Input status is ignored for activation. Enabled means an explicitly selected immutable revision only; evaluation not_run; execution unavailable: bridge_not_implemented. No provider, tool, process, retrieval or workflow calls."
+      },
+      "review_sha256": "ef40cda24375bc0b8d215a3b29f5c39d21024f3181ee560eb4da31a93874bb19"
+    },
+    {
+      "manifest_text": "id: local.lookup\nversion: \"1.0\"\nname: Local lookup\ndescription: \"\u003cscript\u003ealert(1)\u003c/script\u003e\"\nstatus: active\ninputs: {}\nrequires: {capabilities: []}\npermissions: {max_level: read_only}\nprivacy: {max_external_trust: local_private}\nbudget: {max_iterations: 3, max_tool_calls: 4}\nverification: {min_coverage: 0.000001, allow_conflicts: false}\nworkflow: {nodes: [{id: explain, role: reasoning}]}\n",
+      "review": {
+        "parser_version": "strict-manifest-v1",
+        "review_version": "catalog-no-execution-v1",
+        "artifact_sha256": "f40dd4a10ee771c3930ffcc37fd944cbbb225fe8d42a36a535e350091c85c28c",
+        "content_sha256": "19bc04d54c94273366d456610d06170cffb9d2b48982b7c57f0fb14fbca9fd2d",
+        "content_bytes": 390,
+        "canonical_manifest": "{\"id\":\"local.lookup\",\"version\":\"1.0\",\"name\":\"Local lookup\",\"description\":\"\\u003cscript\\u003ealert(1)\\u003c/script\\u003e\",\"status\":\"active\",\"inputs\":{},\"requires\":{\"capabilities\":[]},\"permissions\":{\"max_level\":\"read_only\"},\"privacy\":{\"max_external_trust\":\"local_private\"},\"budget\":{\"max_iterations\":3,\"max_tool_calls\":4},\"verification\":{\"min_coverage\":0.000001,\"allow_conflicts\":false},\"workflow\":{\"nodes\":[{\"id\":\"explain\",\"capability\":\"\",\"role\":\"reasoning\",\"depends_on\":null}]}}",
+        "manifest": {
+          "id": "local.lookup",
+          "version": "1.0",
+          "name": "Local lookup",
+          "description": "\u003cscript\u003ealert(1)\u003c/script\u003e",
+          "status": "active",
+          "inputs": {},
+          "requires": {
+            "capabilities": []
+          },
+          "permissions": {
+            "max_level": "read_only"
+          },
+          "privacy": {
+            "max_external_trust": "local_private"
+          },
+          "budget": {
+            "max_iterations": 3,
+            "max_tool_calls": 4
+          },
+          "verification": {
+            "min_coverage": 0.000001,
+            "allow_conflicts": false
+          },
+          "workflow": {
+            "nodes": [
+              {
+                "id": "explain",
+                "capability": "",
+                "role": "reasoning",
+                "depends_on": null
+              }
+            ]
+          }
+        },
+        "targets": [
+          {
+            "node_id": "explain",
+            "kind": "role",
+            "id": "reasoning",
+            "support": "unsupported"
+          }
+        ],
+        "evaluation": "not_run",
+        "execution": "unavailable",
+        "execution_reason": "bridge_not_implemented",
+        "notice": "Service-local metadata only. Manifest text, labels and declared policies are untrusted descriptions, not grants. Input status is ignored for activation. Enabled means an explicitly selected immutable revision only; evaluation not_run; execution unavailable: bridge_not_implemented. No provider, tool, process, retrieval or workflow calls."
+      },
+      "review_sha256": "a3bd3f98dbe6da590ae7daa5629fef8bc773d72dd252e5558a06f206eb3c131e"
+    },
+    {
+      "manifest_text": "id: local.lookup\nversion: \"1.0\"\nname: Local lookup\ndescription: \"\u003cscript\u003ealert(1)\u003c/script\u003e\"\nstatus: active\ninputs: {}\nrequires: {capabilities: []}\npermissions: {max_level: read_only}\nprivacy: {max_external_trust: local_private}\nbudget: {max_iterations: 3, max_tool_calls: 4}\nverification: {min_coverage: 1.0, allow_conflicts: false}\nworkflow: {nodes: [{id: explain, role: reasoning}]}\n",
+      "review": {
+        "parser_version": "strict-manifest-v1",
+        "review_version": "catalog-no-execution-v1",
+        "artifact_sha256": "e1be0f3653733f74650fdbf1db6ed4e4c68f0b694b0b381eb33d0d63c4896321",
+        "content_sha256": "fa938e8018aabf964183231f67fc54d5720d6aadaad0af5fb85124606aee5a05",
+        "content_bytes": 385,
+        "canonical_manifest": "{\"id\":\"local.lookup\",\"version\":\"1.0\",\"name\":\"Local lookup\",\"description\":\"\\u003cscript\\u003ealert(1)\\u003c/script\\u003e\",\"status\":\"active\",\"inputs\":{},\"requires\":{\"capabilities\":[]},\"permissions\":{\"max_level\":\"read_only\"},\"privacy\":{\"max_external_trust\":\"local_private\"},\"budget\":{\"max_iterations\":3,\"max_tool_calls\":4},\"verification\":{\"min_coverage\":1,\"allow_conflicts\":false},\"workflow\":{\"nodes\":[{\"id\":\"explain\",\"capability\":\"\",\"role\":\"reasoning\",\"depends_on\":null}]}}",
+        "manifest": {
+          "id": "local.lookup",
+          "version": "1.0",
+          "name": "Local lookup",
+          "description": "\u003cscript\u003ealert(1)\u003c/script\u003e",
+          "status": "active",
+          "inputs": {},
+          "requires": {
+            "capabilities": []
+          },
+          "permissions": {
+            "max_level": "read_only"
+          },
+          "privacy": {
+            "max_external_trust": "local_private"
+          },
+          "budget": {
+            "max_iterations": 3,
+            "max_tool_calls": 4
+          },
+          "verification": {
+            "min_coverage": 1,
+            "allow_conflicts": false
+          },
+          "workflow": {
+            "nodes": [
+              {
+                "id": "explain",
+                "capability": "",
+                "role": "reasoning",
+                "depends_on": null
+              }
+            ]
+          }
+        },
+        "targets": [
+          {
+            "node_id": "explain",
+            "kind": "role",
+            "id": "reasoning",
+            "support": "unsupported"
+          }
+        ],
+        "evaluation": "not_run",
+        "execution": "unavailable",
+        "execution_reason": "bridge_not_implemented",
+        "notice": "Service-local metadata only. Manifest text, labels and declared policies are untrusted descriptions, not grants. Input status is ignored for activation. Enabled means an explicitly selected immutable revision only; evaluation not_run; execution unavailable: bridge_not_implemented. No provider, tool, process, retrieval or workflow calls."
+      },
+      "review_sha256": "b2d680e9a59a6a58a132f138e5c2b690be66703bea38e37e6b33aa45c8ee2b6b"
+    }
+  ]
+}

@@ -48,37 +48,23 @@ func (r embeddingVectorRetriever) resultFromMatch(ctx context.Context, match rag
 	if chunkID == "" {
 		chunkID = match.ID
 	}
-	if chunkID != "" {
-		if result, err := r.Store.ResultByChunkID(ctx, chunkID); err == nil {
-			return result, nil
-		} else if err != sql.ErrNoRows {
-			return rag.Result{}, err
-		}
+	// A vector hit ranks an existing admitted local chunk; remote payload is
+	// never evidence authority. ErrNoRows includes an intentional managed-scope
+	// denial as well as an old/missing chunk. Neither may revive cached text.
+	if chunkID == "" {
+		return rag.Result{}, fmt.Errorf("vector hit has no local chunk identity")
 	}
-	text := payloadString(match.Payload, "text")
-	if text == "" {
-		return rag.Result{}, fmt.Errorf("qdrant match %s has no chunk payload", match.ID)
+	result, err := r.Store.ResultByChunkID(ctx, chunkID)
+	if err != nil {
+		return rag.Result{}, err
 	}
-	documentID := payloadString(match.Payload, "document_id")
-	if documentID == "" {
-		documentID = payloadString(match.Payload, "source_uri")
+	// Do not let a managed/foreign document claim borrow an unrelated allowed
+	// chunk. Payload identities, when supplied, must match the local provenance.
+	if documentID := payloadString(match.Payload, "document_id"); documentID != "" && documentID != result.Document.ID {
+		return rag.Result{}, fmt.Errorf("vector document identity does not match local evidence")
 	}
-	result := rag.Result{
-		Chunk: rag.Chunk{
-			ID:         chunkID,
-			DocumentID: documentID,
-			Text:       text,
-		},
-		Document: rag.Document{
-			ID:           documentID,
-			SourceURI:    payloadString(match.Payload, "source_uri"),
-			Title:        payloadString(match.Payload, "title"),
-			PrivacyClass: payloadString(match.Payload, "privacy_class"),
-		},
-		EvidenceID: chunkID,
-	}
-	if result.EvidenceID == "" {
-		result.EvidenceID = match.ID
+	if source := payloadString(match.Payload, "source_uri"); source != "" && source != result.Document.SourceURI {
+		return rag.Result{}, fmt.Errorf("vector source identity does not match local evidence")
 	}
 	return result, nil
 }
@@ -226,4 +212,65 @@ func payloadString(payload map[string]any, key string) string {
 	default:
 		return fmt.Sprint(typed)
 	}
+}
+
+// AssignDocumentProject is trusted ingestion CAS, not source/model metadata.
+// expectedRevision MUST be the token returned alongside the indexed content by
+// IndexRevision. Looking up the latest generation after verifying other content
+// would lose the binding. An empty token cannot authorize an unversioned grant.
+func AssignDocumentProject(ctx context.Context, db *sql.DB, documentID, projectID, expectedRevision string) error {
+	if documentID == "" || projectID == "" || expectedRevision == "" {
+		return rag.ErrDocumentRevisionChanged
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// The conditional write acquires the SQLite writer before validation. The
+	// insert and idempotence check cannot observe different document generations.
+	result, err := tx.ExecContext(ctx, `INSERT INTO project_document_scopes(document_id,project_id,content_hash,revision)
+ SELECT d.id,?,d.content_hash,v.revision FROM documents d JOIN document_revisions v ON v.document_id=d.id
+ WHERE d.id=? AND v.revision=? ON CONFLICT(document_id) DO NOTHING`, projectID, documentID, expectedRevision)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		var owner, assignedRevision, currentRevision string
+		err = tx.QueryRowContext(ctx, `SELECT s.project_id,s.revision,v.revision FROM project_document_scopes s
+  JOIN document_revisions v ON v.document_id=s.document_id WHERE s.document_id=?`, documentID).Scan(&owner, &assignedRevision, &currentRevision)
+		if err == sql.ErrNoRows {
+			return rag.ErrDocumentRevisionChanged
+		}
+		if err != nil {
+			return err
+		}
+		if currentRevision != expectedRevision || assignedRevision != expectedRevision {
+			return rag.ErrDocumentRevisionChanged
+		}
+		if owner != projectID {
+			return fmt.Errorf("immutable document project mismatch")
+		}
+	}
+	return tx.Commit()
+}
+
+type projectCorpus struct {
+	store     rag.SQLiteStore
+	projectID string
+}
+
+func (p projectCorpus) ListChunks(ctx context.Context) ([]rag.Result, error) {
+	return p.store.ListProjectChunks(ctx, p.projectID)
+}
+
+// NewProjectPipeline reuses BM25/fusion/compression, restricting the corpus BEFORE
+// ranking. Legacy vector payloads and remote rerankers have no verified project
+// provenance, so are deliberately not enabled in the scoped adapter.
+func NewProjectPipeline(db *sql.DB, projectID string) LocalPipeline {
+	return LocalPipeline{BM25: rag.NewBM25(projectCorpus{store: rag.NewSQLiteStore(db, rag.Chunker{MaxTokens: 160}), projectID: projectID}), Compressor: rag.Compressor{MaxChars: 4000}, TopK: 8}
 }

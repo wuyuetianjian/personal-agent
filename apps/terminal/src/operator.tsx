@@ -1,0 +1,7 @@
+import React from 'react';
+import {Box,Text} from 'ink';
+import {formatOperatorOperation,formatOperatorPage,operatorDisplayText} from '@personal-agent/client';
+import type {OperatorNavigation} from '@personal-agent/client';
+export function OperatorView({navigation:n}:{navigation:OperatorNavigation}){return <Box flexDirection="column" borderStyle="round" paddingX={1}><Text bold color="green">READ ONLY / 管理 · {operatorDisplayText(n.resource)}</Text><Text dimColor>Esc / Ctrl+O Close · ← Back · → Forward · Tab section · n Next page</Text><Text dimColor>Live chat, approvals, queue and Jobs continue. Draft retained.</Text>{n.loading&&<Text>Loading stored metadata…</Text>}{n.error&&<Text color="yellow">{n.error}</Text>}{n.page&&<Text>{formatOperatorPage(n.page)}</Text>}</Box>}
+
+export function OperatorActionView({actions}:{actions:import('@personal-agent/client').OperatorOperations}){if(actions.phase==='idle')return null;return <Box flexDirection="column" borderStyle="round"><Text bold>Metadata {actions.phase}</Text>{actions.result&&<Text>{formatOperatorOperation(actions.result)}</Text>}<Text>{actions.recoveryHint}</Text>{actions.persistenceWarning&&<Text>{actions.persistenceWarning}</Text>}<Text>{actions.phase==='pending'?'y Confirm exact metadata change / n Cancel preview':actions.phase==='unknown'?'r Read-only recovery. Do not resend.':actions.phase==='resolved'?'Result retained. Enter / Esc dismiss. Repeated y/n cannot approve another action.':'Waiting for original request.'}</Text></Box>}

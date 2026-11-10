@@ -285,7 +285,7 @@ func listProjectRows(ctx context.Context, db *sql.DB, page listQuery) ([]project
 		clauses = append(clauses, "name LIKE ?")
 		args = append(args, "%"+page.Q+"%")
 	}
-	query := `SELECT id,name,privacy_class,repository_refs_json,knowledge_scopes_json,memory_scope,allowed_skills_json,allowed_capabilities_json,allowed_coding_agents_json,allowed_models_json,budget_policy FROM projects` + whereSQL(clauses) + ` ORDER BY name ASC LIMIT ? OFFSET ?`
+	query := `SELECT id,name,privacy_class,repository_refs_json,knowledge_scopes_json,memory_scope,allowed_skills_json,allowed_capabilities_json,allowed_coding_agents_json,allowed_models_json,budget_policy,(SELECT execution_class FROM project_execution_classification c WHERE c.project_id=projects.id) FROM projects` + whereSQL(clauses) + ` ORDER BY name ASC LIMIT ? OFFSET ?`
 	args = append(args, page.Limit, page.Offset)
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -306,8 +306,11 @@ func listProjectRows(ctx context.Context, db *sql.DB, page listQuery) ([]project
 func scanProjectRow(rows *sql.Rows) (project.Project, error) {
 	var p project.Project
 	var repos, scopes, skills, caps, agents, models string
-	if err := rows.Scan(&p.ID, &p.Name, &p.PrivacyClass, &repos, &scopes, &p.MemoryScope, &skills, &caps, &agents, &models, &p.BudgetPolicy); err != nil {
+	if err := rows.Scan(&p.ID, &p.Name, &p.PrivacyClass, &repos, &scopes, &p.MemoryScope, &skills, &caps, &agents, &models, &p.BudgetPolicy, &p.ExecutionClass); err != nil {
 		return project.Project{}, err
+	}
+	if !p.ValidExecutionClass() {
+		return project.Project{}, project.ErrInvalidExecutionClass
 	}
 	for _, item := range []struct {
 		raw string

@@ -1,0 +1,15 @@
+{
+  "name": "personal-agent-rebuild",
+  "private": true,
+  "packageManager": "pnpm@11.25.0",
+  "scripts": {
+    "test": "node --test packages/protocol/test/*.test.ts packages/client/test/*.test.ts apps/terminal/test/*.test.ts && node --import ./apps/terminal/node_modules/tsx/dist/loader.mjs --test apps/web/test/markdown.test.tsx",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc -p apps/terminal/tsconfig.json && tsc -p apps/web/tsconfig.json",
+    "build": "tsc -p packages/protocol/tsconfig.json && tsc -p packages/client/tsconfig.json && pnpm --filter @personal-agent/web build",
+    "generate:protocol": "go run ./cmd/protocolgen"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "@types/node": "24.10.0"
+  }
+}

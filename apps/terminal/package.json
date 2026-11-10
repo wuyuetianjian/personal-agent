@@ -1,0 +1,19 @@
+{
+  "name": "@personal-agent/terminal",
+  "version": "0.0.0-rebuilt-preview",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@personal-agent/client": "workspace:*",
+    "@personal-agent/protocol": "workspace:*",
+    "ink": "6.6.0",
+    "react": "19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.2",
+    "tsx": "4.20.6"
+  },
+  "scripts": {
+    "start": "node --import tsx src/cli.tsx"
+  }
+}

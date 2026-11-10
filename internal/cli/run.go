@@ -81,6 +81,10 @@ func RunWithIO(ctx context.Context, args []string, ioStreams IO) error {
 		return watcherCommand(ctx, args[1:], ioStreams.Stdout)
 	case "trigger":
 		return triggerCommand(ctx, args[1:], ioStreams.Stdout)
+	case "probe-agent-provider":
+		return probeAgentProvider(ctx, args[1:], ioStreams.Stdout)
+	case "serve-agent":
+		return serveAgent(ctx, args[1:], ioStreams.Stdout)
 	case "serve":
 		return serveCommand(ctx, args[1:], ioStreams.Stdout)
 	case "backup":

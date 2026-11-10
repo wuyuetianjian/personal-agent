@@ -1,0 +1,1 @@
+Build the web app before building with -tags webui.

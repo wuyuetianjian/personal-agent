@@ -9,9 +9,11 @@ import (
 	"agent/internal/workflow"
 	"bytes"
 	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -479,23 +481,32 @@ func TestPortableExportImportCommands(t *testing.T) {
 	restoreDBPath := filepath.Join(dir, "restore.db")
 	writeConfig(t, restoreConfig, restoreDBPath)
 	var importOut bytes.Buffer
-	if err := Run(context.Background(), []string{"import", "--config", restoreConfig, "--input", exportPath}, &importOut); err != nil {
-		t.Fatalf("import error = %v", err)
+	if err := Run(context.Background(), []string{"import", "--config", restoreConfig, "--input", exportPath}, &importOut); err == nil {
+		t.Fatal("project-bearing portable import must refuse external policy authority")
 	}
-	if !strings.Contains(importOut.String(), "projects=1") || !strings.Contains(importOut.String(), "skills=1") {
-		t.Fatalf("import output = %q", importOut.String())
+	// An explicitly project-free artifact still supports the original non-project
+	// import behavior. The product must never silently strip projects itself.
+	var projectFree portableArtifact
+	if err := json.Unmarshal(raw, &projectFree); err != nil {
+		t.Fatal(err)
+	}
+	projectFree.Projects = nil
+	if err := writePortableArtifact(exportPath, projectFree); err != nil {
+		t.Fatal(err)
+	}
+	if err := Run(context.Background(), []string{"import", "--config", restoreConfig, "--input", exportPath}, &importOut); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(importOut.String(), "projects=0") || !strings.Contains(importOut.String(), "skills=1") {
+		t.Fatal(importOut.String())
 	}
 	restored, err := storage.OpenSQLite(context.Background(), restoreDBPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer restored.Close()
-	gotProject, err := (project.Store{DB: restored.SQL}).Get(context.Background(), "proj-portable")
-	if err != nil {
-		t.Fatalf("restored project missing: %v", err)
-	}
-	if gotProject.Name != "Portable Project" {
-		t.Fatalf("restored project = %#v", gotProject)
+	if _, err := (project.Store{DB: restored.SQL}).Get(context.Background(), "proj-portable"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("project authority was restored: %v", err)
 	}
 	if _, err := (skill.Store{DB: restored.SQL}).GetManifest(context.Background(), "skill.portable", "1.0.0"); err != nil {
 		t.Fatalf("restored skill missing: %v", err)
@@ -675,17 +686,23 @@ mcp:
 
 func writeFakeMCPServer(t *testing.T, path string) {
 	t.Helper()
-	frames := mcpFrame(`{"jsonrpc":"2.0","id":1,"result":{}}`) +
-		mcpFrame(`{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"ping"}]}}`) +
-		mcpFrame(`{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"pong"}]}}`)
-	script := "#!/bin/sh\ncat <<'EOF'\n" + frames + "\nEOF\nsleep 1\n"
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
+	// POSIX test fixture: shell builtins only, no inherited PATH or grandchildren.
+	// Read each actual newline-framed request before responding with its string ID.
+	script := `#!/bin/sh
+IFS= read -r request || exit 1
+printf '%s\n' '{"jsonrpc":"2.0","id":"1","error":{"code":-32601,"message":"legacy server"}}'
+IFS= read -r request || exit 1
+printf '%s\n' '{"jsonrpc":"2.0","id":"2","result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}}}}'
+IFS= read -r initialized || exit 1
+IFS= read -r request || exit 1
+printf '%s\n' '{"jsonrpc":"2.0","id":"3","result":{"tools":[{"name":"ping","inputSchema":{"type":"object","properties":{"message":{"type":"string"}},"required":["message"],"additionalProperties":false}}]}}'
+IFS= read -r request || exit 1
+printf '%s\n' '{"jsonrpc":"2.0","id":"4","result":{"content":[{"type":"text","text":"pong"}]}}'
+while IFS= read -r request; do :; done
+`
+	if err := os.WriteFile(path, []byte(script), 0755); err != nil {
+		t.Fatal(err)
 	}
-}
-
-func mcpFrame(payload string) string {
-	return "Content-Length: " + strconv.Itoa(len(payload)) + "\r\n\r\n" + payload
 }
 
 func TestP12ExtraCommands(t *testing.T) {
