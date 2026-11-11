@@ -391,3 +391,262 @@ func TestNativeDeleteAccessRootRejected(t *testing.T) {
 		t.Fatal("root with DELETE access qualified")
 	}
 }
+
+// Runtime assertion deliberately keeps the RED revision cross-compilable.
+type directoryOpener interface {
+	OpenDirectory([]string) (*Root, error)
+}
+
+func directoryAPI(t *testing.T, r *Root) directoryOpener {
+	t.Helper()
+	opener, ok := any(r).(directoryOpener)
+	if !ok {
+		t.Fatal("Root.OpenDirectory([]string) (*Root, error) is not implemented")
+	}
+	return opener
+}
+
+func deriveDirectory(t *testing.T, r *Root, parts ...string) *Root {
+	t.Helper()
+	child, err := directoryAPI(t, r).OpenDirectory(parts)
+	if err != nil || child == nil {
+		t.Fatalf("derive %q: root=%v err=%v", parts, child, err)
+	}
+	t.Cleanup(func() {
+		if err := child.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	return child
+}
+
+func rejectDirectory(t *testing.T, r *Root, parts []string) {
+	t.Helper()
+	child, err := directoryAPI(t, r).OpenDirectory(parts)
+	if child != nil {
+		child.Close()
+		t.Fatalf("rejected derivation returned usable root: %q, %v", parts, err)
+	}
+	if err == nil {
+		t.Fatalf("accepted unsafe directory: %q", parts)
+	}
+}
+
+func TestNativeOpenDirectoryScope(t *testing.T) {
+	dir, r := fixture(t)
+	directoryAPI(t, r)
+	if err := os.Mkdir(filepath.Join(dir, "Child"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Child", "file"), []byte("inside"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "sibling"), []byte("outside"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	child := deriveDirectory(t, r, "Child")
+	if got, err := child.Read(context.Background(), []string{"file"}); err != nil || string(got) != "inside" {
+		t.Fatalf("child read: %q %v", got, err)
+	}
+	for _, parts := range [][]string{{"sibling"}, {"..", "sibling"}, {filepath.Join(dir, "sibling")}, {"Child", "file"}} {
+		if got, err := child.Read(context.Background(), parts); err == nil || got != nil {
+			t.Fatalf("escaped child scope: %q %q %v", parts, got, err)
+		}
+	}
+	if got, err := r.Read(context.Background(), []string{"sibling"}); err != nil || string(got) != "outside" {
+		t.Fatalf("parent scope changed: %q %v", got, err)
+	}
+}
+
+func TestNativeOpenDirectoryIndependentLineage(t *testing.T) {
+	dir, r := fixture(t)
+	directoryAPI(t, r)
+	ancestor := filepath.Join(dir, "Ancestor")
+	childPath := filepath.Join(ancestor, "Child")
+	if err := os.MkdirAll(childPath, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(childPath, "file"), []byte("inside"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	parent := deriveDirectory(t, r, "Ancestor")
+	child := deriveDirectory(t, parent, "Child")
+	if err := parent.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{ancestor, childPath} {
+		if err := os.Rename(p, p+"Moved"); err == nil {
+			t.Fatalf("live descendant lost ancestor rename guard: %s", p)
+		}
+	}
+	if got, err := child.Read(context.Background(), []string{"file"}); err != nil || string(got) != "inside" {
+		t.Fatalf("parent closure invalidated child: %q %v", got, err)
+	}
+	if err := child.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := child.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := child.Read(context.Background(), []string{"file"}); err == nil || got != nil {
+		t.Fatalf("closed child read: %q %v", got, err)
+	}
+	rejectDirectory(t, child, []string{"missing"})
+	rejectDirectory(t, parent, []string{"Child"})
+	if err := os.Rename(ancestor, ancestor+"Moved"); err != nil {
+		t.Fatalf("closed lineage leaked rename guard: %v", err)
+	}
+}
+
+func TestNativeOpenDirectorySiblingOwnership(t *testing.T) {
+	dir, r := fixture(t)
+	directoryAPI(t, r)
+	p := filepath.Join(dir, "Child")
+	if err := os.Mkdir(p, 0700); err != nil {
+		t.Fatal(err)
+	}
+	first := deriveDirectory(t, r, "Child")
+	second := deriveDirectory(t, r, "Child")
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(p, p+"Moved"); err == nil {
+		t.Fatal("closing one derivation released another's guard")
+	}
+	if err := second.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(p, p+"Moved"); err != nil {
+		t.Fatalf("closed siblings retain guard: %v", err)
+	}
+	// Closing children must not close the original root.
+	third := deriveDirectory(t, r, "ChildMoved")
+	if err := third.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNativeOpenDirectoryRejectsPaths(t *testing.T) {
+	dir, r := fixture(t)
+	directoryAPI(t, r)
+	if err := os.Mkdir(filepath.Join(dir, "Child"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "file"), []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, parts := range [][]string{nil, {}, {""}, {"."}, {".."}, {"Child", ".."}, {"child"}, {"Child:stream"}, {"Child."}, {"Child "}, {"Child/file"}, {`Child\file`}, {`C:\Child`}, {`\\server\share`}, {"CON"}, {"data"}, {"node_modules"}, {"missing"}, {"file"}, {"file", "Child"}} {
+		rejectDirectory(t, r, parts)
+	}
+	parts := make([]string, 33)
+	for i := range parts {
+		parts[i] = "d"
+	}
+	rejectDirectory(t, r, parts)
+	// The exact supported boundary must work, not simply reject all long paths.
+	parts = parts[:32]
+	if err := os.MkdirAll(filepath.Join(append([]string{dir}, parts...)...), 0700); err != nil {
+		t.Fatal(err)
+	}
+	child := deriveDirectory(t, r, parts...)
+	if err := child.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNativeOpenDirectoryRejectsReparse(t *testing.T) {
+	dir, r := fixture(t)
+	directoryAPI(t, r)
+	outside := t.TempDir()
+	if err := os.Mkdir(filepath.Join(outside, "Nested"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, "Link")); err != nil {
+		t.Fatalf("required directory symlink fixture unavailable: %v", err)
+	}
+	if out, err := exec.Command("cmd.exe", "/d", "/c", "mklink", "/J", filepath.Join(dir, "Junction"), outside).CombinedOutput(); err != nil {
+		t.Fatalf("required junction fixture unavailable: %v: %s", err, out)
+	}
+	for _, parts := range [][]string{{"Link"}, {"Link", "Nested"}, {"Junction"}, {"Junction", "Nested"}} {
+		rejectDirectory(t, r, parts)
+	}
+}
+
+func TestNativeOpenDirectoryHandleRelease(t *testing.T) {
+	dir, r := fixture(t)
+	directoryAPI(t, r)
+	if err := os.MkdirAll(filepath.Join(dir, "Outer", "Inner"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Outer", "file"), []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	countProc := windows.NewLazySystemDLL("kernel32.dll").NewProc("GetProcessHandleCount")
+	if err := countProc.Find(); err != nil {
+		t.Fatal(err)
+	}
+	count := func() uint32 {
+		var n uint32
+		ok, _, err := countProc.Call(uintptr(windows.CurrentProcess()), uintptr(unsafe.Pointer(&n)))
+		if ok == 0 {
+			t.Fatalf("GetProcessHandleCount: %v", err)
+		}
+		return n
+	}
+	exercise := func() {
+		// Do not use deriveDirectory: its cleanup closures would retain 64 roots.
+		child, err := directoryAPI(t, r).OpenDirectory([]string{"Outer", "Inner"})
+		if err != nil || child == nil {
+			t.Fatalf("derive: %v", err)
+		}
+		if err := child.Close(); err != nil {
+			t.Fatal(err)
+		}
+		rejectDirectory(t, r, []string{"Outer", "missing"})
+		rejectDirectory(t, r, []string{"Outer", "file"})
+		rejectDirectory(t, r, []string{"Outer", "file", "missing"})
+		rejectDirectory(t, r, []string{"Outer", "inner"})
+	}
+	exercise()
+	count()
+	before := count()
+	for i := 0; i < 64; i++ {
+		exercise()
+	}
+	if after := count(); after != before {
+		t.Fatalf("derivation leaked process handles: before=%d after=%d", before, after)
+	}
+	if err := os.Rename(filepath.Join(dir, "Outer"), filepath.Join(dir, "Moved")); err != nil {
+		t.Fatalf("derivation retained ancestor guard: %v", err)
+	}
+}
+
+func TestNativeOpenDirectoryCumulativeDepth(t *testing.T) {
+	dir, r := fixture(t)
+	directoryAPI(t, r)
+	parts := make([]string, 33)
+	for i := range parts {
+		parts[i] = "d"
+	}
+	if err := os.MkdirAll(filepath.Join(append([]string{dir}, parts...)...), 0700); err != nil {
+		t.Fatal(err)
+	}
+	// A 16 + 16 derivation reaches the same limit as one 32-component call.
+	middle := deriveDirectory(t, r, parts[:16]...)
+	last := deriveDirectory(t, middle, parts[16:32]...)
+	rejectDirectory(t, last, []string{"d"})
+	rejectDirectory(t, middle, parts[16:33])
+	if err := last.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := middle.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Failed over-depth derivations must not retain any extra ancestors.
+	if err := os.Rename(filepath.Join(dir, "d"), filepath.Join(dir, "Moved")); err != nil {
+		t.Fatalf("depth failure retained guard: %v", err)
+	}
+}
