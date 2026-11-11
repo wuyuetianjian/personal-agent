@@ -33,7 +33,8 @@ export const EXPECTED_TESTS=Object.freeze({
   'agent/internal/nativefs/rootlease': Object.freeze(['TestNativeSQLiteTempSpillUsesOwnedScratch']),
   'agent/internal/nativefs/windowsprobe': Object.freeze(['TestNativeSQLiteTempVFSRejectsPathsAndFlags','TestNativeSQLiteTempVFSRegistrationOwnership',
     'TestNativeSQLiteTempScratchOffsetIO','TestNativeSQLiteTempScratchOwnership','TestNativeSQLiteTempScratchFailures','TestNativeSQLiteTempScratchParentMutation',
-    'TestNativeSQLiteTempScratchConcurrentLifecycle','TestNativeSQLiteTempVFSStatementLifetime']),
+    'TestNativeSQLiteTempScratchConcurrentLifecycle','TestNativeSQLiteTempVFSStatementLifetime',
+    'TestNativeSQLiteTempIOReadWriteAndEOF','TestNativeSQLiteTempIOFailureCodes','TestNativeSQLiteTempIOCloseAndDrain','TestNativeSQLiteTempIOCloseErrorIsNotSuccess']),
 });
 // Keep only the fixed manifest's counters and one bounded JSON line. Output
 // events, including arbitrary printed PASS text, cannot count as test results.

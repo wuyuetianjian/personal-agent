@@ -166,3 +166,13 @@ statement is still live. Optional statement context interfaces are preserved onl
 when the underlying driver implements them. This change still requires native
 qualification; portable protocol/race tests and cross-compilation are not native
 SQLite lifetime evidence. Anonymous TEMP `xOpen` remains refusing at this stage.
+
+At `48dd77b`, the statement-lifetime top-level test and every selected safety,
+error, context-interface, concurrent-close, real idle-statement and real prior-SQL
+error subtest passed three native Windows rounds. The stock spill contract still
+failed because `xOpen` remained refusing. The next ABI contract stage adds an
+explicit root-bearing experimental constructor with an independently owned root
+and a version-1 foreign methods table. It still refuses every open and does not
+publish the table to a file. New positive ABI tests are expected to fail at that
+refusal; this is not evidence that read/write callbacks executed. Production
+capabilities remain disabled.

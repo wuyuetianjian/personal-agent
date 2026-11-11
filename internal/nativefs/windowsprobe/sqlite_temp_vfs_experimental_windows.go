@@ -31,6 +31,8 @@ type ExperimentalTempStats struct {
 	Attempts, TempAttempts, Opened, WrittenBytes, ReadBytes uint64
 	LastFlags                                               int32
 	NamedAttempts                                           uint64
+	ClosedSuccessfully, LiveFiles, InflightCallbacks        uint64
+	BackendReadCalls, BackendWriteCalls                     uint64
 }
 type ExperimentalTempVFS struct {
 	mu                sync.Mutex
@@ -41,6 +43,9 @@ type ExperimentalTempVFS struct {
 	closeFailure      error
 	closing           bool
 	stats             ExperimentalTempStats
+	scratch           *scratchStore
+	ioMethods         uintptr
+	ioCloseErr        error
 }
 
 var tempOwners = struct {
@@ -162,7 +167,7 @@ func (o *ExperimentalTempVFS) Close() error {
 		return errors.Join(ErrExperimentalTempBusy, o.closeFailure)
 	}
 	if o.vfs == 0 {
-		return nil
+		return o.ioCloseErr
 	}
 	tls := libc.NewTLS()
 	defer tls.Close()
@@ -172,11 +177,22 @@ func (o *ExperimentalTempVFS) Close() error {
 	tempOwners.Lock()
 	delete(tempOwners.m, o.token)
 	tempOwners.Unlock()
+	// Refusal stage: no file/callback can acquire scratch. No scratch IO or
+	// file lock exists to wait on. Real bridge integration must add callback/file
+	// drain and release the owner lock before draining the scratch store.
+	var scratchErr error
+	if o.scratch != nil {
+		scratchErr = o.scratch.Close()
+		o.scratch = nil
+	}
+	libc.Xfree(tls, o.ioMethods)
+	o.ioMethods = 0
 	libc.Xfree(tls, o.vfs)
 	libc.Xfree(tls, o.cname)
 	o.vfs = 0
 	o.cname = 0
-	return nil
+	o.ioCloseErr = errors.Join(o.ioCloseErr, scratchErr)
+	return o.ioCloseErr
 }
 func tempOpen(tls *libc.TLS, vfs, name, file uintptr, flags int32, out uintptr) int32 {
 	if file != 0 {
