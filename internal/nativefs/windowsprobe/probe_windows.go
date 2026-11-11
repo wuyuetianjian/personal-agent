@@ -228,7 +228,7 @@ func acquireIOGuard(parent windows.Handle, name string, expected snapshot) (wind
 	}
 	actual, err := inspect(h)
 	if err == nil && !unchanged(expected, actual) {
-		err = errUnsafe
+		err = fmt.Errorf("metadata-to-io changed (%s): %w", snapshotChanges(expected, actual), errUnsafe)
 	}
 	if err == nil {
 		err = exactName(h, name)
@@ -238,6 +238,11 @@ func acquireIOGuard(parent windows.Handle, name string, expected snapshot) (wind
 		return 0, snapshot{}, err
 	}
 	return h, actual, nil
+}
+
+// snapshotChanges reports field categories only, never paths or object IDs.
+func snapshotChanges(a, b snapshot) string {
+	return fmt.Sprintf("id=%t creation=%t access_ignored=%t write=%t change=%t attributes=%t allocation=%t size=%t links=%t delete=%t directory=%t tag=%t", a.ID != b.ID, a.Basic.Creation != b.Basic.Creation, a.Basic.Access != b.Basic.Access, a.Basic.Write != b.Basic.Write, a.Basic.Change != b.Basic.Change, a.Basic.Attributes != b.Basic.Attributes, a.Standard.Allocation != b.Standard.Allocation, a.Standard.Size != b.Standard.Size, a.Standard.Links != b.Standard.Links, a.Standard.DeletePending != b.Standard.DeletePending, a.Standard.Directory != b.Standard.Directory, a.Tag != b.Tag)
 }
 
 func unchanged(a, b snapshot) bool {

@@ -100,7 +100,7 @@ func (r *Root) openDirectoryNamespace(components []string) (*Root, error) {
 			return nil, err
 		}
 		if !unchanged(g.s, now) {
-			return nil, fmt.Errorf("directory component %d changed: identity=%t basic=%t standard=%t tag=%t: %w", index, g.s.ID != now.ID, g.s.Basic != now.Basic, g.s.Standard != now.Standard, g.s.Tag != now.Tag, errUnsafe)
+			return nil, fmt.Errorf("directory component %d changed (%s): %w", index, snapshotChanges(g.s, now), errUnsafe)
 		}
 		if err := exactName(g.h, g.name); err != nil {
 			return nil, err
