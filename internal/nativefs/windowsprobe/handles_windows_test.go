@@ -74,7 +74,7 @@ func captureHandleInventory(t *testing.T) handleInventory {
 	all := map[windows.Handle]bool{}
 	for i := 0; i < 65536; i++ {
 		var entry pssHandleEntry
-		status, _, _ = walk.Call(uintptr(snapshot), 1 /* PSS_WALK_HANDLES */, uintptr(marker), uintptr(unsafe.Pointer(&entry)), unsafe.Sizeof(entry))
+		status, _, _ = walk.Call(uintptr(snapshot), 2 /* PSS_WALK_HANDLES */, uintptr(marker), uintptr(unsafe.Pointer(&entry)), unsafe.Sizeof(entry))
 		if status == uintptr(windows.ERROR_NO_MORE_ITEMS) {
 			return result
 		}
