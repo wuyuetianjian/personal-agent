@@ -14,6 +14,16 @@ opened with backup privilege bypass. The probe duplicates
 and owns it; duplication does not tighten sharing. There is intentionally no
 path-to-root convenience API, drive/UNC/SUBST binding, or approval restoration.
 
+`OpenDirectory` derives a directory root using individual exact components,
+not an absolute path. It duplicates the full inherited I/O-handle ancestry and
+uses new directory I/O guards for traversal only after metadata and full-identity
+checks. Opening an I/O handle necessarily precedes checking its identity.
+The result survives closing its parent; closing it releases its own lineage.
+The total derived depth from the original trusted root is bounded to 32, even
+across repeated derivations. Ordinary ancestor rename guards stay held, but this
+does not establish persistent pathname authorization or exclude POSIX renames.
+It does not solve initial root acquisition or strengthen caller sharing modes.
+
 `Read` accepts up to 32 individual components, not a slash-delimited path. It
 pins each parent and opens metadata first, rejecting unsupported attributes,
 reparse tags, case-sensitive directories, nonexact normalized long names,
@@ -79,3 +89,15 @@ guards, retains the conventional rename/delete refusal assertions on those
 guards, and separately reproduces the metadata-only swap to require rejection.
 The revised Windows runtime result must be recorded by the native CI gate;
 compilation alone is not confirmation that this correction works.
+
+## Derived-root qualification
+
+The test-only revision `836e869` ran on the Windows kernel in
+[run 42972017436](https://github.com/wuyuetianjian/personal-agent/actions/runs/42972017436)
+and all seven new derived-root tests failed explicitly because OpenDirectory
+was not implemented. The implementation must pass those same tests on Windows;
+cross-compilation is not a green result. Coverage includes scope restriction,
+parent/child and sibling close order, independently retained ancestors, exact
+names, reparse refusal, cumulative depth and warmed handle-count checks.
+The existing deterministic metadata swap test exercises the shared I/O-guard
+helper; it is not a scheduler-controlled race injection into OpenDirectory.

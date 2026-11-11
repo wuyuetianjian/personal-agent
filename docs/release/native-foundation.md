@@ -52,6 +52,14 @@ separate I/O-access handle whose full identity is checked before traversal. Path
 ambiguous components. Exact normalized long-name checks intentionally reject
 case and short-name aliases instead of treating string folding as identity.
 
+The disconnected `Root.OpenDirectory` experiment derives a child from an existing
+trusted root. It retains independently duplicated ancestor I/O guards, uses the
+same identity-checked metadata-to-I/O boundary, and caps cumulative derivation
+at 32 levels. Parent closure does not invalidate the child's owned handles.
+This is not an arbitrary-path root constructor, durable namespace binding or
+production capability. Native tests cover close ordering, ancestry guards,
+refusals and leaked handles; the initial trust-anchor problem remains open.
+
 The first actual NTFS run exposed a mistaken sharing assumption: handles opened
 only for attributes did not prevent ordinary `MoveFileEx` renames, even with no
 `FILE_SHARE_DELETE`. These metadata handles pin objects, not names. They cannot

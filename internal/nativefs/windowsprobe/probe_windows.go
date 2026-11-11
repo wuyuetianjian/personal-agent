@@ -19,11 +19,14 @@ const Limit = 256 * 1024
 var ErrTooLarge = errors.New("windowsprobe: file exceeds 256 KiB")
 
 // Root is an experimental authority over an already-open directory object, not
-// an authorization of its pathname. It serializes reads and Close.
+// an authorization of its pathname. It serializes reads, derivation and Close.
 type Root struct {
 	mu sync.Mutex
 	h  windows.Handle
 	id idInfo
+	// ancestors retain independently duplicated directory I/O guards, oldest first.
+	ancestors []windows.Handle
+	depth     int
 }
 type idInfo struct {
 	Volume uint64
@@ -99,7 +102,12 @@ func (r *Root) Close() error {
 	}
 	h := r.h
 	r.h = 0
-	return windows.CloseHandle(h)
+	err := windows.CloseHandle(h)
+	for i := len(r.ancestors) - 1; i >= 0; i-- {
+		err = errors.Join(err, windows.CloseHandle(r.ancestors[i]))
+	}
+	r.ancestors = nil
+	return err
 }
 
 func query[T any](h windows.Handle, class uint32, value *T) error {
