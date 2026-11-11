@@ -3,6 +3,7 @@
 package windowsprobe
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"sort"
@@ -30,8 +31,9 @@ type pssHandleEntry struct {
 }
 
 type handleInventory struct {
-	files map[windows.Handle]bool
-	types map[string]int
+	files        map[windows.Handle]bool
+	types        map[string]int
+	invalidTypes map[windows.Handle]string
 }
 
 func captureHandleInventory(t *testing.T) handleInventory {
@@ -83,7 +85,7 @@ func captureHandleInventory(t *testing.T) handleInventory {
 			t.Errorf("PssWalkMarkerFree: status=%d", status)
 		}
 	}()
-	result := handleInventory{files: map[windows.Handle]bool{}, types: map[string]int{}}
+	result := handleInventory{files: map[windows.Handle]bool{}, types: map[string]int{}, invalidTypes: map[windows.Handle]string{}}
 	all := map[windows.Handle]bool{}
 	for i := 0; i < 65536; i++ {
 		var entry pssHandleEntry
@@ -122,6 +124,11 @@ func captureHandleInventory(t *testing.T) handleInventory {
 			// Could be a non-file object or a value closed since the snapshot.
 			// Do not call it a Thread/Event or infer its former object type.
 			typ = "InvalidForGetFileType"
+			observed, typeErr := observeHandleObjectType(entry.Handle)
+			if typeErr != nil {
+				observed = "Unclassified: " + typeErr.Error()
+			}
+			result.invalidTypes[entry.Handle] = observed
 		} else {
 			switch kind {
 			case windows.FILE_TYPE_DISK:
@@ -173,6 +180,32 @@ func logHandleDelta(t *testing.T, before, after handleInventory) {
 		t.Logf("PSS type=%s before=%d after=%d delta=%+d", k, before.types[k], after.types[k], after.types[k]-before.types[k])
 	}
 	t.Logf("PSS Disk handle sets equal=%t before=%v after=%v", sameDiskHandles(before, after), before.files, after.files)
+	beforeTypes, afterTypes := map[string]int{}, map[string]int{}
+	for _, typ := range before.invalidTypes {
+		beforeTypes[typ]++
+	}
+	for h, typ := range after.invalidTypes {
+		afterTypes[typ]++
+		if old, exists := before.invalidTypes[h]; !exists || old != typ {
+			t.Logf("InvalidForGetFileType observed handle=%#x before=%q after=%q (live-value observation, not snapshot identity)", h, old, typ)
+		}
+	}
+	typeKeys := map[string]bool{}
+	for typ := range beforeTypes {
+		typeKeys[typ] = true
+	}
+	for typ := range afterTypes {
+		typeKeys[typ] = true
+	}
+	labels := make([]string, 0, len(typeKeys))
+	for typ := range typeKeys {
+		labels = append(labels, typ)
+	}
+	sort.Strings(labels)
+	for _, typ := range labels {
+		t.Logf("InvalidForGetFileType observed object type=%s before=%d after=%d delta=%+d", typ, beforeTypes[typ], afterTypes[typ], afterTypes[typ]-beforeTypes[typ])
+	}
+
 }
 
 func TestNativeHandleInventoryPositiveControl(t *testing.T) {
@@ -213,5 +246,74 @@ func TestNativeHandleInventoryPositiveControl(t *testing.T) {
 				t.Fatalf("Disk handles did not restore after closing control: before=%v after=%v", before.files, after.files)
 			}
 		})
+	}
+}
+
+// ObjectTypeInformation (2) exposes a type label, never an object pathname.
+// The original value can close/recycle after PSS; this is diagnostic only.
+var queryDiagnosticObjectType = windows.NewLazySystemDLL("ntdll.dll").NewProc("NtQueryObject")
+
+func observeHandleObjectType(h windows.Handle) (string, error) {
+	if unsafe.Sizeof(uintptr(0)) != 8 {
+		return "", errors.New("unsupported object-type ABI")
+	}
+	if err := queryDiagnosticObjectType.Find(); err != nil {
+		return "", err
+	}
+	var storage [512]uint64 // fixed 4096 bytes, 8-byte aligned
+	buf := unsafe.Slice((*byte)(unsafe.Pointer(&storage[0])), 4096)
+	var returned uint32
+	status, _, _ := queryDiagnosticObjectType.Call(uintptr(h), 2, uintptr(unsafe.Pointer(&storage[0])), uintptr(len(buf)), uintptr(unsafe.Pointer(&returned)))
+	if uint32(status) != 0 {
+		return "", fmt.Errorf("NtQueryObject status=%#x returned=%d", uint32(status), returned)
+	}
+	// PUBLIC_OBJECT_TYPE_INFORMATION: 16-byte UNICODE_STRING + ULONG[22].
+	if returned < 104 || returned > uint32(len(buf)) {
+		return "", fmt.Errorf("invalid object-type return length=%d", returned)
+	}
+	length := uint64(binary.LittleEndian.Uint16(buf[0:2]))
+	maximum := uint64(binary.LittleEndian.Uint16(buf[2:4]))
+	pointer := binary.LittleEndian.Uint64(buf[8:16])
+	base := uint64(uintptr(unsafe.Pointer(&storage[0])))
+	if length == 0 || length%2 != 0 || maximum%2 != 0 || maximum < length || pointer < base {
+		return "", errors.New("invalid object-type UNICODE_STRING")
+	}
+	offset := pointer - base
+	if offset < 104 || offset%2 != 0 || offset > uint64(returned) || maximum > uint64(returned)-offset {
+		return "", errors.New("object-type string exceeds returned buffer")
+	}
+	// Decode through the original buffer, never by converting the returned
+	// integer address into a Go pointer. Type labels must be printable ASCII.
+	name := make([]byte, length/2)
+	for i := range name {
+		at := int(offset) + 2*i
+		u := binary.LittleEndian.Uint16(buf[at : at+2])
+		if u < 0x20 || u > 0x7e {
+			return "", errors.New("invalid object-type label code unit")
+		}
+		name[i] = byte(u)
+	}
+	return string(name), nil
+}
+
+func TestNativeObjectTypeDiagnosticPositiveControl(t *testing.T) {
+	event, err := windows.CreateEvent(nil, 0, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := windows.CloseHandle(event); err != nil {
+			t.Error(err)
+		}
+	}()
+	if typ, err := observeHandleObjectType(event); err != nil || typ != "Event" {
+		t.Fatalf("Event type positive control: %q %v", typ, err)
+	}
+	_, root := fixture(t)
+	if typ, err := observeHandleObjectType(root.h); err != nil || typ != "File" {
+		t.Fatalf("File type positive control: %q %v", typ, err)
+	}
+	if typ, err := observeHandleObjectType(0); err == nil || typ != "" {
+		t.Fatalf("invalid handle fabricated type: %q %v", typ, err)
 	}
 }

@@ -203,3 +203,17 @@ power-loss durability. The current-token result is not reduced-token or standard
 user evidence. Reparse mutation and reduced-token qualification must precede
 any reusable directory sharing relaxation. Names and file contents are checked
 after fixture handles close; flush itself may persist already-dirty metadata.
+
+A separate test-only junction-mutation experiment establishes a real outside
+sentinel target by metadata identity before contrasting a conventional pathname
+open with a held-directory relative open after mutation. It tests both write-data
+and write-attributes access under the existing and proposed directory sharing.
+No outside contents are read through the tested root. Failure to establish the
+attack is not containment success; unexpected relative-open success fails.
+Reparse removal precedes nonrecursive fixture cleanup; failed removal is reported.
+
+Handle-count diagnostics additionally query ObjectTypeInformation for values
+that GetFileType cannot classify. Only bounded object type labels are read, never
+object paths. Event/File controls validate this interpretation. These are live
+value observations after PSS, not snapshot object identities. Neither the exact
+total-count assertion nor the disk-handle-set assertion is relaxed.
