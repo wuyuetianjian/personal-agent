@@ -45,7 +45,7 @@ jobs:
           go version
           go env GOOS GOARCH
           node --version
-          printf 'These tests qualify disabled-capability refusals only.\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'These tests cover disabled-capability refusals and disconnected foundation experiments.\n' >> "$GITHUB_STEP_SUMMARY"
           printf 'Read, Search, Replace, Undo, Exec, and MCP stdio remain disabled on these targets.\n' >> "$GITHUB_STEP_SUMMARY"
           printf 'Source: %s\nRunner: %s %s\n' "$GITHUB_SHA" "$RUNNER_OS" "$RUNNER_ARCH" >> "$GITHUB_STEP_SUMMARY"
       - name: Record macOS version and test volume
@@ -53,6 +53,8 @@ jobs:
         run: |
           sw_vers
           uname -m
+          id -u
+          id -G
           df -h "$RUNNER_TEMP"
           diskutil info "$(df "$RUNNER_TEMP" | awk 'NR==2 {print $1}')"
       - name: Record Windows version and test volume
@@ -60,6 +62,9 @@ jobs:
         shell: pwsh
         run: |
           [System.Environment]::OSVersion.VersionString
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+          "ElevatedAdministratorToken: $($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"
           [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
           Get-Volume -DriveLetter ([System.IO.Path]::GetPathRoot($env:RUNNER_TEMP).Substring(0,1)) | Select-Object DriveLetter, FileSystemType, DriveType, HealthStatus
       - name: Run native refusal contracts on the target kernel
@@ -85,6 +90,42 @@ jobs:
           }
           const passed = events.filter(e => e.Test && e.Action === 'pass').length;
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Native refusal contracts: ${passed} tests/subtests passed, zero skipped. This does not qualify enabled native adapters.\n`);
+          JS
+      - name: Verify foundations remain disconnected from commands
+        if: ${{ !cancelled() && steps.go.outcome == 'success' && steps.node.outcome == 'success' }}
+        run: |
+          go list -deps ./cmd/... > command-dependencies.txt
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const deps = fs.readFileSync('command-dependencies.txt', 'utf8').split('\n');
+          assert(!deps.some(p => p.startsWith('agent/internal/nativefs/')), 'Experimental foundation is reachable from a production command');
+          JS
+      - name: Run disconnected foundations on the target kernel
+        id: foundation
+        if: ${{ !cancelled() && steps.go.outcome == 'success' }}
+        run: go test -json -count=1 -timeout=5m ./internal/nativefs/... | tee foundation-tests.json
+      - name: Require complete foundation tests without skips
+        if: ${{ !cancelled() && steps.foundation.outcome != 'skipped' && steps.node.outcome == 'success' }}
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const events = fs.readFileSync('foundation-tests.json', 'utf8').trim().split('\n').map(JSON.parse);
+          const native = process.platform === 'darwin' ? 'darwinprobe' : 'windowsprobe';
+          const required = {
+            darwinprobe: ['TestComponents', 'TestOwnedDuplicationAndClose', 'TestCloseReportsDescriptorError', 'TestPinnedRename', 'TestLeafRefusalsAndNoFIFOReader', 'TestDirectoryRefusalsAndCleanup', 'TestBoundedLineageClosesAllDescriptors', 'TestRejectNonAPFSRoot', 'TestZeroValueObservationReturnsClosed', 'TestZeroValueClose'],
+            windowsprobe: ['TestComponents', 'TestNativeABI', 'TestNativeBoundedReadAndOwnership', 'TestNativeExactNamesAndHardlinks', 'TestNativeWriterAndCancelled', 'TestNativeSymlink', 'TestNativePinnedIdentityAndConventionalReplacement', 'TestNativeErrorsAndHandleRelease', 'TestNativeJunction', 'TestNativeNestedGuardAndHandleCount'],
+          };
+          assert(!events.some(e => ['skip', 'fail'].includes(e.Action)), 'Foundation test skipped or failed');
+          for (const name of ['darwinprobe', 'windowsprobe']) {
+            const pkg = `agent/internal/nativefs/${name}`;
+            assert(events.some(e => e.Package === pkg && !e.Test && e.Action === 'pass'), `${pkg} did not finish`);
+            const tests = name === native ? required[name] : ['TestComponents'];
+            for (const test of tests) assert(events.some(e => e.Package === pkg && e.Test === test && e.Action === 'pass'), `${pkg}/${test} did not pass`);
+          }
+          const passed = events.filter(e => e.Test && e.Action === 'pass').length;
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Disconnected foundation experiments: ${passed} tests/subtests passed, zero skipped. This is not production adapter qualification; see docs/release/native-foundation.md.\n`);
           JS
       - name: Run complete Go regression suite
         if: ${{ !cancelled() && steps.go.outcome == 'success' }}
