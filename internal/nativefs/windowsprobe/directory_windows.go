@@ -94,13 +94,13 @@ func (r *Root) openDirectoryNamespace(components []string) (*Root, error) {
 		observations = append(observations, observation{io, qualified, name})
 		parent = io
 	}
-	for _, g := range observations {
+	for index, g := range observations {
 		now, err := inspect(g.h)
 		if err != nil {
 			return nil, err
 		}
 		if !unchanged(g.s, now) {
-			return nil, errUnsafe
+			return nil, fmt.Errorf("directory component %d changed: identity=%t basic=%t standard=%t tag=%t: %w", index, g.s.ID != now.ID, g.s.Basic != now.Basic, g.s.Standard != now.Standard, g.s.Tag != now.Tag, errUnsafe)
 		}
 		if err := exactName(g.h, g.name); err != nil {
 			return nil, err
