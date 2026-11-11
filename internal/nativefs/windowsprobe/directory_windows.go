@@ -17,6 +17,15 @@ func (r *Root) OpenDirectory(components []string) (*Root, error) {
 	if err := validateComponents(components); err != nil {
 		return nil, err
 	}
+	return r.openDirectoryNamespace(components)
+}
+
+// openDirectoryNamespace is for validated initial host root selection as well
+// as tool traversal. The public method additionally applies protected names.
+func (r *Root) openDirectoryNamespace(components []string) (*Root, error) {
+	if err := validateNames(components, false); err != nil {
+		return nil, err
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.h == 0 {

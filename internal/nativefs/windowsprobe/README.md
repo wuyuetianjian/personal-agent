@@ -12,7 +12,8 @@ the probe verifies these granted rights, but cannot verify the original share
 mode. A metadata-only root or root with DELETE access is rejected. The caller must not pass a handle
 opened with backup privilege bypass. The probe duplicates
 and owns it; duplication does not tighten sharing. There is intentionally no
-path-to-root convenience API, drive/UNC/SUBST binding, or approval restoration.
+unrestricted path-to-root convenience API, forwarded/UNC root binding, or
+approval restoration. The restricted initial acquisition below is separate.
 
 `OpenDirectory` derives a directory root using individual exact components,
 not an absolute path. It duplicates the full inherited I/O-handle ancestry and
@@ -147,3 +148,48 @@ reported byte count; STATUS_NO_MORE_FILES terminates without reading the buffer.
 Pending, overflow and zero-progress success are rejected. This distinction is
 covered by a portable completion-classification test and follows Microsoft's
 [IO_STATUS_BLOCK contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ns-wdm-_io_status_block).
+
+## Restricted initial local root acquisition
+
+`OpenLocalRoot` accepts an exact long-name absolute DOS path, not UNC, device
+syntax, alternate streams, dot-dot or forwarded paths. It queries the drive's
+current first mapping, requires an exact `\Device\HarddiskVolume` plus digits,
+and opens that NT device's filesystem root directory directly. It never
+re-resolves the DOS letter after the query and does not try historical mappings.
+The device name is **nonpersistent**, not a volume identity. This relies on the
+trusted OS device namespace and authorizes no path string: the result owns only
+the actual qualified local NTFS directory handles. Administrative device remap,
+forced dismount or hardware removal are not excluded. No string-based recovery
+or fallback open occurs. A direct manually-created drive alias to a supported
+volume cannot be distinguished from a system drive letter and is not claimed
+rejected; SUBST/path forwarding and network targets are not resolved.
+
+The trailing separator selects the physical filesystem root. The existing
+type-neutral no-reparse/no-recall pattern acquires it with normal list, attributes
+and synchronize access; NewRoot then requires an actual directory. There is no
+backup intent, delete access or share-delete. Each initial component uses metadata followed by an identity-
+qualified directory I/O guard. Ancestor junctions/reparse objects and nonexact
+long names fail instead of being corrected and retried. Requiring list access
+at every ancestor is stricter than traverse-only Windows access.
+
+Initial host-selected components use namespace syntax checks, not the model's
+relative protected-name policy: selecting a `.foo` or `data` project directory
+does not permit relative tools to access protected names. Initial acquisition
+allows 32 components; the selected root starts a separate 32-component relative
+derivation budget while retaining initial ancestry. One full lineage can own
+65 I/O handles; acquisition temporarily owns duplicates and metadata handles.
+
+This constructor is not an approval mechanism. Production integration still
+requires host-owned epoch/lease lifetime, old-token refusal after restart,
+transaction-failure cleanup, and object-based exclusion of private runtime/DB
+storage. Windows must not call common `EvalSymlinks` before this acquisition,
+which would traverse unsupported namespace paths before refusal.
+
+Native contracts include a child with administrator group disabled and no
+enabled privilege except SeChangeNotifyPrivilege. The test prefers a linked
+non-elevated token; otherwise it explicitly reports `restricted-not-standard-user`.
+The latter is not a standard-user-account qualification. There is no elevation,
+privileged retry, or host security-setting change. Test-first run
+[42986302018](https://github.com/wuyuetianjian/personal-agent/actions/runs/42986302018)
+confirmed the reduced child launches and reaches the still-refusing acquisition
+stub; the implemented constructor must pass the subsequent native gate.

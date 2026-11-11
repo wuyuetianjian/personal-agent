@@ -16,10 +16,11 @@ Those failures remain visible; this stage does not remove their assertions.
 
 ## Scope of this stage
 
-Both experiments start from an **already-open directory supplied by the caller**.
-They duplicate and own that handle. They do not claim that an arbitrary path,
+The macOS experiment starts from an **already-open directory supplied by the
+caller**. Windows additionally has a restricted local-volume acquisition route;
+all results own qualified handles. They do not claim that an arbitrary path,
 drive alias, symlink, mount or restarted process has acquired an authorized root.
-There is no application call site that supplies such a handle today.
+There is no enabled application call site for these experiments today.
 
 ### macOS / APFS
 
@@ -35,6 +36,17 @@ safely upgrade a metadata-only descriptor to read access. `openbyid_np` requires
 a private Apple entitlement, does not accept an expected regular-file type or
 independent expected generation, and is not an acceptable ordinary-app fallback.
 A `stat` followed by a pathname `open` does not close the special-file race.
+
+A clone-based alternative was evaluated against Apple XNU `xnu-11215.81.4`.
+`clonefileat` rejects device/FIFO vnode types before source open and can clone a
+symlink without following it, but it does not return or bind the prechecked
+source identity/link count. A temporary clone's new inode and single link do
+not attest the source. It also accepts directories and can clone a hierarchy,
+so a file-to-directory race can exceed the read budget before a post-check.
+Copied flags can complicate cleanup. This does not qualify strict production
+Read and is not used as a fallback. See Apple's
+[implementation](https://github.com/apple-oss-distributions/xnu/blob/xnu-11215.81.4/bsd/vfs/vfs_syscalls.c)
+and [manual](https://github.com/apple-oss-distributions/xnu/blob/xnu-11215.81.4/bsd/man/man2/clonefile.2).
 
 No atomic Linux-style `RESOLVE_BENEATH | RESOLVE_NO_XDEV` claim is made. Observing
 a volume mismatch after a directory open does not prove no automount occurred.

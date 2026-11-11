@@ -56,7 +56,8 @@ type snapshot struct {
 // with FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES and SYNCHRONIZE access,
 // no FILE_SHARE_DELETE, no delete access, and no backup privilege bypass.
 // This API cannot inspect/strengthen the caller's original sharing contract.
-// Closing the original handle after success is safe. No path-binding API exists.
+// Closing the original handle after success is safe. This constructor does not
+// bind a pathname; OpenLocalRoot is a separate restricted acquisition route.
 func NewRoot(trusted windows.Handle) (*Root, error) {
 	var h windows.Handle
 	if err := windows.DuplicateHandle(windows.CurrentProcess(), trusted, windows.CurrentProcess(), &h, 0, false, windows.DUPLICATE_SAME_ACCESS); err != nil {

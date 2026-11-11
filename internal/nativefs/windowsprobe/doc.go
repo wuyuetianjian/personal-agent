@@ -2,14 +2,18 @@
 // handle read foundation. It is not a production adapter, capability, or
 // authorization front end. No Files, Exec, MCP, replacement, undo, or execution
 // readiness is supplied here. Its Windows-only API accepts a trusted existing
-// directory handle and exact component names, never an untrusted root path.
+// directory handle or a restricted initial local-volume root selection. Neither
+// route is approval, and model tool arguments never acquire root authority.
 //
 // The root caller must establish local NTFS directory authority and no-delete
 // sharing before NewRoot. FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES and
 // SYNCHRONIZE granted rights are verified; metadata-only roots and roots with
 // DELETE access are rejected.
-// Duplication owns the handle but cannot verify/strengthen its original share mode. Drive letters, SUBST, UNC paths, namespace rebinding and
-// caller approval persistence are intentionally outside this API. No approval
+// Duplication owns the handle but cannot verify/strengthen its original share mode.
+// OpenLocalRoot instead uses a direct qualified NT device root and no-reparse
+// component traversal; forwarded/SUBST/UNC paths, namespace rebinding and caller
+// approval persistence are intentionally outside this API. Device names are
+// nonpersistent; only the actual acquired handles supply object authority. No approval
 // may be restored from timestamps or a persisted file ID. Creation time is not
 // a permanent anti-reuse token.
 //

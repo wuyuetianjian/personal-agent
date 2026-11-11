@@ -254,3 +254,18 @@ func TestNativeOpenLocalRootDiskHandleRelease(t *testing.T) {
 		t.Fatal(fmt.Errorf("root acquisition retained guard: %w", err))
 	}
 }
+
+func TestNativeOpenLocalRootVolumeRoot(t *testing.T) {
+	path := localRootPath(t)
+	root := acquireLocalRoot(t, path[:3])
+	s, err := inspect(root.h)
+	if err != nil || s.Standard.Directory == 0 || root.depth != 0 || len(root.ancestors) != 0 {
+		t.Fatalf("volume-root acquisition: directory=%d depth=%d ancestors=%d error=%v", s.Standard.Directory, root.depth, len(root.ancestors), err)
+	}
+	if err := root.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := root.Read(context.Background(), []string{"anything"}); err == nil {
+		t.Fatal("closed volume root retained authority")
+	}
+}
