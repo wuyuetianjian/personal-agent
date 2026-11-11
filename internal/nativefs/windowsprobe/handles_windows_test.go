@@ -87,25 +87,29 @@ func captureHandleInventory(t *testing.T) handleInventory {
 		}
 		all[entry.Handle] = true
 		// PSS supplies handle values, not complete type metadata for every object.
-		// Qualify a temporary duplicate using the public GetFileType API. This
-		// pins the object while classifying it, but is not an atomic type audit
-		// against arbitrary concurrent close/reuse between snapshot and duplicate.
-		var duplicate windows.Handle
-		if err := windows.DuplicateHandle(windows.CurrentProcess(), entry.Handle, windows.CurrentProcess(), &duplicate, 0, false, windows.DUPLICATE_SAME_ACCESS); err != nil {
-			t.Fatalf("duplicate captured handle %#x: %v", entry.Handle, err)
-		}
-		kind, queryErr := windows.GetFileType(duplicate)
-		if err := windows.CloseHandle(duplicate); err != nil {
-			t.Fatalf("close classification handle: %v", err)
+		// Classify the current value first: some non-file objects cannot be
+		// duplicated. Disk results are then pinned and rechecked. This is a
+		// controlled persistent-disk-leak detector, not an atomic process audit.
+		kind, queryErr := windows.GetFileType(entry.Handle)
+		if queryErr == nil && kind == windows.FILE_TYPE_DISK {
+			var duplicate windows.Handle
+			if err := windows.DuplicateHandle(windows.CurrentProcess(), entry.Handle, windows.CurrentProcess(), &duplicate, 0, false, windows.DUPLICATE_SAME_ACCESS); err != nil {
+				t.Fatalf("duplicate captured disk handle %#x: %v", entry.Handle, err)
+			}
+			confirmed, confirmErr := windows.GetFileType(duplicate)
+			closeErr := windows.CloseHandle(duplicate)
+			if confirmErr != nil || confirmed != windows.FILE_TYPE_DISK || closeErr != nil {
+				t.Fatalf("disk classification changed or close failed: kind=%d query=%v close=%v", confirmed, confirmErr, closeErr)
+			}
 		}
 		typ := ""
 		if queryErr != nil {
 			if !errors.Is(queryErr, windows.ERROR_INVALID_HANDLE) {
 				t.Fatalf("GetFileType captured handle %#x: %v", entry.Handle, queryErr)
 			}
-			// A successfully duplicated non-file object can be invalid for this
-			// file-specific API. Do not call it a Thread/Event or infer its name.
-			typ = "NotApplicableToGetFileType"
+			// Could be a non-file object or a value closed since the snapshot.
+			// Do not call it a Thread/Event or infer its former object type.
+			typ = "InvalidForGetFileType"
 		} else {
 			switch kind {
 			case windows.FILE_TYPE_DISK:
