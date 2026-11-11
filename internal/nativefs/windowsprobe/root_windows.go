@@ -45,6 +45,11 @@ func OpenLocalRoot(path string) (*Root, error) {
 	if err != nil {
 		return nil, err
 	}
+	return openQualifiedAnchor(anchor, components)
+}
+
+// Shared acquisition body; caller has already qualified the transient locator.
+func openQualifiedAnchor(anchor string, components []string) (*Root, error) {
 	name, err := windows.NewNTUnicodeString(anchor)
 	if err != nil {
 		return nil, err

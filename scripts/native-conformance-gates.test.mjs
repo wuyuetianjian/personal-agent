@@ -131,3 +131,40 @@ test('isolated validator is LF/CRLF stable and consumes its own JSON test stream
  assert.match(workflow,/go test -json -count=3 -timeout=5m .*windowsprobe .*rootlease \| tee isolated-foundation-tests\.json/);
  assert.match(workflow,/steps\.isolated_foundation\.outcome != 'skipped'/);
 });
+
+const directTests=['TestDirectLinkDecoder','TestDirectLinkProtocol','TestDirectLinkHandleQualification','TestNativeDirectLinkRootReducedToken','TestNativeDirectLinkRootRestrictedTokenHelper'];
+function directEvents(){const Package='agent/internal/nativefs/windowsprobe',events=[];for(let i=0;i<3;i++)for(const Test of directTests)events.push({Package,Test,Action:'run'},{Package,Test,Action:'pass'});events.push({Package,Action:'pass'});return events;}
+test('direct-link gate requires its exact five tests three times and no failed or skipped evidence',()=>{
+ const script=gate('Require direct-link native evidence without skips'),valid=directEvents();
+ assert.equal(runGate(script,'direct-link-tests.json',valid).status,0);
+ for(const name of directTests){
+  assert.ok(script.includes("'"+name+"'"));
+  assert.notEqual(runGate(script,'direct-link-tests.json',valid.filter(e=>e.Test!==name)).status,0);
+  for(const Action of ['fail','skip'])assert.notEqual(runGate(script,'direct-link-tests.json',valid.map(e=>e.Test===name&&e.Action==='pass'?{...e,Action}:e)).status,0);
+  const less=valid.findIndex(e=>e.Test===name&&e.Action==='pass');assert.notEqual(runGate(script,'direct-link-tests.json',valid.filter((e,i)=>i!==less)).status,0);
+ }
+ for(const invalid of [[],valid.slice(0,-1),[...valid,valid.at(-1)],[...valid,{Action:'build-fail',ImportPath:'bad'}],valid.map(e=>({...e,Package:'wrong'})),valid.filter(e=>e.Action!=='run'),[...valid,valid[1]],[{Package:'agent/internal/nativefs/windowsprobe',Action:'output',Output:'--- PASS: '+directTests.join(' PASS: ')}]])assert.notEqual(runGate(script,'direct-link-tests.json',invalid).status,0);
+});
+function verifyDirectWorkflow(workflowText) {
+ const block=workflowText.replace(/\r\n/g,'\n').split('  windows-handle-evidence:')[1].split('  windows-sqlite-main-evidence:')[0];
+ assert.match(block,/id: isolated_go/);assert.doesNotMatch(block,/continue-on-error/);
+ const command=block.match(/go test -json -mod=readonly -tags=nativeprobe_sqlite_identity -count=3 -timeout=5m -run '([^']+)' \.\/internal\/nativefs\/windowsprobe \| tee direct-link-tests\.json/);
+ assert.ok(command,'exact tagged readonly direct test command');
+ assert.equal(command[1],'^('+directTests.join('|')+')$');
+ const regex=new RegExp(command[1]);for(const name of [...scratchTests,'TestNativeOpenLocalRootReducedToken','TestNativeSQLiteTempSpillUsesOwnedScratch'])assert.equal(regex.test(name),false);
+ assert.match(block,/steps\.isolated_go\.outcome == 'success'/);
+ assert.match(block,/steps\.direct_verify_before\.outcome == 'success'/);
+ assert.match(block,/steps\.direct_link\.outcome != 'skipped'/);
+ assert.equal((block.match(/run: go mod verify/g)||[]).length,2);
+ const after=block.split('      - name: Verify modules after direct-link evidence')[1].split('      - name:')[0];
+ assert.match(after,/!cancelled\(\)/);assert.match(after,/steps\.direct_link\.outcome != 'skipped'/);assert.doesNotMatch(after,/direct_link\.outcome == 'success'/);
+ const before=block.split('      - name: Verify modules before direct-link evidence')[1].split('      - name:')[0];
+ assert.match(before,/!cancelled\(\).*steps\.isolated_go\.outcome == 'success'/);
+ assert.doesNotMatch(before,/isolated_foundation\.outcome == 'success'/);
+ assert.match(block,/actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02/);
+ assert.ok(block.indexOf('Verify modules before direct-link evidence')<block.indexOf('Run direct-link native evidence'));
+ assert.ok(block.indexOf('Verify modules after direct-link evidence')>block.indexOf('Run direct-link native evidence'));
+ assert.match(block,/path: \|\n\s+isolated-foundation-tests\.json\n\s+direct-link-tests\.json/);
+ const name='Require direct-link native evidence without skips';assert.equal(gate(name,workflowText),gate(name));
+}
+for(const [format,workflowText] of [['LF',workflow.replace(/\r\n/g,'\n')],['CRLF',workflow.replace(/\r?\n/g,'\r\n')]])test('full direct-link workflow preserves gates and artifact paths with '+format,()=>verifyDirectWorkflow(workflowText));

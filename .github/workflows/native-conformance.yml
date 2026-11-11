@@ -179,7 +179,7 @@ jobs:
   windows-handle-evidence:
     name: Windows isolated foundation evidence
     runs-on: windows-2025
-    timeout-minutes: 10
+    timeout-minutes: 15
     defaults:
       run:
         shell: bash
@@ -188,6 +188,7 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        id: isolated_go
         with:
           go-version-file: go.mod
           cache: false
@@ -216,6 +217,44 @@ jobs:
           }
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, 'Isolated scratch experiments: all three required tests ran/passed three times, both packages completed, no failures or skips. This is current-token experimental evidence, not production or standard-user qualification.\n');
           JS
+
+      - name: Verify modules before direct-link evidence
+        id: direct_verify_before
+        if: ${{ !cancelled() && steps.isolated_go.outcome == 'success' }}
+        run: go mod verify
+      - name: Run direct-link native evidence
+        id: direct_link
+        if: ${{ !cancelled() && steps.direct_verify_before.outcome == 'success' }}
+        run: go test -json -mod=readonly -tags=nativeprobe_sqlite_identity -count=3 -timeout=5m -run '^(TestDirectLinkDecoder|TestDirectLinkProtocol|TestDirectLinkHandleQualification|TestNativeDirectLinkRootReducedToken|TestNativeDirectLinkRootRestrictedTokenHelper)$' ./internal/nativefs/windowsprobe | tee direct-link-tests.json
+      - name: Verify modules after direct-link evidence
+        if: ${{ !cancelled() && steps.isolated_go.outcome == 'success' && steps.direct_link.outcome != 'skipped' }}
+        run: go mod verify
+      - name: Require direct-link native evidence without skips
+        if: ${{ !cancelled() && steps.direct_link.outcome != 'skipped' && steps.isolated_node.outcome == 'success' }}
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const events = fs.readFileSync('direct-link-tests.json', 'utf8').trim().split('\n').map(JSON.parse);
+          const required = ['TestDirectLinkDecoder', 'TestDirectLinkProtocol', 'TestDirectLinkHandleQualification', 'TestNativeDirectLinkRootReducedToken', 'TestNativeDirectLinkRootRestrictedTokenHelper'];
+          const pkg = 'agent/internal/nativefs/windowsprobe';
+          assert(!events.some(e => ['fail', 'skip', 'build-fail'].includes(e.Action)), 'Direct-link native test failed or skipped');
+          assert.equal(events.filter(e => e.Package === pkg && !e.Test && e.Action === 'pass').length, 1, 'Direct-link package did not complete exactly once');
+          for (const test of required) {
+            for (const action of ['run', 'pass']) assert.equal(events.filter(e => e.Package === pkg && e.Test === test && e.Action === action).length, 3, `${test} must ${action} exactly three times`);
+          }
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, 'Direct-link candidate: all five required tests ran/passed three times without failures/skips. The separate original ReducedToken failure remains unchanged; this is not standard-user or production qualification.\n');
+          JS
+      - name: Preserve isolated and direct-link JSON evidence
+        if: ${{ !cancelled() && steps.isolated_go.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: isolated-and-direct-link-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            isolated-foundation-tests.json
+            direct-link-tests.json
+          if-no-files-found: error
+          retention-days: 14
 
   windows-sqlite-main-evidence:
     name: Windows experimental SQLite object and private-cache evidence

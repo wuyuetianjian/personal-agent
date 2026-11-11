@@ -206,3 +206,15 @@ Reduced-token bootstrap still fails. Additional metadata-only diagnostics compar
 and direct querying of the fixture drive's symbolic-link object. They never open
 the returned target, change namespace/token/ACL, or convert the original failure
 into a pass. A restricted administrator token is not a standard-user qualification.
+
+At `0d59b57`, three restricted-token rounds could query the known drive link
+object directly with exact `SYMBOLIC_LINK_QUERY` access and close it successfully;
+opening the DOS directory itself for QUERY or TRAVERSE still failed. The target was
+not opened in those diagnostics. A separately tagged direct-link acquisition
+experiment now validates the same-token, non-impersonating context, bounded UTF-16
+output, exact access and non-inheritance, and successful link closure before using
+the existing qualified anchor/traversal path. It does not replace `OpenLocalRoot`
+or retry that API's failure. Its actual root acquisition and bounded read remain
+pending native qualification; neither metadata lookup nor a restricted admin token
+constitutes standard-user or production qualification. The isolated job checks
+this experiment separately and retains the original acquisition failure.
