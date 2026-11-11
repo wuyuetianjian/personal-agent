@@ -292,8 +292,8 @@ func TestNativeObserveEntriesHandleRelease(t *testing.T) {
 	after := count()
 	afterTypes := captureHandleInventory(t)
 	logHandleDelta(t, beforeTypes, afterTypes)
-	if !sameFileHandles(beforeTypes, afterTypes) {
-		t.Errorf("observation changed exact File handle set")
+	if !sameDiskHandles(beforeTypes, afterTypes) {
+		t.Errorf("observation changed exact NTFS Disk handle set")
 	}
 	// Keep the original total-count failure until the diagnostic run supplies evidence.
 	if after != before {
