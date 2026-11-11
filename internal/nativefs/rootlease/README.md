@@ -193,3 +193,16 @@ foreign-ABI boundaries; untagged production vet passing does not erase that resu
 an exhaustive peak across truncate-only growth. VFS close errors are reported by
 `WithConnection` separately from driver close errors because SQLite's destructor
 can discard the VFS return code; explicit owner close retains those errors too.
+
+The `ac1497f` native Windows run qualified this bounded anonymous TEMP bridge:
+all 13 contracts and their subtests ran and passed three times (129 pass events,
+zero fail/skip). Each real SQL round wrote 8,921,088 bytes and read 18,329,600 bytes;
+1024-row forward/reverse checksums, live identity/size observations and final
+resource-cleanup assertions passed. This remains a disconnected experiment, not
+persistent main/WAL/SHM or production qualification.
+
+Reduced-token bootstrap still fails. Additional metadata-only diagnostics compare
+`DIRECTORY_QUERY` and `DIRECTORY_TRAVERSE` lookup in the same local DOS namespace,
+and direct querying of the fixture drive's symbolic-link object. They never open
+the returned target, change namespace/token/ACL, or convert the original failure
+into a pass. A restricted administrator token is not a standard-user qualification.

@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"testing"
 	"time"
+	"unicode/utf16"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -278,56 +279,131 @@ func rootTokenDiagnostics(t *testing.T, label string, token windows.Token) {
 	t.Logf("token diagnostic %s logon_sid_present=%v logon_sid_enabled=%v admin_deny_only=%v", label, logonPresent, logonEnabled, adminDenyOnly)
 }
 
+// rootTokenDiagnosticDrive validates without opening any namespace object.
+func rootTokenDiagnosticDrive(fixture string) (string, error) {
+	drive, _, err := parseLocalRootPath(fixture)
+	return drive, err
+}
+
+func TestNativeRootTokenDiagnosticFixtureValidation(t *testing.T) {
+	for _, path := range []string{"", `C:relative`, `\\server\share`, `1:\bad`, `C:/bad`} {
+		if _, err := rootTokenDiagnosticDrive(path); err == nil {
+			t.Errorf("invalid fixture accepted: %q", path)
+		}
+	}
+	if drive, err := rootTokenDiagnosticDrive(`D:\fixture`); err != nil || drive != "D:" {
+		t.Fatalf("fixture validation: %q %v", drive, err)
+	}
+}
+
 func rootTokenNamespaceDiagnostics(t *testing.T, fixture string) {
 	t.Helper()
-	// Inspect ONLY the same local DOS-device context. No GLOBAL?? fallback,
-	// device anchor transfer, ACL modification, impersonation or retry of Read.
-	if len(fixture) < 3 || fixture[1] != ':' || fixture[2] != '\\' {
-		t.Log("namespace diagnostic: fixture is not drive absolute")
+	// Same token and local DOS context only. Never open the queried target.
+	drive, err := rootTokenDiagnosticDrive(fixture)
+	if err != nil {
+		t.Logf("namespace diagnostic invalid fixture: %v", err)
 		return
 	}
 	dll := windows.NewLazySystemDLL("ntdll.dll")
 	openDir := dll.NewProc("NtOpenDirectoryObject")
 	openLink := dll.NewProc("NtOpenSymbolicLinkObject")
 	queryLink := dll.NewProc("NtQuerySymbolicLinkObject")
-	for _, p := range []*windows.LazyProc{openDir, openLink, queryLink} {
-		if err := p.Find(); err != nil {
-			t.Logf("namespace diagnostic API unavailable: %v", err)
+	queryObject := dll.NewProc("NtQueryObject")
+	closeOwned := func(label string, h windows.Handle) {
+		if h == 0 {
 			return
 		}
+		e := windows.CloseHandle(h)
+		t.Logf("namespace diagnostic %s close_error=%v", label, e)
+		if e != nil {
+			t.Errorf("namespace diagnostic owned handle cleanup: %v", e)
+		}
 	}
-	name, err := windows.NewNTUnicodeString(`\??`)
-	if err != nil {
-		t.Logf("namespace diagnostic name: %v", err)
-		return
+	access := func(label string, h windows.Handle) {
+		if e := queryObject.Find(); e != nil {
+			t.Logf("namespace diagnostic access unavailable: %v", e)
+			return
+		}
+		// PUBLIC_OBJECT_BASIC_INFORMATION: four ULONG fields, ten reserved ULONGs.
+		var basic [14]uint32
+		var returned uint32
+		status, _, _ := queryObject.Call(uintptr(h), 0, uintptr(unsafe.Pointer(&basic[0])), unsafe.Sizeof(basic), uintptr(unsafe.Pointer(&returned)))
+		t.Logf("namespace diagnostic %s access-query NTSTATUS=0x%08x returned_bytes=%d", label, uint32(status), returned)
+		if uint32(status) == 0 && returned >= 8 && returned <= uint32(unsafe.Sizeof(basic)) {
+			t.Logf("namespace diagnostic %s granted_access=0x%08x", label, basic[1])
+		}
 	}
-	oa := windows.OBJECT_ATTRIBUTES{Length: uint32(unsafe.Sizeof(windows.OBJECT_ATTRIBUTES{})), ObjectName: name, Attributes: windows.OBJ_CASE_INSENSITIVE}
-	var directory windows.Handle
-	status, _, _ := openDir.Call(uintptr(unsafe.Pointer(&directory)), 1 /* DIRECTORY_QUERY */, uintptr(unsafe.Pointer(&oa)))
-	runtime.KeepAlive(name)
-	t.Logf("namespace diagnostic local directory query-open NTSTATUS=0x%08x", uint32(status))
-	if uint32(status) != 0 {
-		return
+	lookup := func(label string, parent windows.Handle, path string, negative bool) {
+		if e := openLink.Find(); e != nil {
+			t.Logf("namespace diagnostic %s open-link unavailable: %v", label, e)
+			return
+		}
+		name, e := windows.NewNTUnicodeString(path)
+		if e != nil {
+			t.Logf("namespace diagnostic %s name error: %v", label, e)
+			return
+		}
+		oa := windows.OBJECT_ATTRIBUTES{Length: uint32(unsafe.Sizeof(windows.OBJECT_ATTRIBUTES{})), RootDirectory: parent, ObjectName: name, Attributes: windows.OBJ_CASE_INSENSITIVE}
+		var h windows.Handle
+		status, _, _ := openLink.Call(uintptr(unsafe.Pointer(&h)), 1 /* SYMBOLIC_LINK_QUERY */, uintptr(unsafe.Pointer(&oa)))
+		runtime.KeepAlive(name)
+		defer closeOwned(label, h)
+		t.Logf("namespace diagnostic %s open-link NTSTATUS=0x%08x handle_returned=%v requested_access=0x00000001", label, uint32(status), h != 0)
+		if negative {
+			if uint32(status) == 0 {
+				t.Error("namespace diagnostic expected-absent object control unexpectedly opened")
+			}
+			return
+		}
+		if uint32(status) != 0 || h == 0 {
+			return
+		}
+		access(label, h)
+		if e := queryLink.Find(); e != nil {
+			t.Logf("namespace diagnostic %s query-link unavailable: %v", label, e)
+			return
+		}
+		buf := make([]uint16, 32767)
+		target := windows.NTUnicodeString{MaximumLength: uint16(len(buf) * 2), Buffer: &buf[0]}
+		var returned uint32
+		status, _, _ = queryLink.Call(uintptr(h), uintptr(unsafe.Pointer(&target)), uintptr(unsafe.Pointer(&returned)))
+		runtime.KeepAlive(buf)
+		t.Logf("namespace diagnostic %s query-link NTSTATUS=0x%08x returned_bytes=%d length=%d", label, uint32(status), returned, target.Length)
+		if uint32(status) == 0 && target.Length%2 == 0 && int(target.Length) <= len(buf)*2 {
+			_, shapeErr := physicalVolumeRoot(string(utf16.Decode(buf[:int(target.Length)/2])))
+			t.Logf("namespace diagnostic %s target_matches_restricted_volume_shape=%v (observation only; target never opened)", label, shapeErr == nil)
+		}
 	}
-	defer windows.CloseHandle(directory)
-	drive, err := windows.NewNTUnicodeString(fixture[:2])
-	if err != nil {
-		t.Logf("namespace diagnostic drive: %v", err)
-		return
+	// Each route is independent. QUERY refusal must not suppress TRAVERSE/direct.
+	for _, route := range []struct {
+		label string
+		mask  uint32
+	}{{"query-relative", 1}, {"traverse-relative", 2}} {
+		func() {
+			if e := openDir.Find(); e != nil {
+				t.Logf("namespace diagnostic %s directory API unavailable: %v", route.label, e)
+				return
+			}
+			name, e := windows.NewNTUnicodeString(`\??`)
+			if e != nil {
+				t.Logf("namespace diagnostic directory name: %v", e)
+				return
+			}
+			oa := windows.OBJECT_ATTRIBUTES{Length: uint32(unsafe.Sizeof(windows.OBJECT_ATTRIBUTES{})), ObjectName: name, Attributes: windows.OBJ_CASE_INSENSITIVE}
+			var h windows.Handle
+			status, _, _ := openDir.Call(uintptr(unsafe.Pointer(&h)), uintptr(route.mask), uintptr(unsafe.Pointer(&oa)))
+			runtime.KeepAlive(name)
+			defer closeOwned(route.label+"-directory", h)
+			t.Logf("namespace diagnostic %s directory-open NTSTATUS=0x%08x handle_returned=%v requested_access=0x%08x", route.label, uint32(status), h != 0, route.mask)
+			if uint32(status) != 0 || h == 0 {
+				return
+			}
+			access(route.label+"-directory", h)
+			lookup(route.label, h, drive, false)
+			lookup(route.label+"-expected-absent-object", h, "__personal_agent_expected_absent_drive__:", true)
+		}()
 	}
-	oa.RootDirectory, oa.ObjectName = directory, drive
-	var link windows.Handle
-	status, _, _ = openLink.Call(uintptr(unsafe.Pointer(&link)), 1 /* SYMBOLIC_LINK_QUERY */, uintptr(unsafe.Pointer(&oa)))
-	runtime.KeepAlive(drive)
-	t.Logf("namespace diagnostic local drive link query-open NTSTATUS=0x%08x", uint32(status))
-	if uint32(status) != 0 {
-		return
-	}
-	defer windows.CloseHandle(link)
-	buf := make([]uint16, 32767)
-	target := windows.NTUnicodeString{MaximumLength: uint16(len(buf) * 2), Buffer: &buf[0]}
-	var returned uint32
-	status, _, _ = queryLink.Call(uintptr(link), uintptr(unsafe.Pointer(&target)), uintptr(unsafe.Pointer(&returned)))
-	runtime.KeepAlive(buf)
-	t.Logf("namespace diagnostic local drive link query NTSTATUS=0x%08x returned_bytes=%d", uint32(status), returned)
+	lookup("direct", 0, `\??\`+drive, false)
+	lookup("direct-expected-absent-object", 0, `\??\__personal_agent_expected_absent_drive__:`, true)
+	// Original OpenLocalRoot assertion still fails. No Read retry or anchor transfer.
 }
