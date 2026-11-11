@@ -7,7 +7,10 @@ not enable Files, Exec, MCP, editing, undo, execution, or persisted approvals.
 
 `NewRoot` accepts an **already-open trusted local NTFS directory handle**. The
 caller is responsible for initial namespace trust and no-delete sharing. It
-must not pass a handle opened with backup privilege bypass. The probe duplicates
+must supply FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES and SYNCHRONIZE access;
+the probe verifies these granted rights, but cannot verify the original share
+mode. A metadata-only root or root with DELETE access is rejected. The caller must not pass a handle
+opened with backup privilege bypass. The probe duplicates
 and owns it; duplication does not tighten sharing. There is intentionally no
 path-to-root convenience API, drive/UNC/SUBST binding, or approval restoration.
 
@@ -15,15 +18,18 @@ path-to-root convenience API, drive/UNC/SUBST binding, or approval restoration.
 pins each parent and opens metadata first, rejecting unsupported attributes,
 reparse tags, case-sensitive directories, nonexact normalized long names,
 remote/non-NTFS storage, different volumes, and observed file link counts other
-than one. A separate data handle must match the pinned object's full ID and
-metadata before any bytes are read. All native acquisition uses FILE_OPEN with
+than one. Metadata-only handles do not participate in ordinary I/O sharing
+checks. A separate FILE_READ_DATA/FILE_LIST_DIRECTORY I/O guard must match the
+metadata object's full ID and metadata before traversal or reading; directory
+metadata and I/O guards remain retained throughout the read. All native acquisition uses FILE_OPEN with
 no backup intent, inheritance, or sharing relaxation. Errors return no bytes.
 
 Microsoft's [ReOpenFile contract](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-reopenfile)
 requires a CreateFile-origin handle. Since descendant metadata handles here
 originate with NtCreateFile, the experiment instead reopens the exact basename
-relative to its retained parent while the no-delete metadata guard is held,
-and compares identity before reading. It does not silently substitute a path
+relative to its retained, qualified I/O parent. A retained metadata handle
+keeps the original object alive but does not prevent renaming it. Full identity
+comparison rejects swaps before using the newly acquired I/O guard. It does not silently substitute a path
 open or invoke undocumented directory/open-reparse flag combinations.
 
 ## Evidence and limitations
@@ -40,7 +46,9 @@ leaf guard release on normal/error paths. The guessed 8.3 case is not proof
 that short-name generation was enabled; actual 8.3 fixture qualification remains
 open. Handle release checks include warmed, serialized exact process-handle counts
 across repeated nested success/failure paths and root duplicates. The replacement barrier test exercises the lower-level native
-primitives, not every point in the top-level read sequence.
+primitives, not every point in the top-level read sequence. A deterministic
+metadata-only rename/replacement test calls the same acquireIOGuard helper as
+Read and verifies that no usable handle for the replacement is returned.
 
 Open qualification gaps include modern POSIX rename/delete, mapped writers,
 cloud recall and filter behavior, actual enabled 8.3 aliases, case-sensitivity
@@ -56,3 +64,18 @@ contract: [NtQueryVolumeInformationFile](https://learn.microsoft.com/en-us/windo
 returns STATUS_SUCCESS or an error, with final completion and returned byte
 count in IO_STATUS_BLOCK. The probe requires exact STATUS_SUCCESS, final success
 and the full device-information size; it does not accept informational statuses.
+
+## Corrected native finding
+
+The first actual Windows run (42949760581) failed the leaf and intermediate
+rename-refusal assertions: ordinary Go 1.26.4 os.Rename succeeded while only a
+metadata handle was held. Go's os.Rename in that version uses
+MoveFileExW(MOVEFILE_REPLACE_EXISTING), not POSIX rename. The original assumption
+that READ_ATTRIBUTES|SYNCHRONIZE plus no-delete sharing was a rename guard was
+wrong. Microsoft's [sharing algorithm](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fsa/8c0e3f4f-0729-49f4-a14d-7f7add593819)
+conditions sharing checks on participating read/write/delete access, excluding
+metadata-only opens. The revised architecture adds identity-qualified I/O
+guards, retains the conventional rename/delete refusal assertions on those
+guards, and separately reproduces the metadata-only swap to require rejection.
+The revised Windows runtime result must be recorded by the native CI gate;
+compilation alone is not confirmation that this correction works.

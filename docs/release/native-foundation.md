@@ -46,9 +46,19 @@ further design. Metadata observations do not authorize content access.
 
 Experiment with owned directory handles, single-component relative NT opens,
 full file IDs, restrictive share modes, reparse/placeholder rejection and bounded
-reads from checked handles. Path validation rejects ADS, DOS-device names and
+reads from checked handles. The trusted root must have directory I/O access, not
+only attribute access. After metadata inspection, each child directory needs a
+separate I/O-access handle whose full identity is checked before traversal. Path validation rejects ADS, DOS-device names and
 ambiguous components. Exact normalized long-name checks intentionally reject
 case and short-name aliases instead of treating string folding as identity.
+
+The first actual NTFS run exposed a mistaken sharing assumption: handles opened
+only for attributes did not prevent ordinary `MoveFileEx` renames, even with no
+`FILE_SHARE_DELETE`. These metadata handles pin objects, not names. They cannot
+be described as no-delete guards. Qualification must exercise the I/O-access
+handles and reject a different object inserted between metadata and I/O opens.
+The first-run failures remain recorded in
+[Actions run 42949760581](https://github.com/wuyuetianjian/personal-agent/actions/runs/42949760581).
 
 This does not establish a universal no-side-effect open primitive. Filesystem
 filters can participate in opens; `FILE_OPEN_NO_RECALL` is not a universal no-I/O
@@ -91,3 +101,4 @@ merge, workflow write token or secret is needed.
 - [ReOpenFile](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-reopenfile)
 - [Windows file ID information](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_id_info)
 - [Windows rename semantics](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_rename_information)
+- [Windows sharing-access algorithm](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fsa/8c0e3f4f-0729-49f4-a14d-7f7add593819)

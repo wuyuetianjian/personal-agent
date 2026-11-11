@@ -6,6 +6,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"testing"
 
 	"golang.org/x/sys/unix"
@@ -156,10 +158,7 @@ func TestDirectoryRefusalsAndCleanup(t *testing.T) {
 	if e := os.Symlink("dir", filepath.Join(p, "sym")); e != nil {
 		t.Fatal(e)
 	}
-	before, e := os.ReadDir("/dev/fd")
-	if e != nil {
-		t.Fatal(e)
-	}
+	before := openDescriptorSnapshot(t)
 	for i := 0; i < 100; i++ {
 		for _, parts := range [][]string{{"sym"}, {"dir", "missing"}, {".."}, {"a/b"}, make([]string, MaxDepth+1)} {
 			if d, e := ObserveDirectory(f, parts); e == nil {
@@ -168,12 +167,9 @@ func TestDirectoryRefusalsAndCleanup(t *testing.T) {
 			}
 		}
 	}
-	after, e := os.ReadDir("/dev/fd")
-	if e != nil {
-		t.Fatal(e)
-	}
-	if len(after) != len(before) {
-		t.Fatalf("descriptor leak: %d -> %d", len(before), len(after))
+	after := openDescriptorSnapshot(t)
+	if !slices.Equal(before, after) {
+		t.Fatalf("descriptor set changed: %v -> %v", before, after)
 	}
 	if _, e := ObserveDirectory(nil, nil); e == nil {
 		t.Fatal("accepted nil root")
@@ -272,4 +268,74 @@ func TestZeroValueClose(t *testing.T) {
 	if _, err := d.ObserveRegular("leaf", 1); !errors.Is(err, os.ErrClosed) {
 		t.Fatalf("closed zero-value observation: %v", err)
 	}
+}
+
+// TestDescriptorSnapshotTracksOpenClose guards the leak-check fixture itself.
+func TestDescriptorSnapshotTracksOpenClose(t *testing.T) {
+	before := openDescriptorSnapshot(t)
+	f, err := os.Open("/dev/null")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fd := int(f.Fd())
+	during := openDescriptorSnapshot(t)
+	if !slices.Contains(during, fd) || len(during) != len(before)+1 {
+		f.Close()
+		t.Fatalf("snapshot did not detect opened fd %d: %v -> %v", fd, before, during)
+	}
+	if err = f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	after := openDescriptorSnapshot(t)
+	if !slices.Equal(before, after) {
+		t.Fatalf("snapshot did not return to baseline: %v -> %v", before, after)
+	}
+}
+
+// openDescriptorSnapshot reads names only: Go 1.26 ReadDir may fstatat entries
+// with unknown type, which can fail with EBADF on Darwin synthetic /dev/fd entries.
+// F_GETFD distinguishes live slots without opening their targets. The enumerator
+// itself is excluded consistently. Unexpected enumeration/descriptor errors fail
+// the test; no error is treated as an empty successful snapshot.
+func openDescriptorSnapshot(t *testing.T) []int {
+	t.Helper()
+	dir, err := os.Open("/dev/fd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := dir.Close(); err != nil {
+			t.Errorf("close descriptor enumerator: %v", err)
+		}
+	}()
+	own := int(dir.Fd())
+	names, err := dir.Readdirnames(-1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := make([]int, 0, len(names))
+	seen := make(map[int]bool, len(names))
+	for _, name := range names {
+		fd, err := strconv.Atoi(name)
+		if err != nil || fd < 0 {
+			t.Fatalf("unexpected /dev/fd entry %q: %v", name, err)
+		}
+		if fd == own {
+			continue
+		}
+		if seen[fd] {
+			t.Fatalf("duplicate /dev/fd entry %q", name)
+		}
+		seen[fd] = true
+		_, err = unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
+		if errors.Is(err, unix.EBADF) {
+			continue
+		}
+		if err != nil {
+			t.Fatalf("inspect fd %d: %v", fd, err)
+		}
+		result = append(result, fd)
+	}
+	slices.Sort(result)
+	return result
 }

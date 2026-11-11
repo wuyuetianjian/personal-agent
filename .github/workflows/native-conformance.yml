@@ -114,8 +114,8 @@ jobs:
           const events = fs.readFileSync('foundation-tests.json', 'utf8').trim().split('\n').map(JSON.parse);
           const native = process.platform === 'darwin' ? 'darwinprobe' : 'windowsprobe';
           const required = {
-            darwinprobe: ['TestComponents', 'TestOwnedDuplicationAndClose', 'TestCloseReportsDescriptorError', 'TestPinnedRename', 'TestLeafRefusalsAndNoFIFOReader', 'TestDirectoryRefusalsAndCleanup', 'TestBoundedLineageClosesAllDescriptors', 'TestRejectNonAPFSRoot', 'TestZeroValueObservationReturnsClosed', 'TestZeroValueClose'],
-            windowsprobe: ['TestComponents', 'TestNativeABI', 'TestNativeBoundedReadAndOwnership', 'TestNativeExactNamesAndHardlinks', 'TestNativeWriterAndCancelled', 'TestNativeSymlink', 'TestNativePinnedIdentityAndConventionalReplacement', 'TestNativeErrorsAndHandleRelease', 'TestNativeJunction', 'TestNativeNestedGuardAndHandleCount'],
+            darwinprobe: ['TestComponents', 'TestOwnedDuplicationAndClose', 'TestCloseReportsDescriptorError', 'TestPinnedRename', 'TestLeafRefusalsAndNoFIFOReader', 'TestDirectoryRefusalsAndCleanup', 'TestBoundedLineageClosesAllDescriptors', 'TestRejectNonAPFSRoot', 'TestZeroValueObservationReturnsClosed', 'TestZeroValueClose', 'TestDescriptorSnapshotTracksOpenClose'],
+            windowsprobe: ['TestComponents', 'TestNativeABI', 'TestNativeBoundedReadAndOwnership', 'TestNativeExactNamesAndHardlinks', 'TestNativeWriterAndCancelled', 'TestNativeSymlink', 'TestNativePinnedIdentityAndConventionalReplacement', 'TestNativeErrorsAndHandleRelease', 'TestNativeJunction', 'TestNativeNestedGuardAndHandleCount', 'TestNativeMetadataSwapRejectedBeforeIO', 'TestNativeMetadataOnlyRootRejected', 'TestNativeDeleteAccessRootRejected'],
           };
           assert(!events.some(e => ['skip', 'fail'].includes(e.Action)), 'Foundation test skipped or failed');
           for (const name of ['darwinprobe', 'windowsprobe']) {

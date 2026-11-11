@@ -22,7 +22,7 @@ func fixture(t *testing.T) (string, *Root) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h, err := windows.CreateFile(p, windows.FILE_READ_ATTRIBUTES|windows.SYNCHRONIZE, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	h, err := windows.CreateFile(p, windows.FILE_READ_ATTRIBUTES|windows.FILE_LIST_DIRECTORY|windows.SYNCHRONIZE, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,8 +147,13 @@ func TestNativePinnedIdentityAndConventionalReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The open metadata handle is the barrier: conventional rename/delete must
-	// fail while it is held. No sleeps or probabilistic racing are used.
+	ioGuard, _, err := acquireIOGuard(r.h, "file", before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.CloseHandle(ioGuard)
+	// Only the qualified I/O guard participates in share accounting. Metadata
+	// alone was demonstrated insufficient by the first native CI run.
 	if err := os.Rename(p, filepath.Join(dir, "moved")); err == nil {
 		t.Fatal("renamed guarded object")
 	}
@@ -239,11 +244,25 @@ func TestNativeNestedGuardAndHandleCount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	meta, err := inspect(h)
+	if err != nil {
+		windows.CloseHandle(h)
+		t.Fatal(err)
+	}
+	ioGuard, _, err := acquireIOGuard(r.h, "nested", meta)
+	if err != nil {
+		windows.CloseHandle(h)
+		t.Fatal(err)
+	}
 	if err := os.Rename(nested, filepath.Join(dir, "moved")); err == nil {
+		windows.CloseHandle(ioGuard)
 		windows.CloseHandle(h)
 		t.Fatal("renamed guarded intermediate directory")
 	}
 	if err := windows.CloseHandle(h); err != nil {
+		t.Fatal(err)
+	}
+	if err := windows.CloseHandle(ioGuard); err != nil {
 		t.Fatal(err)
 	}
 	countProc := windows.NewLazySystemDLL("kernel32.dll").NewProc("GetProcessHandleCount")
@@ -288,5 +307,87 @@ func TestNativeNestedGuardAndHandleCount(t *testing.T) {
 	}
 	if err := os.Rename(nested, filepath.Join(dir, "moved")); err != nil {
 		t.Fatalf("retained intermediate handle: %v", err)
+	}
+}
+
+func TestNativeMetadataSwapRejectedBeforeIO(t *testing.T) {
+	for _, directory := range []bool{false, true} {
+		t.Run(map[bool]string{false: "leaf", true: "directory"}[directory], func(t *testing.T) {
+			dir, r := fixture(t)
+			p := filepath.Join(dir, "object")
+			if directory {
+				if err := os.Mkdir(p, 0700); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := os.WriteFile(p, []byte("original"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			metadata, err := openRelative(r.h, "object", false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer windows.CloseHandle(metadata)
+			before, err := inspect(metadata)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Explicit barrier reproduces the observed metadata-only vulnerability.
+			if err := os.Rename(p, filepath.Join(dir, "moved")); err != nil {
+				t.Fatalf("metadata-only rename fixture: %v", err)
+			}
+			if directory {
+				if err := os.Mkdir(p, 0700); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := os.WriteFile(p, []byte("replacement"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			guard, _, err := acquireIOGuard(r.h, "object", before)
+			if err == nil {
+				windows.CloseHandle(guard)
+				t.Fatal("qualified a replacement object")
+			}
+			if guard != 0 {
+				t.Fatal("returned a usable handle for replacement")
+			}
+		})
+	}
+}
+
+func TestNativeMetadataOnlyRootRejected(t *testing.T) {
+	dir := t.TempDir()
+	p, err := windows.UTF16PtrFromString(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := windows.CreateFile(p, windows.FILE_READ_ATTRIBUTES|windows.SYNCHRONIZE, windows.FILE_SHARE_READ, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.CloseHandle(h)
+	if r, err := NewRoot(h); err == nil {
+		r.Close()
+		t.Fatal("metadata-only root qualified")
+	}
+}
+
+func TestNativeDeleteAccessRootRejected(t *testing.T) {
+	dir := t.TempDir()
+	p, err := windows.UTF16PtrFromString(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := windows.CreateFile(p, windows.FILE_LIST_DIRECTORY|windows.FILE_READ_ATTRIBUTES|windows.SYNCHRONIZE|windows.DELETE, windows.FILE_SHARE_READ, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.CloseHandle(h)
+	if r, err := NewRoot(h); err == nil {
+		r.Close()
+		t.Fatal("root with DELETE access qualified")
 	}
 }

@@ -50,12 +50,17 @@ type snapshot struct {
 
 // NewRoot duplicates a caller-owned trusted local NTFS directory handle. The
 // caller must obtain it without following untrusted namespace substitutions,
-// with no FILE_SHARE_DELETE, no delete access, and no backup privilege bypass.
+// with FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES and SYNCHRONIZE access,
+// no FILE_SHARE_DELETE, no delete access, and no backup privilege bypass.
 // This API cannot inspect/strengthen the caller's original sharing contract.
 // Closing the original handle after success is safe. No path-binding API exists.
 func NewRoot(trusted windows.Handle) (*Root, error) {
 	var h windows.Handle
 	if err := windows.DuplicateHandle(windows.CurrentProcess(), trusted, windows.CurrentProcess(), &h, 0, false, windows.DUPLICATE_SAME_ACCESS); err != nil {
+		return nil, err
+	}
+	if err := rootAccess(h); err != nil {
+		windows.CloseHandle(h)
 		return nil, err
 	}
 	s, err := inspect(h)
@@ -67,6 +72,23 @@ func NewRoot(trusted windows.Handle) (*Root, error) {
 		return nil, err
 	}
 	return &Root{h: h, id: s.ID}, nil
+}
+
+// rootAccess verifies a participating I/O access mask, not the original share
+// mode. The latter remains an explicit trusted-caller precondition.
+func rootAccess(h windows.Handle) error {
+	var access uint32
+	var io windows.IO_STATUS_BLOCK
+	const fileAccessInformation = 8
+	err := windows.NtQueryInformationFile(h, &io, (*byte)(unsafe.Pointer(&access)), uint32(unsafe.Sizeof(access)), fileAccessInformation)
+	if err != nil {
+		return err
+	}
+	required := uint32(windows.FILE_LIST_DIRECTORY | windows.FILE_READ_ATTRIBUTES | windows.SYNCHRONIZE)
+	if io.Status != 0 || io.Information != unsafe.Sizeof(access) || access&required != required || access&windows.DELETE != 0 {
+		return errUnsafe
+	}
+	return nil
 }
 
 func (r *Root) Close() error {
@@ -185,6 +207,30 @@ func openRelative(parent windows.Handle, name string, data bool) (windows.Handle
 	err = windows.NtCreateFile(&h, access, &oa, &io, nil, 0, windows.FILE_SHARE_READ, windows.FILE_OPEN, windows.FILE_OPEN_REPARSE_POINT|windows.FILE_OPEN_NO_RECALL|windows.FILE_SYNCHRONOUS_IO_NONALERT, 0, 0)
 	return h, err
 }
+
+// acquireIOGuard is the metadata-to-I/O boundary. Metadata-only handles do
+// NOT participate in ordinary read/write/delete sharing checks. Requesting
+// FILE_READ_DATA (the same bit as FILE_LIST_DIRECTORY) creates a participating
+// no-delete guard. Never traverse/read it until full identity is checked.
+func acquireIOGuard(parent windows.Handle, name string, expected snapshot) (windows.Handle, snapshot, error) {
+	h, err := openRelative(parent, name, true)
+	if err != nil {
+		return 0, snapshot{}, err
+	}
+	actual, err := inspect(h)
+	if err == nil && !unchanged(expected, actual) {
+		err = errUnsafe
+	}
+	if err == nil {
+		err = exactName(h, name)
+	}
+	if err != nil {
+		windows.CloseHandle(h)
+		return 0, snapshot{}, err
+	}
+	return h, actual, nil
+}
+
 func unchanged(a, b snapshot) bool {
 	// Last-access time may change as a consequence of reading. Creation time is
 	// only a contemporaneous consistency field, never a durable anti-reuse token.
@@ -253,7 +299,13 @@ func (r *Root) Read(ctx context.Context, components []string) ([]byte, error) {
 			if s.Standard.Directory == 0 {
 				return nil, errUnsafe
 			}
-			parent = h
+			ioGuard, qualified, err := acquireIOGuard(parent, name, s)
+			if err != nil {
+				return nil, err
+			}
+			handles = append(handles, ioGuard)
+			guards = append(guards, guard{ioGuard, qualified, name})
+			parent = ioGuard
 			continue
 		}
 		if s.Standard.Directory != 0 {
@@ -265,21 +317,11 @@ func (r *Root) Read(ctx context.Context, components []string) ([]byte, error) {
 		// ReOpenFile's documented contract requires a CreateFile-origin handle;
 		// these are NtCreateFile-origin handles. Instead, reopen one exact basename
 		// beneath the pinned parent and compare full identity BEFORE the first read.
-		data, err := openRelative(parent, name, true)
+		data, before, err := acquireIOGuard(parent, name, s)
 		if err != nil {
 			return nil, err
 		}
 		handles = append(handles, data)
-		before, err := inspect(data)
-		if err != nil {
-			return nil, err
-		}
-		if !unchanged(s, before) {
-			return nil, errUnsafe
-		}
-		if err = exactName(data, name); err != nil {
-			return nil, err
-		}
 		result := make([]byte, 0, int(s.Standard.Size))
 		chunk := make([]byte, 32768)
 		for len(result) <= Limit {

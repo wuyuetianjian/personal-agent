@@ -5,8 +5,10 @@
 // directory handle and exact component names, never an untrusted root path.
 //
 // The root caller must establish local NTFS directory authority and no-delete
-// sharing before NewRoot. Duplication owns the handle but cannot strengthen its
-// original share mode. Drive letters, SUBST, UNC paths, namespace rebinding and
+// sharing before NewRoot. FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES and
+// SYNCHRONIZE granted rights are verified; metadata-only roots and roots with
+// DELETE access are rejected.
+// Duplication owns the handle but cannot verify/strengthen its original share mode. Drive letters, SUBST, UNC paths, namespace rebinding and
 // caller approval persistence are intentionally outside this API. No approval
 // may be restored from timestamps or a persisted file ID. Creation time is not
 // a permanent anti-reuse token.
@@ -22,9 +24,11 @@
 // components are rejected. OBJ_DONT_REPARSE is not asserted without runtime
 // qualification; open-reparse metadata is classified before any data open.
 //
-// Leaves deny ordinary write/delete sharing, and the data open must match the
-// pinned metadata handle's full volume serial plus 128-bit file ID before any
-// read. Parent/leaf handles remain open throughout. Pre/post checks are not a
+// Metadata-only handles retain object lifetime but do not prevent rename.
+// After metadata inspection, FILE_READ_DATA/FILE_LIST_DIRECTORY guards deny
+// ordinary write/delete sharing. Each guard must match the metadata handle's
+// full volume serial plus 128-bit file ID before traversal or reading.
+// Metadata and qualified I/O parent/leaf handles remain open throughout. Pre/post checks are not a
 // filesystem snapshot, a global-hardlink exclusion, or proof that mappings,
 // kernel components, filters, or preexisting unusual handles cannot mutate
 // bytes. Observed file link counts other than one are rejected before and after
