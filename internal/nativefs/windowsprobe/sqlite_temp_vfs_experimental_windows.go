@@ -109,8 +109,9 @@ func (o *ExperimentalTempVFS) Stats() ExperimentalTempStats {
 	return o.stats
 }
 
-// The callback must close all Rows/Stmt before returning; connection and pool
-// stay owned until then. No bare VFS name or caller-supplied DSN is exposed.
+// The callback must close all Rows and finish transactions before returning.
+// Idle statements are drained before physical connection Close; late Stmt.Close
+// never touches released TLS. No bare VFS name or caller DSN is exposed.
 func (o *ExperimentalTempVFS) WithConnection(ctx context.Context, fn func(*sql.Conn) error) error {
 	return o.withDriver(ctx, fn, &sqlite.Driver{})
 }
@@ -285,28 +286,170 @@ func (c *tempConnector) Connect(ctx context.Context) (driver.Conn, error) {
 	return &tempOwnedConn{Conn: raw, owner: c.owner}, nil
 }
 
+// Conn-bound statements are not in database/sql's driverConn.openStmt map.
+// Track every Prepare result ourselves. This owner is for the fixed modernc
+// driver (plus test probes), not a generic contract for arbitrary drivers.
 type tempOwnedConn struct {
 	driver.Conn
-	owner    *ExperimentalTempVFS
+	owner                  *ExperimentalTempVFS
+	mu                     sync.Mutex
+	closed                 bool
+	closeDone              chan struct{}
+	closeErr, statementErr error
+	statements             map[*tempOwnedStmt]struct{}
+}
+
+var errTempStatementClosed = errors.New("TEMP statement or connection closed")
+
+func (c *tempOwnedConn) Prepare(query string) (driver.Stmt, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return nil, errTempStatementClosed
+	}
+	raw, err := c.Conn.Prepare(query)
+	if err != nil {
+		return nil, err
+	}
+	s := &tempOwnedStmt{raw: raw, conn: c}
+	if c.statements == nil {
+		c.statements = make(map[*tempOwnedStmt]struct{})
+	}
+	c.statements[s] = struct{}{}
+	// Preserve exactly the underlying context interface set. In its absence,
+	// database/sql still performs its own named-value/context fallback.
+	_, exec := raw.(driver.StmtExecContext)
+	_, queryContext := raw.(driver.StmtQueryContext)
+	switch {
+	case exec && queryContext:
+		return &tempOwnedStmtBoth{s}, nil
+	case exec:
+		return &tempOwnedStmtExec{s}, nil
+	case queryContext:
+		return &tempOwnedStmtQuery{s}, nil
+	default:
+		return s, nil
+	}
+}
+func (c *tempOwnedConn) Close() error {
+	c.mu.Lock()
+	if c.closed {
+		done := c.closeDone
+		c.mu.Unlock()
+		<-done
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return c.closeErr
+	}
+	c.closed = true
+	c.closeDone = make(chan struct{})
+	statements := make([]*tempOwnedStmt, 0, len(c.statements))
+	for s := range c.statements {
+		statements = append(statements, s)
+	}
+	c.mu.Unlock()
+	// Never hold conn.mu while waiting for stmt.mu: stmt.Close removes itself
+	// under conn.mu only after finalization. Concurrent Close waits for done.
+	for _, s := range statements {
+		_ = s.Close()
+	}
+	physicalErr := c.Conn.Close()
+	c.mu.Lock()
+	c.closeErr = errors.Join(c.statementErr, physicalErr)
+	result := c.closeErr
+	c.mu.Unlock()
+	c.owner.mu.Lock()
+	if physicalErr == nil {
+		c.owner.physical--
+	}
+	// database/sql may swallow driver Close's return. Preserve diagnostics for
+	// WithConnection, but only failed physical Close keeps the physical lease.
+	c.owner.closeFailure = errors.Join(c.owner.closeFailure, result)
+	c.owner.mu.Unlock()
+	close(c.closeDone)
+	return result
+}
+
+type tempOwnedStmt struct {
 	mu       sync.Mutex
+	raw      driver.Stmt
+	conn     *tempOwnedConn
 	closed   bool
 	closeErr error
 }
 
-func (c *tempOwnedConn) Close() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closed {
-		return c.closeErr
+func (s *tempOwnedStmt) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return s.closeErr
 	}
-	c.closed = true
-	c.closeErr = c.Conn.Close()
-	c.owner.mu.Lock()
-	defer c.owner.mu.Unlock()
-	if c.closeErr == nil {
-		c.owner.physical--
-	} else {
-		c.owner.closeFailure = errors.Join(c.owner.closeFailure, c.closeErr)
+	s.closed = true
+	s.closeErr = s.raw.Close()
+	// Fixed modernc stmt.Close finalizes and clears pstmt/frees psql even when
+	// sqlite3_finalize returns the previous step's SQL error. It is destroyed,
+	// not a reason to keep a zombie statement or retry against a freed TLS.
+	s.raw = nil
+	s.conn.mu.Lock()
+	delete(s.conn.statements, s)
+	s.conn.statementErr = errors.Join(s.conn.statementErr, s.closeErr)
+	s.conn.mu.Unlock()
+	return s.closeErr
+}
+func (s *tempOwnedStmt) NumInput() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return -1
 	}
-	return c.closeErr
+	return s.raw.NumInput()
+}
+func (s *tempOwnedStmt) Exec(args []driver.Value) (driver.Result, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil, errTempStatementClosed
+	}
+	return s.raw.Exec(args)
+}
+func (s *tempOwnedStmt) Query(args []driver.Value) (driver.Rows, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil, errTempStatementClosed
+	}
+	return s.raw.Query(args)
+}
+func (s *tempOwnedStmt) execContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil, errTempStatementClosed
+	}
+	return s.raw.(driver.StmtExecContext).ExecContext(ctx, args)
+}
+func (s *tempOwnedStmt) queryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil, errTempStatementClosed
+	}
+	return s.raw.(driver.StmtQueryContext).QueryContext(ctx, args)
+}
+
+type tempOwnedStmtExec struct{ *tempOwnedStmt }
+type tempOwnedStmtQuery struct{ *tempOwnedStmt }
+type tempOwnedStmtBoth struct{ *tempOwnedStmt }
+
+func (s *tempOwnedStmtExec) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+	return s.execContext(ctx, args)
+}
+func (s *tempOwnedStmtQuery) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+	return s.queryContext(ctx, args)
+}
+func (s *tempOwnedStmtBoth) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+	return s.execContext(ctx, args)
+}
+func (s *tempOwnedStmtBoth) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+	return s.queryContext(ctx, args)
 }

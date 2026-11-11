@@ -8,12 +8,15 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"io"
 	"modernc.org/libc"
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 	"unsafe"
 )
 
@@ -250,20 +253,34 @@ func (*tempCloseFaultConn) Begin() (driver.Tx, error) {
 func TestNativeSQLiteTempVFSStatementLifetime(t *testing.T) {
 	protocolQualified := false
 	passed := t.Run("safe_protocol_before_native", func(t *testing.T) {
-		tempStatementLifetimeContract(t, nil)
+		tempStatementLifetimeContract(t, &tempStatementProbeDriver{})
 		protocolQualified = true
 	})
 	// A -run filter excluding the safety stage must not bypass it.
 	if !passed || !protocolQualified {
 		t.Fatal("statement protocol RED: idle Conn-bound statement was not drained; real SQLite stage not entered")
 	}
+	for _, id := range []int{1, 2} {
+		if !t.Run(fmt.Sprintf("finalize_error_statement_%d", id), func(t *testing.T) {
+			tempStatementLifetimeContract(t, &tempStatementProbeDriver{finalizeID: id, finalizeError: errors.New("injected prior SQL error from finalize")})
+		}) {
+			t.Fatal("finalize-error protocol failed; real SQLite stage not entered")
+		}
+	}
+	if !t.Run("optional_context_interfaces", tempStatementContextContract) || !t.Run("concurrent_close_drain", tempStatementConcurrentCloseContract) {
+		t.Fatal("statement ownership protocol failed; real SQLite stage not entered")
+	}
 	t.Run("real_sqlite_idle_statement", func(t *testing.T) {
-		tempStatementLifetimeContract(t, &sqlite.Driver{})
+		tempStatementLifetimeContract(t, &tempStatementProbeDriver{base: &sqlite.Driver{}})
+	})
+	t.Run("real_sqlite_prior_sql_error", func(t *testing.T) {
+		tempStatementLifetimeContract(t, &tempStatementProbeDriver{base: &sqlite.Driver{}, priorSQLError: true})
 	})
 }
 
-func tempStatementLifetimeContract(t *testing.T, base driver.Driver) {
+func tempStatementLifetimeContract(t *testing.T, probe *tempStatementProbeDriver) {
 	t.Helper()
+	base, finalizeError := probe.base, probe.finalizeError
 	captureHandleInventory(t)
 	before := captureHandleInventory(t)
 	o, err := NewExperimentalTempVFS()
@@ -275,29 +292,38 @@ func tempStatementLifetimeContract(t *testing.T, base driver.Driver) {
 			t.Error(e)
 		}
 	}()
-	probe := &tempStatementProbeDriver{base: base}
 	var idle *sql.Stmt
+	var priorSQLFailure error
 	err = o.withDriver(context.Background(), func(conn *sql.Conn) error {
 		early, e := conn.PrepareContext(context.Background(), "SELECT 11")
 		if e != nil {
 			return e
 		}
-		if e = early.Close(); e != nil {
-			return e
+		if e = early.Close(); (probe.finalizeID != 1 && e != nil) || (probe.finalizeID == 1 && !errors.Is(e, finalizeError)) {
+			return fmt.Errorf("early close: %v", e)
 		}
 		if e = early.Close(); e != nil {
 			return e
 		}
-		idle, e = conn.PrepareContext(context.Background(), "SELECT 29")
+		query := "SELECT 29"
+		if probe.priorSQLError {
+			query = "SELECT abs(-9223372036854775808)"
+		}
+		idle, e = conn.PrepareContext(context.Background(), query)
 		if e != nil {
 			return e
 		}
 		if base != nil {
 			var n int
-			if e = idle.QueryRowContext(context.Background()).Scan(&n); e != nil {
+			e = idle.QueryRowContext(context.Background()).Scan(&n)
+			if probe.priorSQLError {
+				if e == nil || !strings.Contains(e.Error(), "integer overflow") {
+					return fmt.Errorf("expected real SQLite integer overflow, got %v", e)
+				}
+				priorSQLFailure = e
+			} else if e != nil {
 				return e
-			}
-			if n != 29 {
+			} else if n != 29 {
 				return fmt.Errorf("real prepared statement returned %d", n)
 			}
 		}
@@ -305,8 +331,14 @@ func tempStatementLifetimeContract(t *testing.T, base driver.Driver) {
 		// transaction or Raw call may make connection release wait for us.
 		return nil
 	}, probe)
-	if err != nil {
-		t.Fatalf("connection owner failed: %v", err)
+	// modernc resets after failed step; finalize may already have consumed the
+	// original SQL result. Do not require it to manufacture a second SQL error.
+	acceptablePrior := priorSQLFailure != nil && err != nil && err.Error() == priorSQLFailure.Error()
+	if (finalizeError == nil && err != nil && !acceptablePrior) || (finalizeError != nil && !errors.Is(err, finalizeError)) {
+		if base == nil && idle != nil {
+			_ = idle.Close()
+		}
+		t.Fatalf("connection owner error=%v, want finalize error=%v", err, finalizeError)
 	}
 	want := []string{"prepare:1", "stmt-close:1", "prepare:2", "stmt-close:2", "conn-close"}
 	if got := probe.events(); !reflect.DeepEqual(got, want) {
@@ -340,8 +372,14 @@ func tempStatementLifetimeContract(t *testing.T, base driver.Driver) {
 	}
 	// The wrapper must already have finalized it, while TLS/registration lived.
 	// Late sql.Stmt.Close must never forward to the native driver again.
-	if e := idle.Close(); e != nil {
-		t.Fatalf("late statement close: %v", e)
+	lateErr := idle.Close()
+	wantLate := error(nil)
+	if probe.finalizeID == 2 {
+		wantLate = finalizeError
+	}
+	acceptablePrior = priorSQLFailure != nil && lateErr != nil && lateErr.Error() == priorSQLFailure.Error()
+	if (wantLate == nil && lateErr != nil && !acceptablePrior) || (wantLate != nil && !errors.Is(lateErr, wantLate)) {
+		t.Fatalf("late statement close=%v, want cached finalize error=%v", lateErr, wantLate)
 	}
 	if e := idle.Close(); e != nil {
 		t.Fatalf("repeated late statement close: %v", e)
@@ -355,9 +393,16 @@ func tempStatementLifetimeContract(t *testing.T, base driver.Driver) {
 }
 
 type tempStatementProbeDriver struct {
-	base driver.Driver
-	mu   sync.Mutex
-	log  []string
+	base                       driver.Driver
+	finalizeError              error // fixed modernc semantics: error does not leave stmt alive
+	finalizeID                 int
+	priorSQLError              bool
+	contextMask                int
+	execCtx, queryCtx          context.Context
+	execArgs, queryArgs        []driver.NamedValue
+	closeEntered, closeRelease chan struct{}
+	mu                         sync.Mutex
+	log                        []string
 }
 
 func (d *tempStatementProbeDriver) record(event string) {
@@ -399,7 +444,28 @@ func (c *tempStatementProbeConn) Prepare(query string) (driver.Stmt, error) {
 	}
 	c.next++
 	c.driver.record(fmt.Sprintf("prepare:%d", c.next))
-	return &tempStatementProbeStmt{raw: raw, conn: c, id: c.next}, nil
+	s := &tempStatementProbeStmt{raw: raw, conn: c, id: c.next}
+	// The real observation shim preserves the real driver's optional surface.
+	mask := c.driver.contextMask
+	if raw != nil {
+		mask = 0
+		if _, ok := raw.(driver.StmtExecContext); ok {
+			mask |= 1
+		}
+		if _, ok := raw.(driver.StmtQueryContext); ok {
+			mask |= 2
+		}
+	}
+	switch mask {
+	case 1:
+		return &tempStatementProbeExec{s}, nil
+	case 2:
+		return &tempStatementProbeQuery{s}, nil
+	case 3:
+		return &tempStatementProbeBoth{s}, nil
+	default:
+		return s, nil
+	}
 }
 func (c *tempStatementProbeConn) Close() error {
 	c.driver.record("conn-close")
@@ -419,9 +485,16 @@ type tempStatementProbeStmt struct {
 }
 
 func (s *tempStatementProbeStmt) Close() error {
+	if s.conn.driver.closeEntered != nil {
+		s.conn.driver.closeEntered <- struct{}{}
+		<-s.conn.driver.closeRelease
+	}
 	s.conn.driver.record(fmt.Sprintf("stmt-close:%d", s.id))
 	if s.raw != nil {
 		return s.raw.Close()
+	}
+	if s.id == s.conn.driver.finalizeID {
+		return s.conn.driver.finalizeError
 	}
 	return nil
 }
@@ -442,4 +515,162 @@ func (s *tempStatementProbeStmt) Query(args []driver.Value) (driver.Rows, error)
 		return s.raw.Query(args)
 	}
 	return nil, errors.New("fake statement is never queried")
+}
+
+type tempStatementProbeExec struct{ *tempStatementProbeStmt }
+type tempStatementProbeQuery struct{ *tempStatementProbeStmt }
+type tempStatementProbeBoth struct{ *tempStatementProbeStmt }
+
+func (s *tempStatementProbeStmt) execContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+	if s.raw != nil {
+		return s.raw.(driver.StmtExecContext).ExecContext(ctx, args)
+	}
+	s.conn.driver.execCtx, s.conn.driver.execArgs = ctx, append([]driver.NamedValue(nil), args...)
+	return driver.RowsAffected(1), nil
+}
+func (s *tempStatementProbeStmt) queryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+	if s.raw != nil {
+		return s.raw.(driver.StmtQueryContext).QueryContext(ctx, args)
+	}
+	s.conn.driver.queryCtx, s.conn.driver.queryArgs = ctx, append([]driver.NamedValue(nil), args...)
+	return &tempStatementProbeRows{}, nil
+}
+func (s *tempStatementProbeExec) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+	return s.execContext(ctx, args)
+}
+func (s *tempStatementProbeQuery) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+	return s.queryContext(ctx, args)
+}
+func (s *tempStatementProbeBoth) ExecContext(ctx context.Context, args []driver.NamedValue) (driver.Result, error) {
+	return s.execContext(ctx, args)
+}
+func (s *tempStatementProbeBoth) QueryContext(ctx context.Context, args []driver.NamedValue) (driver.Rows, error) {
+	return s.queryContext(ctx, args)
+}
+
+type tempStatementProbeRows struct{}
+
+func (*tempStatementProbeRows) Columns() []string         { return []string{"value"} }
+func (*tempStatementProbeRows) Close() error              { return nil }
+func (*tempStatementProbeRows) Next([]driver.Value) error { return io.EOF }
+
+func tempStatementContextContract(t *testing.T) {
+	for mask := 0; mask < 4; mask++ {
+		t.Run(fmt.Sprintf("mask_%d", mask), func(t *testing.T) {
+			o := &ExperimentalTempVFS{}
+			probe := &tempStatementProbeDriver{contextMask: mask}
+			c, err := (&tempConnector{owner: o, base: probe}).Connect(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if e := c.Close(); e != nil {
+					t.Error(e)
+				}
+			}()
+			s, err := c.Prepare("SELECT :value")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if e := s.Close(); e != nil {
+					t.Error(e)
+				}
+			}()
+			exec, hasExec := s.(driver.StmtExecContext)
+			query, hasQuery := s.(driver.StmtQueryContext)
+			if hasExec != (mask&1 != 0) || hasQuery != (mask&2 != 0) {
+				t.Fatalf("optional interface set changed: mask=%d exec=%v query=%v", mask, hasExec, hasQuery)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			args := []driver.NamedValue{{Name: "value", Ordinal: 1, Value: int64(17)}}
+			if hasExec {
+				if _, e := exec.ExecContext(ctx, args); e != nil {
+					t.Fatal(e)
+				}
+				if probe.execCtx != ctx || !reflect.DeepEqual(probe.execArgs, args) {
+					t.Fatal("ExecContext lost context or named values")
+				}
+			}
+			if hasQuery {
+				rows, e := query.QueryContext(ctx, args)
+				if e != nil {
+					t.Fatal(e)
+				}
+				if e = rows.Close(); e != nil {
+					t.Fatal(e)
+				}
+				if probe.queryCtx != ctx || !reflect.DeepEqual(probe.queryArgs, args) {
+					t.Fatal("QueryContext lost context or named values")
+				}
+			}
+		})
+	}
+}
+
+func tempStatementConcurrentCloseContract(t *testing.T) {
+	o := &ExperimentalTempVFS{}
+	probe := &tempStatementProbeDriver{closeEntered: make(chan struct{}, 1), closeRelease: make(chan struct{})}
+	var release sync.Once
+	unblock := func() { release.Do(func() { close(probe.closeRelease) }) }
+	defer unblock()
+	c, err := (&tempConnector{owner: o, base: probe}).Connect(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := c.Prepare("SELECT 1")
+	if err != nil {
+		_ = c.Close()
+		t.Fatal(err)
+	}
+	stmtDone := make(chan error, 1)
+	go func() { stmtDone <- s.Close() }()
+	select {
+	case <-probe.closeEntered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("statement close did not reach barrier")
+	}
+	connDone := make(chan error, 2)
+	go func() { connDone <- c.Close() }()
+	go func() { connDone <- c.Close() }()
+	select {
+	case e := <-connDone:
+		t.Fatalf("connection close returned before statement drain: %v", e)
+	case <-time.After(25 * time.Millisecond):
+	}
+	unblock()
+	for i := 0; i < 3; i++ {
+		var done <-chan error = connDone
+		if i == 0 {
+			done = stmtDone
+		}
+		select {
+		case e := <-done:
+			if e != nil {
+				t.Fatal(e)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("statement/connection close lock inversion")
+		}
+	}
+	if e := s.Close(); e != nil {
+		t.Fatal(e)
+	}
+	if e := c.Close(); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := c.Prepare("SELECT 2"); e == nil {
+		t.Fatal("closed physical connection accepted Prepare")
+	}
+	want := []string{"prepare:1", "stmt-close:1", "conn-close"}
+	if got := probe.events(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("concurrent drain repeated/misordered native close: %v", got)
+	}
+	o.mu.Lock()
+	physical := o.physical
+	o.mu.Unlock()
+	if physical != 0 {
+		t.Fatalf("physical lease remains: %d", physical)
+	}
 }

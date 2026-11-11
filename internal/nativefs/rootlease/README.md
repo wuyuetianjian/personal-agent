@@ -154,3 +154,15 @@ The new contract first uses a safe fake native driver through real database/sql;
 missing drain fails before any real SQLite late-close case is entered. Only
 once that protocol passes may the real prepared-statement lifecycle run. This
 is a protocol RED, not proof that native statement drain has already succeeded.
+
+The `0fe7034` native run also passed the bounded scratch concurrency contract in
+three rounds. Its statement-lifetime safety protocol failed in all three rounds:
+an idle Conn-bound statement was not finalized before physical connection close.
+The real SQLite stage was deliberately not entered. The experimental connector
+now tracks each prepared statement and drains it before closing the physical
+connection. Late closes reuse the recorded result without touching released TLS;
+fixed-driver finalize errors remain observable without pretending a destroyed
+statement is still live. Optional statement context interfaces are preserved only
+when the underlying driver implements them. This change still requires native
+qualification; portable protocol/race tests and cross-compilation are not native
+SQLite lifetime evidence. Anonymous TEMP `xOpen` remains refusing at this stage.
