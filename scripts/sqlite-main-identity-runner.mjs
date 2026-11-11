@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto';
 import { StringDecoder } from 'node:string_decoder';
 import { spawn } from 'node:child_process';
-import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, rmdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -113,11 +113,12 @@ export function createEventValidator() {
   };
 }
 
-export async function copyModule(source, target) {
+export async function copyModule(source, target, onCreated=()=>{}) {
   const info = await lstat(source);
   if (info.isSymbolicLink()) throw new Error('module symbolic links are not allowed');
   if (!info.isDirectory()) throw new Error('module source must be a directory');
   await mkdir(target, { recursive: false, mode: 0o700 });
+  onCreated(); // Ownership begins only after this exact directory was created.
   for (const item of await readdir(source, {withFileTypes:true})) {
     if (item.name === 'testdata' || item.name === '.git') continue;
     const from=path.join(source,item.name), to=path.join(target,item.name);
@@ -171,15 +172,30 @@ export async function runExperiment({platform=process.platform,repo=DEFAULT_REPO
   const options={cwd:repo,env:{...process.env,GOWORK:'off',GOFLAGS:'',GOTOOLCHAIN:'local',GOOS:'windows'}};
   const environment=JSON.parse(await command(['env','-json','GOMODCACHE'],options));
   if(typeof environment.GOMODCACHE!=='string' || !path.isAbsolute(environment.GOMODCACHE)) throw new Error('go env did not identify an absolute module cache');
-  const cache=await realpath(environment.GOMODCACHE);
+  let existingCache;
+  try { existingCache=await realpath(environment.GOMODCACHE); }
+  catch(error) { if(error.code!=='ENOENT') throw error; }
   const temporaryParent=await realpath(tempRoot);
-  if(within(cache,temporaryParent)||within(repo,temporaryParent)) throw new Error('temporary module must be outside repository and GOMODCACHE');
+  // The absent cache's spelling is only a provisional exclusion check, not
+  // evidence of physical identity. Only Go's official download creates it.
+  const provisionalCache=existingCache??path.resolve(environment.GOMODCACHE);
+  if(within(provisionalCache,temporaryParent)||within(repo,temporaryParent)) throw new Error('temporary module must be outside repository and GOMODCACHE');
   const temporary=await mkdtemp(path.join(temporaryParent,'native-sqlite-identity-'));
+  const modfile=path.join(temporary,'experiment.mod'), sumfile=path.join(temporary,'experiment.sum');
+  const replacement=path.join(temporary,'sqlite');
+  let replacementOwned=false, failure;
   try {
-    const modfile=path.join(temporary,'experiment.mod'), sumfile=path.join(temporary,'experiment.sum');
+    if(within(temporary,provisionalCache)) throw new Error('temporary directory overlaps proposed cache');
     await writeFile(modfile,mod); await writeFile(sumfile,sum);
     const downloaded=JSON.parse(await command(['mod','download','-modfile='+modfile,'-json',PIN.module+'@'+PIN.version],options));
     if(downloaded.Error || downloaded.Path!==PIN.module || downloaded.Version!==PIN.version || downloaded.Sum!==PIN.sum || downloaded.GoModSum!==PIN.goModSum || typeof downloaded.Dir!=='string') throw new Error('download identity/version/checksum mismatch');
+    // Both cold and warm caches are re-resolved after download. No module copy
+    // or experimental build occurs until all physical containment checks pass.
+    const cache=await realpath(environment.GOMODCACHE);
+    const actualTemporary=await realpath(temporary);
+    const actualRepo=await realpath(repo);
+    if(within(cache,actualTemporary)||within(actualTemporary,cache)||within(actualRepo,actualTemporary)||within(actualTemporary,actualRepo)) throw new Error('downloaded cache/repository overlaps temporary workspace; replacement must remain outside');
+    if(existingCache && existingCache!==cache) throw new Error('module cache redirected during download');
     const source=await realpath(downloaded.Dir);
     if(source===cache || !within(cache,source)) throw new Error('download source is not within the actual Go module cache');
     const sourceMod=await readFile(path.join(source,'go.mod'),'utf8');
@@ -187,8 +203,7 @@ export async function runExperiment({platform=process.platform,repo=DEFAULT_REPO
     const selected=JSON.parse(await command(['list','-modfile='+modfile,'-m','-json',PIN.module],options));
     if(selected.Path!==PIN.module||selected.Version!==PIN.version||selected.Replace) throw new Error('resolved module selection differs from exact official version');
     await command(['mod','verify','-modfile='+modfile],options);
-    const replacement=path.join(temporary,'sqlite');
-    await copyModule(source,replacement);
+    await copyModule(source,replacement,()=>{replacementOwned=true;});
     // Re-verify the untouched cache after copying, before installing the patch.
     await command(['mod','verify','-modfile='+modfile],options);
     await writeFile(path.join(replacement,PATCH_NAME),patch,{flag:'wx'});
@@ -200,9 +215,21 @@ export async function runExperiment({platform=process.platform,repo=DEFAULT_REPO
     await command(args,{...options,onStdout:chunk=>events.feed(chunk)});
     events.finish();
     log('Native event manifest verified: 9 required tests, 3 passes each, both package passes, no fail/skip events.');
+  } catch(error) {
+    failure=error;
   } finally {
-    await rm(temporary,{recursive:true,force:true,maxRetries:0});
+    // Remove only runner-owned entries. In particular, a redirected cold cache
+    // created unexpectedly inside this directory must never be recursively
+    // deleted as though it were our module copy.
+    const cleanupErrors=[];
+    for(const owned of [modfile,sumfile,...(replacementOwned?[replacement]:[])]) {
+      try { await rm(owned,{recursive:owned===replacement,force:true,maxRetries:0}); }
+      catch(error) { cleanupErrors.push(error); }
+    }
+    try { await rmdir(temporary); } catch(error) { cleanupErrors.push(error); }
+    if(cleanupErrors.length) failure=new AggregateError([...(failure?[failure]:[]),...cleanupErrors], 'experimental cleanup incomplete; unexpected entries retained; '+(failure?.message??'cleanup failure'));
   }
+  if(failure) throw failure;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

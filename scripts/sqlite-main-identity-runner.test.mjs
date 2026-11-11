@@ -44,22 +44,40 @@ test('non-Windows invocation fails explicitly before executing commands', async 
  assert.equal(called,false);
 });
 
-async function stagedRun(t, {failTest=false, wrongDownload=false, noEvents=false, aliasRepo=false}={}) {
+async function stagedRun(t, {failTest=false, wrongDownload=false, noEvents=false, aliasRepo=false, coldCache=false, redirectCache=false, obstructCopy=false}={}) {
  const dir=await fixture(t), repo=path.join(dir,'repo'), cache=path.join(dir,'cache'), module=path.join(cache,'modernc.org','sqlite@v1.58.0'), staging=path.join(dir,'staging');
- await mkdir(module,{recursive:true}); await mkdir(staging); await mkdir(path.join(repo,path.dirname(PATCH_RELATIVE)),{recursive:true});
+ await mkdir(staging); await mkdir(path.join(repo,path.dirname(PATCH_RELATIVE)),{recursive:true});
  await writeFile(path.join(repo,'go.mod'),mod); await writeFile(path.join(repo,'go.sum'),sum); await writeFile(path.join(repo,PATCH_RELATIVE),patch);
- await writeFile(path.join(module,'go.mod'),'module modernc.org/sqlite\n'); await writeFile(path.join(module,'LICENSE'),'official fixture license'); await writeFile(path.join(module,'sqlite.go'),'package sqlite\n'); await mkdir(path.join(module,'lib')); await writeFile(path.join(module,'lib','source.go'),'package sqlite3\n');
+ async function seedModule() {
+  await mkdir(module,{recursive:true});
+  await writeFile(path.join(module,'go.mod'),'module modernc.org/sqlite\n'); await writeFile(path.join(module,'LICENSE'),'official fixture license'); await writeFile(path.join(module,'sqlite.go'),'package sqlite\n'); await mkdir(path.join(module,'lib')); await writeFile(path.join(module,'lib','source.go'),'package sqlite3\n');
+ }
+ if(coldCache) await assert.rejects(realpath(cache),{code:'ENOENT'}); else await seedModule();
  // All expected paths derive from the canonical fixture root, including cache,
  // downloaded module and staging. Never compare a short temp alias to cwd.
  const repoInput = aliasRepo ? path.join(dir,'repo-alias') : repo;
  if(aliasRepo) await symlink(repo,repoInput,process.platform==='win32'?'junction':'dir');
- const calls=[], logs=[];
+ const calls=[], logs=[]; let verifies=0, blockedCopy;
  const command=async(args, options)=>{
   calls.push(args);
   assert.equal(options.cwd,repo); assert.equal(options.env.GOWORK,'off'); assert.equal(options.env.GOTOOLCHAIN,'local'); assert.equal(options.env.GOFLAGS,'');
   if(args[0]==='env') return JSON.stringify({GOMODCACHE:cache});
-  if(args[0]==='mod'&&args[1]==='download') return JSON.stringify({Path:PIN.module,Version:wrongDownload?'v1.57.0':PIN.version,Sum:PIN.sum,GoModSum:PIN.goModSum,Dir:module});
-  if(args[0]==='mod'&&args[1]==='verify') return 'all modules verified\n';
+  if(args[0]==='mod'&&args[1]==='download') {
+   if(coldCache) {
+    await assert.rejects(realpath(cache),{code:'ENOENT'});
+    if(redirectCache) await symlink(staging,cache,process.platform==='win32'?'junction':'dir');
+    await seedModule(); // Only the official-download boundary establishes cache.
+   }
+   return JSON.stringify({Path:PIN.module,Version:wrongDownload?'v1.57.0':PIN.version,Sum:PIN.sum,GoModSum:PIN.goModSum,Dir:module});
+  }
+  if(args[0]==='mod'&&args[1]==='verify') {
+   verifies++;
+   if(obstructCopy && verifies===1) {
+    blockedCopy=path.join(path.dirname(args.find(a=>a.startsWith('-modfile=')).slice(9)),'sqlite');
+    await mkdir(blockedCopy); await writeFile(path.join(blockedCopy,'unexpected'),'not owned by runner');
+   }
+   return 'all modules verified\n';
+  }
   if(args[0]==='list') return JSON.stringify({Path:PIN.module,Version:PIN.version});
   if(args[0]==='test') {
    const modfile=args.find(x=>x.startsWith('-modfile=')).slice(9);
@@ -76,13 +94,17 @@ async function stagedRun(t, {failTest=false, wrongDownload=false, noEvents=false
   throw new Error('unexpected command '+args.join(' '));
  };
  const action=runExperiment({platform:'win32', repo:repoInput, tempRoot:staging, command, log:line=>logs.push(line)});
- if(failTest||wrongDownload||noEvents) await assert.rejects(action,wrongDownload?/version|download/i:noEvents?/manifest|missing|pass/i:/native test failed/); else {
+ if(failTest||wrongDownload||noEvents||redirectCache||obstructCopy) await assert.rejects(action,obstructCopy?/cleanup incomplete/i:redirectCache?/outside|cache|overlap/i:wrongDownload?/version|download/i:noEvents?/manifest|missing|pass/i:/native test failed/); else {
   await action;
   assert.ok(logs.some(s=>s.includes('modernc.org/sqlite v1.58.0')));
   assert.ok(logs.some(s=>/patch SHA256=[0-9a-f]{64}/.test(s)));
   assert.ok(logs.some(s=>s.includes('go test')&&s.includes('-run=^TestNative(Protected|SQLite)')));
  }
- assert.deepEqual(await readdir(staging),[],'temporary module and modfiles must be removed');
+ if(obstructCopy) {
+  assert.equal(await readFile(path.join(blockedCopy,'unexpected'),'utf8'),'not owned by runner');
+  assert.deepEqual(await readdir(path.dirname(blockedCopy)),['sqlite'],'only unexpected directory remains; owned modfiles removed');
+ } else assert.deepEqual(await readdir(staging),redirectCache?['modernc.org']:[],'owned temporary files removed without deleting redirected cache source');
+ assert.equal(await readFile(path.join(module,'sqlite.go'),'utf8'),'package sqlite\n');
  assert.equal(await readFile(path.join(repo,'go.mod'),'utf8'),mod); assert.equal(await readFile(path.join(repo,'go.sum'),'utf8'),sum);
  return calls;
 }
@@ -144,4 +166,17 @@ test('Go 1.26 build-output uses ImportPath, contributes no passes, and build-fai
 // failed in Node setup and never reached native Go tests; it is NOT native RED.
 test('repository alias is canonicalized before every Go command without weakening cwd equality',async t=>{
  await stagedRun(t,{aliasRepo:true});
+});
+
+// 59265bb / Actions 43001065538 / job 130457017619 failed before Go tests:
+// setup-go cache:false leaves GOMODCACHE absent. This was runner setup, not native RED.
+test('cold cache is created only by official download then physically verified',async t=>{
+ const calls=await stagedRun(t,{coldCache:true}); assert.ok(calls.some(a=>a[0]==='test'));
+});
+test('cold cache redirect containing temporary work refuses before copy/test and preserves cache',async t=>{
+ const calls=await stagedRun(t,{coldCache:true,redirectCache:true}); assert.equal(calls.some(a=>a[0]==='test'),false);
+});
+
+test('preexisting replacement directory is never owned or deleted after mkdir EEXIST',async t=>{
+ const calls=await stagedRun(t,{obstructCopy:true}); assert.equal(calls.some(a=>a[0]==='test'),false);
 });
