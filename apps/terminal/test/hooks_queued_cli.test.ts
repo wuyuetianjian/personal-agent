@@ -2,26 +2,27 @@ import {fixtureName,readFixtureInfo,stopFixture} from '../../../packages/client/
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn,spawnSync} from 'node:child_process';
-import {mkdtemp,rm,symlink} from 'node:fs/promises';
+import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
-import {join,resolve} from 'node:path';
+import {join} from 'node:path';
 import {createServer} from 'node:http';
 import {once} from 'node:events';
-import {buildHookCLI} from './build_hooks_cli.mjs';
+import {buildHookCLI,createHookCLIDirectory} from './build_hooks_cli.mjs';
 
 test('actual compiled CLI disable loss and re-enable never revive an owned queued Skill run',{timeout:90000},async(t)=>{
  const dir=await mkdtemp(join(tmpdir(),'hooks-queued-cli-'));
  const env={...process.env,PA_AGENT_TOKEN:'queued-hook-fixture'};
  let server:ReturnType<typeof spawn>|undefined;
  let proxy:ReturnType<typeof createServer>|undefined;
+ let cliDir:string|undefined;
  try{
-  const binary=join(dir,fixtureName()),cli=join(dir,'cli.mjs');
+  cliDir=createHookCLIDirectory();
+  const binary=join(dir,fixtureName()),cli=join(cliDir,'cli.mjs');
   const build=spawnSync(process.env['GO_BINARY']??'go',['build','-o',binary,'./cmd/agent-fixture'],{encoding:'utf8',timeout:60000});
   assert.equal(build.status,0,build.stderr);
   const external=spawnSync(binary,['--queued-hook-run','--workspace',dir],{env,encoding:'utf8',timeout:5000});
   assert.equal(external.status,1);assert.match(external.stderr,/requires an exclusive owned temporary workspace/);
   buildHookCLI(cli);
-  await symlink(resolve('apps/terminal/node_modules'),join(dir,'node_modules'),process.platform==='win32'?'junction':'dir');
   server=spawn(binary,['--queued-hook-run'],{env,stdio:['ignore','pipe','pipe']});
   const info=await readFixtureInfo<{url:string;runtime_parent:string;hook_session_id:string;hook_run_id:string;hook_revision_id:string}>(server);
   const calls:{method:string;path:string}[]=[];
@@ -91,6 +92,7 @@ test('actual compiled CLI disable loss and re-enable never revive an owned queue
  }finally{
   if(proxy){proxy.closeAllConnections();await new Promise<void>(resolve=>proxy!.close(()=>resolve()))}
   await stopFixture(server);
+  if(cliDir)await rm(cliDir,{recursive:true,force:true});
   await rm(dir,{recursive:true,force:true});
  }
 });

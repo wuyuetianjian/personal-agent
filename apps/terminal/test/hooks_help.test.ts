@@ -1,20 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {mkdtempSync,rmSync,symlinkSync} from 'node:fs';
+import {existsSync,rmSync} from 'node:fs';
+import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {join,resolve} from 'node:path';
-import {buildHookCLI} from './build_hooks_cli.mjs';
+import {fileURLToPath} from 'node:url';
+import {buildHookCLI,createHookCLIDirectory} from './build_hooks_cli.mjs';
 
 test('compiled top-level help exposes Hook prepare, separate decisions and original-request GET recovery without authentication',()=>{
- const dir=mkdtempSync(join(tmpdir(),'hooks-help-'));
+ const dir=createHookCLIDirectory();
  try{
-  symlinkSync(resolve('apps/terminal/node_modules'),join(dir,'node_modules'),process.platform==='win32'?'junction':'dir');
+  assert.equal(existsSync(join(dir,'node_modules')),false,'compiled fixture must resolve the owning package dependencies without a link');
   const entry=join(dir,'cli.mjs');
   buildHookCLI(entry);
   const env={...process.env};
   delete env.PA_AGENT_TOKEN;
-  const result=spawnSync(process.execPath,[entry,'--help'],{cwd:dir,env,encoding:'utf8',timeout:15000});
+  const result=spawnSync(process.execPath,[entry,'--help'],{cwd:tmpdir(),env,encoding:'utf8',timeout:15000});
   assert.equal(result.error,undefined);
   assert.equal(result.status,0,result.stderr);
   assert.equal(result.stdout,'');
@@ -28,4 +29,20 @@ test('compiled top-level help exposes Hook prepare, separate decisions and origi
  }finally{
   rmSync(dir,{recursive:true,force:true});
  }
+});
+
+
+test('standalone Hook builder accepts an output path with spaces and produces the real runnable CLI',()=>{
+ const dir=createHookCLIDirectory();
+ try{
+  const entry=join(dir,'cli with spaces.mjs');
+  const build=spawnSync(process.execPath,[fileURLToPath(new URL('./build_hooks_cli.mjs',import.meta.url)),entry],{encoding:'utf8',timeout:15000});
+  assert.equal(build.error,undefined);
+  assert.equal(build.status,0,build.stderr);
+  assert.equal(existsSync(entry),true,'standalone builder must invoke buildHookCLI');
+  const result=spawnSync(process.execPath,[entry,'--help'],{cwd:tmpdir(),encoding:'utf8',timeout:15000});
+  assert.equal(result.error,undefined);
+  assert.equal(result.status,0,result.stderr);
+  assert.match(result.stderr,/--hooks/);
+ }finally{rmSync(dir,{recursive:true,force:true})}
 });
