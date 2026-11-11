@@ -323,14 +323,23 @@ func TestNativeStorageScratchExistingCollisions(t *testing.T) {
 				}
 			}
 			before := scratchPathID(t, target)
-			h, _, err := scratchCreate(root.h, "victim")
+			// FILE_NON_DIRECTORY_FILE rejects directories (including the directory
+			// reparse object opened without traversal) before FILE_CREATE collision.
+			expected := windows.STATUS_OBJECT_NAME_COLLISION
+			if kind == "directory" || kind == "junction" {
+				expected = windows.STATUS_FILE_IS_A_DIRECTORY
+			}
+			h, io, err := scratchCreate(root.h, "victim")
+			var status windows.NTStatus
+			isNTStatus := errors.As(err, &status)
+			t.Logf("collision kind=%s NTSTATUS=0x%08x typed=%v expected=0x%08x IOSB.Status=0x%08x IOSB.Information=%d", kind, uint32(status), isNTStatus, uint32(expected), io.Status, io.Information)
 			if h != 0 {
 				defer scratchClose(t, &h)
 				actual, observeErr := scratchNTName(h)
 				t.Fatalf("collision returned live handle BEFORE close: actual=%q observe=%v create=%v", actual, observeErr, err)
 			}
-			if !errors.Is(err, windows.STATUS_OBJECT_NAME_COLLISION) {
-				t.Fatalf("unqualified collision status (must be OBJECT_NAME_COLLISION, not generic refusal): %v", err)
+			if !isNTStatus || status != expected {
+				t.Fatalf("unqualified %s collision: NTSTATUS=0x%08x expected=0x%08x error=%v", kind, uint32(status), uint32(expected), err)
 			}
 			if after := scratchPathID(t, target); after != before {
 				t.Fatalf("collision changed existing identity: before=%+v after=%+v", before, after)
