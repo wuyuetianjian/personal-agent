@@ -2,12 +2,15 @@
 
 package interaction
 
-import "context"
+import (
+	"context"
+	"runtime"
+)
 
-func platformExecCapability() Capability {
-	return Capability{Reason: "NON-SANDBOXED exec unavailable on this platform: no natively qualified executable identity and child cleanup implementation"}
+func platformExecCapability() Capability { return disabledNativeSupport(runtime.GOOS).Exec }
+func inspectExec(review *ExecReview) error {
+	return (unavailableNativeAdapter{target: runtime.GOOS}).inspectExec(review)
 }
-func inspectExec(*ExecReview) error { return ErrCapabilityUnavailable }
-func executePreparedExec(context.Context, WorkspaceBinding, preparedTool) (ToolResult, error) {
-	return refused(ErrCapabilityUnavailable)
+func executePreparedExec(ctx context.Context, w WorkspaceBinding, p preparedTool) (ToolResult, error) {
+	return (unavailableNativeAdapter{target: runtime.GOOS}).executePreparedExec(ctx, w, p)
 }

@@ -1,0 +1,121 @@
+name: Native conformance (capabilities disabled)
+
+on:
+  push:
+    branches: [test/rebuild-20261110]
+  workflow_dispatch:
+
+# No secrets, write token, deployments, releases, or privileged host changes.
+permissions:
+  contents: read
+
+concurrency:
+  group: native-conformance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native:
+    name: ${{ matrix.os }} native refusal and regression
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        id: go
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        id: node
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Record exact source and native runtime
+        run: |
+          git rev-parse HEAD
+          go version
+          go env GOOS GOARCH
+          node --version
+          printf 'These tests qualify disabled-capability refusals only.\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'Read, Search, Replace, Undo, Exec, and MCP stdio remain disabled on these targets.\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'Source: %s\nRunner: %s %s\n' "$GITHUB_SHA" "$RUNNER_OS" "$RUNNER_ARCH" >> "$GITHUB_STEP_SUMMARY"
+      - name: Record macOS version and test volume
+        if: runner.os == 'macOS'
+        run: |
+          sw_vers
+          uname -m
+          df -h "$RUNNER_TEMP"
+          diskutil info "$(df "$RUNNER_TEMP" | awk 'NR==2 {print $1}')"
+      - name: Record Windows version and test volume
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          [System.Environment]::OSVersion.VersionString
+          [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+          Get-Volume -DriveLetter ([System.IO.Path]::GetPathRoot($env:RUNNER_TEMP).Substring(0,1)) | Select-Object DriveLetter, FileSystemType, DriveType, HealthStatus
+      - name: Run native refusal contracts on the target kernel
+        id: native
+        if: ${{ !cancelled() && steps.go.outcome == 'success' }}
+        run: |
+          go test -json -count=1 -timeout=10m -run '^(TestNative(Support|MCPReadiness|WorkspaceCapabilities|ToolDefinitions|StatusWire)|TestUnsupportedNativeRefusalContract|TestUnavailable(Native|Platform))' ./internal/interaction ./internal/api | tee native-tests.json
+      - name: Require all native contract tests without skips
+        if: ${{ !cancelled() && steps.native.outcome != 'skipped' && steps.node.outcome == 'success' }}
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          const events = fs.readFileSync('native-tests.json', 'utf8').trim().split('\n').map(JSON.parse);
+          const required = {
+            'agent/internal/interaction': ['TestNativeSupportDependenciesAndBundle', 'TestNativeSupportDisabledTargets', 'TestNativeMCPReadinessIndependent', 'TestNativeWorkspaceCapabilitiesWireUnchanged', 'TestNativeToolDefinitionsForSupport', 'TestUnsupportedNativeRefusalContract', 'TestUnavailableNativeProposalAndDispatch', 'TestUnavailableNativeStoredOperations', 'TestUnavailableNativeMCPPreparation', 'TestUnavailablePlatformFailsClosed', 'TestUnavailablePlatformDirectRefusals'],
+            'agent/internal/api': ['TestNativeStatusWireUnchanged', 'TestUnavailableNativeServiceBoundaries'],
+          };
+          assert(!events.some(e => ['skip', 'fail'].includes(e.Action)), 'Native contract skipped or failed');
+          for (const [pkg, tests] of Object.entries(required)) {
+            assert(events.some(e => e.Package === pkg && !e.Test && e.Action === 'pass'), `${pkg} did not finish`);
+            for (const test of tests) assert(events.some(e => e.Package === pkg && e.Test === test && e.Action === 'pass'), `${pkg}/${test} did not pass`);
+          }
+          const passed = events.filter(e => e.Test && e.Action === 'pass').length;
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Native refusal contracts: ${passed} tests/subtests passed, zero skipped. This does not qualify enabled native adapters.\n`);
+          JS
+      - name: Run complete Go regression suite
+        if: ${{ !cancelled() && steps.go.outcome == 'success' }}
+        run: go test -json -count=1 -timeout=15m ./... | tee go-tests.json
+      - name: Report all Go failures and skips
+        if: ${{ !cancelled() && steps.node.outcome == 'success' }}
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          if (!fs.existsSync('go-tests.json')) throw new Error('Complete Go suite did not run');
+          const events = fs.readFileSync('go-tests.json', 'utf8').trim().split('\n').map(JSON.parse);
+          for (const action of ['pass', 'skip', 'fail']) {
+            const rows = events.filter(e => e.Test && e.Action === action);
+            const line = `Go tests/subtests ${action}: ${rows.length}\n`;
+            console.log(line.trim());
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, line);
+            if (action !== 'pass') for (const e of rows) console.log(`${action}: ${e.Package}/${e.Test}`);
+          }
+          JS
+      - name: Vet Go packages
+        if: ${{ !cancelled() && steps.go.outcome == 'success' }}
+        run: go vet ./...
+      - name: Install locked JavaScript dependencies without lifecycle scripts
+        id: dependencies
+        if: ${{ !cancelled() && steps.node.outcome == 'success' }}
+        run: |
+          npm install --global pnpm@11.25.0 --ignore-scripts
+          pnpm install --frozen-lockfile --ignore-scripts
+      - name: Run TypeScript tests
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: pnpm test
+      - name: Check TypeScript types
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: pnpm typecheck

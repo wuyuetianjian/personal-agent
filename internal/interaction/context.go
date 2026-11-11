@@ -125,7 +125,7 @@ func (a *ContextAssembler) Build(ctx context.Context, sessionID string, budget T
 		out.Tools = append(out.Tools, mcpDefinitions(w.Policy)...)
 	}
 	execDescription := "Exec is unavailable."
-	if !chatOnly && w.Policy.NonSandboxExec && w.Policy.Mode != ModePlan && platformExecCapability().Enabled {
+	if !chatOnly && w.Policy.NonSandboxExec && w.Policy.Mode != ModePlan && currentNativeSupport().Exec.Enabled {
 		out.Tools = append(out.Tools, execToolDefinition())
 		execDescription = NonSandboxExecWarning + " Fresh exact approval is required for every invocation. Workspace directory (cwd default is not implied): " + w.Policy.Root
 	}

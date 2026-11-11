@@ -38,7 +38,17 @@ test('unknown message outcome stays locked until explicit snapshot proves the or
  let requestID='',posts=0;const run={id:'r',request_id:'',input:'keep',state:'completed',phase:'completed',text:'done',draft:'',tools:[]};
  const c=new SessionController({submitMessage:async(_s:string,_v:string,q:string)=>{requestID=q;posts++;throw new Error('lost response')},snapshot:async()=>({schema_version:1,session:{id:'s',model_id:'m',mode:'chat_only',files:false,tools:false,reason:''},cursor:1,runs:run.request_id?[run]:[],has_older:false})} as never,'s');c.draft='keep';await assert.rejects(c.submit());await c.submit();assert.equal(posts,1);await c.reconcile();assert.equal(c.busy,true);run.request_id=requestID;await c.reconcile();assert.equal(c.busy,false);assert.equal(c.draft,'');assert.equal(c.runs.length,1);assert.equal(posts,1);
 });
-test('capability summary reports disabled native adapters and exact server reason',async()=>{const {capabilitySummary}=await import('../src/presentation.ts');assert.match(capabilitySummary({workspace:{Files:{Enabled:false,Reason:'unsupported fixture'},Exec:{Enabled:false,Reason:'off'}}}),/文件工具不可用：unsupported fixture/)});
+for(const label of ['macOS','Windows','unsupported target "freebsd"']) {
+ test(`capability summary reports exact disabled native reasons for ${label}`,async()=>{
+  const {capabilitySummary}=await import('../src/presentation.ts');
+  const files='Native file bundle unavailable (Read, Search, Replace, Undo required): Native file adapter unavailable on '+label+': file identity, containment, read, replacement and undo are not natively qualified';
+  const exec='NON-SANDBOXED exec unavailable on '+label+': executable identity and direct-child cleanup are not natively qualified';
+  const status={workspace:{Files:{Enabled:false,Reason:files},Exec:{Enabled:false,Reason:exec}}};
+  const before=structuredClone(status);
+  assert.equal(capabilitySummary(status),`文件工具不可用：${files} · 命令执行不可用：${exec}`);
+  assert.deepEqual(status,before);assert.equal(status.workspace.Files.Enabled,false);assert.equal(status.workspace.Exec.Enabled,false);
+ });
+}
 test('explicit snapshot clears an acknowledged run wait without needing a live stream',async()=>{
  const c=new SessionController({submitMessage:async()=>({run_id:'r',state:'running'}),snapshot:async()=>({schema_version:1,session:{id:'s',model_id:'m',mode:'chat_only',files:false,tools:false,reason:''},cursor:4,runs:[{id:'r',request_id:'q',input:'one',state:'completed',phase:'completed',text:'done',draft:'',tools:[]}],has_older:false})} as never,'s');c.draft='one';await c.submit();assert.equal(c.busy,true);await c.reconcile();assert.equal(c.busy,false);
 });

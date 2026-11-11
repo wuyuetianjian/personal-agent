@@ -31,7 +31,21 @@ type SQLiteSideEffectStore struct {
 	DB *sql.DB
 }
 
+type sideEffectClaimDB interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
 func (s SQLiteSideEffectStore) Claim(ctx context.Context, record SideEffectRecord) (SideEffectRecord, bool, error) {
+	return claimSideEffect(ctx, s.DB, record)
+}
+
+// ClaimSideEffectTx is the same journal primitive inside a caller-owned atomic
+// boundary. It never commits and does not reinterpret an existing claim as safe.
+func ClaimSideEffectTx(ctx context.Context, tx *sql.Tx, record SideEffectRecord) (SideEffectRecord, bool, error) {
+	return claimSideEffect(ctx, tx, record)
+}
+func claimSideEffect(ctx context.Context, q sideEffectClaimDB, record SideEffectRecord) (SideEffectRecord, bool, error) {
 	if record.IdempotencyKey == "" {
 		return SideEffectRecord{}, false, errors.New("side effect idempotency key is required")
 	}
@@ -39,7 +53,7 @@ func (s SQLiteSideEffectStore) Claim(ctx context.Context, record SideEffectRecor
 	record.Status = "started"
 	record.CreatedAt = now
 	record.UpdatedAt = now
-	result, err := s.DB.ExecContext(ctx, `INSERT OR IGNORE INTO side_effect_records (idempotency_key, workflow_id, node_id, capability_id, status, result_ref, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+	result, err := q.ExecContext(ctx, `INSERT OR IGNORE INTO side_effect_records (idempotency_key, workflow_id, node_id, capability_id, status, result_ref, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		record.IdempotencyKey, record.WorkflowID, record.NodeID, record.CapabilityID, record.Status, record.ResultRef, record.CreatedAt, record.UpdatedAt)
 	if err != nil {
 		return SideEffectRecord{}, false, err
@@ -48,13 +62,16 @@ func (s SQLiteSideEffectStore) Claim(ctx context.Context, record SideEffectRecor
 	if rows == 1 {
 		return record, true, nil
 	}
-	existing, err := s.Get(ctx, record.IdempotencyKey)
+	existing, err := getSideEffect(ctx, q, record.IdempotencyKey)
 	return existing, false, err
 }
 
 func (s SQLiteSideEffectStore) Get(ctx context.Context, key string) (SideEffectRecord, error) {
+	return getSideEffect(ctx, s.DB, key)
+}
+func getSideEffect(ctx context.Context, q sideEffectClaimDB, key string) (SideEffectRecord, error) {
 	var record SideEffectRecord
-	err := s.DB.QueryRowContext(ctx, `SELECT idempotency_key, workflow_id, node_id, capability_id, status, result_ref, created_at, updated_at FROM side_effect_records WHERE idempotency_key = ?`, key).Scan(
+	err := q.QueryRowContext(ctx, `SELECT idempotency_key, workflow_id, node_id, capability_id, status, result_ref, created_at, updated_at FROM side_effect_records WHERE idempotency_key = ?`, key).Scan(
 		&record.IdempotencyKey, &record.WorkflowID, &record.NodeID, &record.CapabilityID, &record.Status, &record.ResultRef, &record.CreatedAt, &record.UpdatedAt)
 	return record, err
 }

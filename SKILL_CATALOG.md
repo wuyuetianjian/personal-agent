@@ -76,7 +76,7 @@ At capacity, admission fails; no automatic purge or retention deletion route exi
 
 ## 中文摘要
 
-当前已提供独立的 Skill 目录后端内核、HTTP API、共享 TypeScript SDK、可恢复控制器及 Web/Ink/机器 CLI 目录入口。另有下文所述内部确定性只读执行内核；独立只读运行接口和 Web/Ink/机器 CLI 现已提供，Hooks 尚未开放。`enabled` 只表示选定一个不可变版本，目录的历史结构审核仍保留 `not_run` 与 `unavailable / bridge_not_implemented`，不代表新的运行资格判断。旧 Skill 表、registry、runtime、Jobs、工具、模型和全局 RAG 不作为此目录的权限来源。
+当前已提供独立的 Skill 目录后端内核、HTTP API、共享 TypeScript SDK、可恢复控制器及 Web/Ink/机器 CLI 目录入口。另有下文所述内部确定性只读执行内核；独立只读运行接口和 Web/Ink/机器 CLI 现已提供，并支持有界、会话拥有的声明式拒绝/审计 Hooks；可执行/通用 Hooks 仍未开放。`enabled` 只表示选定一个不可变版本，目录的历史结构审核仍保留 `not_run` 与 `unavailable / bridge_not_implemented`，不代表新的运行资格判断。旧 Skill 表、registry、runtime、Jobs、工具、模型和全局 RAG 不作为此目录的权限来源。
 
 只接收明确的 UTF-8 YAML 文本，最多 64 KiB、单文档。字段、类型、枚举、字符串长度、集合大小和依赖图均严格校验；拒绝重复键、未知键、锚点、别名、显式 tag、隐式类型转换、无效 Unicode、循环依赖与歧义节点。上方列出了完整版本化 schema，保留每个目标原文并标记 unsupported，不猜测执行能力。
 
@@ -118,7 +118,7 @@ Both authenticated clients own one SkillOperations instance, shared across sessi
 
 Local readers preserve UTF-8 bytes including BOM, reject invalid UTF-8 and >65536 bytes, and never transmit a path as server authority. The Node reader opens nonblocking/no-follow, verifies a regular file, and reads at most 65537 bytes before deciding. Browser files are explicitly selected File objects and are size-checked before decoding. Persistence contains only bounded original session/request/operation IDs. Original-request GET is the only recovery; the CLI returns the original daemon's recovery argument array and a nonzero status for refusal or uncertainty.
 
-中文：Web、Ink、机器 CLI 已接入目录元数据生命周期；旧管理目录保持只读且分离。输入和审核原文只作字面证据，保留 BOM，拒绝超限/无效 UTF-8；本地路径不成为服务端权限。恢复只保存原始 ID，重载/重启后先隔离，再按原始请求 GET 查询。确认和取消仅作用于目录，不会批准其他工具或发送保留草稿。选中版本本身仍不授权执行；内部只读运行内核见下文，独立只读运行接口和客户端现已提供，Hooks 尚未开放。
+中文：Web、Ink、机器 CLI 已接入目录元数据生命周期；旧管理目录保持只读且分离。输入和审核原文只作字面证据，保留 BOM，拒绝超限/无效 UTF-8；本地路径不成为服务端权限。恢复只保存原始 ID，重载/重启后先隔离，再按原始请求 GET 查询。确认和取消仅作用于目录，不会批准其他工具或发送保留草稿。选中版本本身仍不授权执行；内部只读运行内核见下文，独立只读运行接口和客户端现已提供，并支持有界、会话拥有的声明式拒绝/审计 Hooks；可执行/通用 Hooks 仍未开放。
 
 ## Internal deterministic read-only kernel / 内部确定性只读内核
 
@@ -126,9 +126,9 @@ The internal Go kernel now supports a separate `readonly-workspace-v1` run revie
 
 内部 Go 内核新增独立的 `readonly-workspace-v1` 执行预览与确认。目录启用不会自动执行；Skill 运行 HTTP 接口、生成的 TypeScript 客户端以及 Web、Ink、机器 CLI 执行控件现已作为独立生命周期提供；不可变的目录结构审核保持不变。
 
-Each workflow node must have one same-named object input. `workspace.read` accepts exactly `{path}` and `workspace.search` accepts exactly `{paths, query}`. The server injects the immutable workspace scope. Dependencies only order successful completion; they do not interpolate arguments or pass outputs. Roles, models, scripts, MCP, writes, semantic verification, Hooks and legacy workflow execution are unavailable. Positive minimum coverage blocks this profile; evaluation remains `not_run`, including completed reads.
+Each workflow node must have one same-named object input. `workspace.read` accepts exactly `{path}` and `workspace.search` accepts exactly `{paths, query}`. The server injects the immutable workspace scope. Dependencies only order successful completion; they do not interpolate arguments or pass outputs. Roles, models, scripts, MCP, writes, semantic verification, executable/general Hooks and legacy workflow execution are unavailable. Session-owned declarative deny/audit Hooks for this profile are described below. Positive minimum coverage blocks this profile; evaluation remains `not_run`, including completed reads.
 
-每个工作流节点必须对应一个同名 object 输入。仅允许 `workspace.read` 的 `{path}` 和 `workspace.search` 的 `{paths, query}`；服务端注入不可变工作区范围。依赖仅控制成功完成的顺序，不插值、不传递输出。角色、模型、脚本、MCP、写入、语义验证、Hooks 与旧工作流不受支持。非零最低验证覆盖率会阻止执行；读取完成也不代表验证通过。
+每个工作流节点必须对应一个同名 object 输入。仅允许 `workspace.read` 的 `{path}` 和 `workspace.search` 的 `{paths, query}`；服务端注入不可变工作区范围。依赖仅控制成功完成的顺序，不插值、不传递输出。角色、模型、脚本、MCP、写入、语义验证、可执行/通用 Hooks 与旧工作流不受支持；本配置的会话声明式拒绝/审计 Hooks 见下文。非零最低验证覆盖率会阻止执行；读取完成也不代表验证通过。
 
 Execution uses the existing Engine, invocation journal, session serialization and service worker limits. The preview is valid for ten minutes. Admission pins the selected revision, content, plan, input, workspace and policy identities. Disabling or selecting another revision permanently revokes future nodes of pinned runs. Reads admitted before revocation can finish; their observations remain visible. Re-enabling does not revive revoked runs. Unknown invocation outcomes require reconciliation and are never automatically retried.
 
@@ -145,7 +145,7 @@ Skill 运行的现有取消/恢复确认记录也共享请求及副本限额；�
 
 ### Read-only Skill runs / 只读 Skill 运行
 
-This is a bounded deterministic `readonly-workspace-v1` profile, not a legacy workflow/model bridge. Catalog structural review, enabled revision selection, run eligibility/admission, actual node execution and evaluation are separate. `completed` means the admitted native reads/searches succeeded; evaluation remains `not_run`, verification `not_evaluated`. Only Linux native fixtures are qualified, with no OS-sandbox claim. Hooks and other profiles are unavailable.
+This is a bounded deterministic `readonly-workspace-v1` profile, not a legacy workflow/model bridge. Catalog structural review, enabled revision selection, run eligibility/admission, actual node execution and evaluation are separate. `completed` means the admitted native reads/searches succeeded; evaluation remains `not_run`, verification `not_evaluated`. Only Linux native fixtures are qualified, with no OS-sandbox claim. Session-owned declarative deny/audit Hooks for this profile are available as described below; executable/general Hooks and other execution profiles remain unavailable.
 
 Web: open Skill catalog in an existing plan/default/acceptEdits session with supported native workspace binding. Under Read-only Skill execution, enter the exact catalog/revision IDs and a JSON object keyed by the manifest's same-named object inputs. Read accepts `{path:"note.txt"}`; search accepts `{paths:["note.txt"],query:"literal"}`. Preview is content-free; inspect scope/root/policy, compiled native calls, hashes, fixed budgets and expiry, then explicitly confirm. Read the admitted run, or use full-evidence run history/detail and exact stop/resume. No provider probe or hidden session is needed. chat_only and unsupported profiles remain blocked.
 
@@ -160,3 +160,15 @@ Only recovery identity is persisted: Web sessionStorage `agent-skill-run-operati
 Fixed limits: 16 attempts/nodes, 120-second admission deadline, 32 KiB canonical input, 64 KiB serialized result envelope per node, 1 MiB aggregate outputs/artifacts, 512 ordinary plus 64 control/recovery events. Lifetime reservations/retained copies are also bounded; capacity refusals do not silently truncate outputs, create another run or bypass confirmation. Logical payload limits do not promise SQLite/WAL physical size. No purge, real-provider qualification, MCP/network execution, platform widening or semantic evaluation is included.
 
 中文：独立运行入口现已接入 Web、Ink 与机器 CLI，仅支持固定工作区的确定性只读读取/搜索。目录历史结构审核、选中版本、运行资格、准入、节点实际结果与语义评估严格分离。每次运行均需精确版本、JSON 输入、独立预览与明确确认；不调用模型，不创建隐藏会话。完成只代表原生读取/搜索成功，evaluation 始终为 `not_run`，verification 为 `not_evaluated`。未知响应及重载/重启后保持全局隔离，仅按原始会话/请求/运行/动作 GET 读取恢复，绝不重发 POST。只保存恢复标识，不保存输入、令牌、清单或结果。停用或切换版本会永久撤销后续节点；已完成的读取不能撤回，已有证据保留。限额、保留容量、支持平台及 Hooks 边界如上，不能将只读运行误认为沙箱或通用 Skill 执行器。
+
+Declarative Hook extension / 声明式 Hook 扩展：`PrepareSkillRunWithHooks` creates a schema-2 review with an immutable complete policy snapshot, while the compiler's `SkillRunReview` stays unchanged. Session-owned policies require separate import and enable/disable confirmation. Material selection changes revoke all nonterminal session Skills, including legacy/no-policy pins; disable/re-enable cannot revive them. Receipts expose only bounded rule/node/capability/status identity, never paths, tool arguments/results or user text. Known denial remains `not_started`, null result and empty node-result proposal ID. Public Hook API and Web/Ink/machine commands now use coordinated strict v1/v2 clients: new run previews/admissions include the schema-2 snapshot, and retained schema-1 reads remain supported. / 运行预览包含完整不可变策略快照，不修改编译器结构审核。策略导入和启用/停用分别确认；实际选择变化永久撤销所有未终结运行，包括旧版无策略运行，重新启用不能恢复它们。回执仅包含有界规则、节点、能力和状态标识，不包含路径、工具参数/结果或用户文本。明确拒绝保持 `not_started`、空结果和空节点结果 proposal ID。公开 Hook API 和 Web/Ink/机器命令现已接入严格 v1/v2 客户端；新运行预览/准入包含 schema-2 快照，保留的 schema-1 历史记录仍可严格读取。
+
+## Session declarative Hooks / 会话声明式策略
+
+The public read-only run API now creates schema-2 previews/pins with an exact immutable `declarative-hooks-v1` snapshot; strict retained schema-1 reads remain supported. The `skill_readonly_v1` execution kind and context exclusion are unchanged. Policies cannot be named by manifests, copied across session ownership, hot-swapped into an admitted run, used to widen permission or used as execution callbacks. Old pending previews confirm only as stale `hook_review_required`; cancellation remains explicit.
+
+规范接口：`GET /api/v1/sessions/{s}/hooks`，`GET /hooks/revisions?limit=1..32&cursor=...`（默认 20），`GET /hooks/revisions/{revision}`，`POST /hooks/preview`，`POST /hooks/decision`，`GET /hooks/operations/{request}`；缩写均接在相同会话路径后。运行收据为 `GET /api/v1/sessions/{s}/skill-runs/{run}/hooks`。准备请求只有 `request_id,kind,revision_id,policy_text` 四项，原始请求体上限 53248 字节；决定只有 `request_id,operation_id,digest,decision` 四项，上限 4096 字节。确认与取消均要求不同于准备 ID 的稳定请求 ID。
+
+Read-only control identity remains `GET /api/v1/sessions/{s}/skill-runs/controls/{run}/{cancel|resume}/{request}`, recovering the original `POST /api/v1/runs/{run}/{cancel|resume}`. A decode/hash/version error never authorizes model-control fallback. Missing receipts and lost detail reads stay in shared ID-only GET recovery quarantine. Full rule sets appear in run reviews; receipt results expose only sanitized IDs/status/matches, never paths, tool arguments/results or full policy copies.
+
+导入是惰性的；选择改变与运行授权分离。任何实质选择改变永久撤销全部未结束的同会话技能运行，已完成的真实观察保留。确认相同选择不增加代数。禁止执行脚本、正则/表达式、文件/网络/环境/凭据读取、自动批准、修改参数、替换工具或重试。所有语言、字节、保留容量及 Linux 证据边界见 README 的 Declarative Hooks 段；这些限制不代表 OS 沙箱、物理数据库大小或语义验证。

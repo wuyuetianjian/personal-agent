@@ -383,6 +383,442 @@
       ],
       "type": "object"
     },
+    "HookIntent": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "policy_text": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "revision_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "kind",
+        "revision_id",
+        "policy_text"
+      ],
+      "type": "object"
+    },
+    "HookMatch": {
+      "additionalProperties": false,
+      "properties": {
+        "effect": {
+          "type": "string"
+        },
+        "rule_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "effect"
+      ],
+      "type": "object"
+    },
+    "HookOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "before_revision_id": {
+          "type": "string"
+        },
+        "before_state": {
+          "type": "string"
+        },
+        "decision": {
+          "type": "string"
+        },
+        "decision_request_id": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "expected_generation": {
+          "type": "integer"
+        },
+        "expires_at_ms": {
+          "type": "integer"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "operation_id": {
+          "type": "string"
+        },
+        "policy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HookPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "policy_sha256": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "revision_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "namespace",
+        "operation_id",
+        "session_id",
+        "kind",
+        "revision_id",
+        "expected_generation",
+        "before_state",
+        "before_revision_id",
+        "policy",
+        "policy_sha256",
+        "expires_at_ms",
+        "digest",
+        "state",
+        "decision",
+        "decision_request_id",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "HookPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluator": {
+          "type": "string"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/$defs/HookRule"
+          },
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 1
+        }
+      },
+      "required": [
+        "schema_version",
+        "evaluator",
+        "rules"
+      ],
+      "type": "object"
+    },
+    "HookReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "capability": {
+          "type": "string"
+        },
+        "decision": {
+          "type": "string"
+        },
+        "event": {
+          "type": "string"
+        },
+        "matches": {
+          "items": {
+            "$ref": "#/$defs/HookMatch"
+          },
+          "type": "array"
+        },
+        "node_id": {
+          "type": "string"
+        },
+        "proposal_digest": {
+          "type": "string"
+        },
+        "proposal_id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "receipt_id": {
+          "type": "string"
+        },
+        "revision_id": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "snapshot_sha256": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "receipt_id",
+        "session_id",
+        "run_id",
+        "event",
+        "node_id",
+        "proposal_id",
+        "proposal_digest",
+        "snapshot_sha256",
+        "revision_id",
+        "capability",
+        "status",
+        "decision",
+        "matches",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "HookReceiptList": {
+      "additionalProperties": false,
+      "properties": {
+        "receipts": {
+          "items": {
+            "$ref": "#/$defs/HookReceipt"
+          },
+          "type": "array"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session_id",
+        "run_id",
+        "receipts"
+      ],
+      "type": "object"
+    },
+    "HookRevision": {
+      "additionalProperties": false,
+      "properties": {
+        "policy": {
+          "$ref": "#/$defs/HookPolicy"
+        },
+        "policy_sha256": {
+          "type": "string"
+        },
+        "revision_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session_id",
+        "revision_id",
+        "policy_sha256",
+        "policy"
+      ],
+      "type": "object"
+    },
+    "HookRevisionPage": {
+      "additionalProperties": false,
+      "properties": {
+        "next_cursor": {
+          "type": "string"
+        },
+        "revisions": {
+          "items": {
+            "$ref": "#/$defs/HookRevision"
+          },
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session_id",
+        "revisions",
+        "next_cursor"
+      ],
+      "type": "object"
+    },
+    "HookRule": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "effect": {
+          "type": "string"
+        },
+        "event": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "node_ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "statuses": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "event",
+        "node_ids",
+        "capabilities",
+        "statuses",
+        "effect"
+      ],
+      "type": "object"
+    },
+    "HookRunPin": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluator": {
+          "type": "string"
+        },
+        "generation": {
+          "type": "integer"
+        },
+        "policy_sha256": {
+          "type": "string"
+        },
+        "revision_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "snapshot_sha256": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "evaluator",
+        "generation",
+        "revision_id",
+        "policy_sha256",
+        "snapshot_sha256"
+      ],
+      "type": "object"
+    },
+    "HookRunSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluator": {
+          "type": "string"
+        },
+        "generation": {
+          "type": "integer"
+        },
+        "policy": {
+          "$ref": "#/$defs/HookPolicy"
+        },
+        "policy_sha256": {
+          "type": "string"
+        },
+        "revision_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1
+        }
+      },
+      "required": [
+        "schema_version",
+        "evaluator",
+        "generation",
+        "revision_id",
+        "policy_sha256",
+        "policy"
+      ],
+      "type": "object"
+    },
+    "HookSelection": {
+      "additionalProperties": false,
+      "properties": {
+        "generation": {
+          "type": "integer"
+        },
+        "policy_sha256": {
+          "type": "string"
+        },
+        "revision_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session_id",
+        "generation",
+        "state",
+        "revision_id",
+        "policy_sha256"
+      ],
+      "type": "object"
+    },
     "Job": {
       "additionalProperties": false,
       "properties": {
@@ -2153,7 +2589,7 @@
           "type": "string"
         },
         "schema_version": {
-          "type": "integer"
+          "const": 1
         },
         "session_id": {
           "type": "string"
@@ -2321,7 +2757,7 @@
           "type": "string"
         },
         "schema_version": {
-          "type": "integer"
+          "const": 1
         },
         "scope_id": {
           "type": "string"
@@ -2356,6 +2792,104 @@
       ],
       "type": "object"
     },
+    "SkillRunOperationV2": {
+      "additionalProperties": false,
+      "properties": {
+        "catalog_id": {
+          "type": "string"
+        },
+        "decision": {
+          "type": "string"
+        },
+        "decision_request_id": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string"
+        },
+        "expected_generation": {
+          "type": "string"
+        },
+        "expected_revision": {
+          "type": "integer"
+        },
+        "expires_at_ms": {
+          "type": "integer"
+        },
+        "hooks": {
+          "$ref": "#/$defs/HookRunSnapshot"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "operation_id": {
+          "type": "string"
+        },
+        "policy_digest": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "review": {
+          "$ref": "#/$defs/SkillRunReview"
+        },
+        "revision_id": {
+          "type": "string"
+        },
+        "root_identity": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 2
+        },
+        "scope_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "namespace",
+        "operation_id",
+        "session_id",
+        "catalog_id",
+        "revision_id",
+        "scope_id",
+        "root_identity",
+        "policy_digest",
+        "expected_generation",
+        "expected_revision",
+        "review",
+        "hooks",
+        "expires_at_ms",
+        "digest",
+        "state",
+        "decision",
+        "decision_request_id",
+        "run_id",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "SkillRunOperationView": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/SkillRunOperation"
+        },
+        {
+          "$ref": "#/$defs/SkillRunOperationV2"
+        }
+      ]
+    },
     "SkillRunPage": {
       "additionalProperties": false,
       "properties": {
@@ -2369,7 +2903,34 @@
           "type": "array"
         },
         "schema_version": {
-          "type": "integer"
+          "const": 1
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session_id",
+        "runs",
+        "next_cursor"
+      ],
+      "type": "object"
+    },
+    "SkillRunPageV2": {
+      "additionalProperties": false,
+      "properties": {
+        "next_cursor": {
+          "type": "string"
+        },
+        "runs": {
+          "items": {
+            "$ref": "#/$defs/SkillRunView"
+          },
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 2
         },
         "session_id": {
           "type": "string"
@@ -2432,7 +2993,7 @@
           "type": "string"
         },
         "schema_version": {
-          "type": "integer"
+          "const": 1
         },
         "scope_id": {
           "type": "string"
@@ -2463,6 +3024,90 @@
       ],
       "type": "object"
     },
+    "SkillRunPinV2": {
+      "additionalProperties": false,
+      "properties": {
+        "admission_time_ms": {
+          "type": "integer"
+        },
+        "artifact_sha256": {
+          "type": "string"
+        },
+        "budgets": {
+          "$ref": "#/$defs/SkillRunBudgets"
+        },
+        "catalog_generation": {
+          "type": "string"
+        },
+        "catalog_id": {
+          "type": "string"
+        },
+        "content_sha256": {
+          "type": "string"
+        },
+        "deadline_ms": {
+          "type": "integer"
+        },
+        "execution_profile": {
+          "type": "string"
+        },
+        "hooks": {
+          "$ref": "#/$defs/HookRunPin"
+        },
+        "inputs_sha256": {
+          "type": "string"
+        },
+        "plan_sha256": {
+          "type": "string"
+        },
+        "policy_digest": {
+          "type": "string"
+        },
+        "review_sha256": {
+          "type": "string"
+        },
+        "revision_id": {
+          "type": "string"
+        },
+        "root_identity": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 2
+        },
+        "scope_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session_id",
+        "run_id",
+        "catalog_id",
+        "revision_id",
+        "catalog_generation",
+        "scope_id",
+        "root_identity",
+        "policy_digest",
+        "artifact_sha256",
+        "content_sha256",
+        "review_sha256",
+        "inputs_sha256",
+        "plan_sha256",
+        "execution_profile",
+        "admission_time_ms",
+        "deadline_ms",
+        "budgets",
+        "hooks"
+      ],
+      "type": "object"
+    },
     "SkillRunRecord": {
       "additionalProperties": false,
       "properties": {
@@ -2488,7 +3133,54 @@
           "type": "string"
         },
         "schema_version": {
-          "type": "integer"
+          "const": 1
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "verification_status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "session_id",
+        "run_id",
+        "pin",
+        "execution",
+        "evaluation",
+        "verification_status",
+        "revoked",
+        "nodes"
+      ],
+      "type": "object"
+    },
+    "SkillRunRecordV2": {
+      "additionalProperties": false,
+      "properties": {
+        "evaluation": {
+          "type": "string"
+        },
+        "execution": {
+          "type": "string"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/SkillRunNodeResult"
+          },
+          "type": "array"
+        },
+        "pin": {
+          "$ref": "#/$defs/SkillRunPinV2"
+        },
+        "revoked": {
+          "type": "boolean"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 2
         },
         "session_id": {
           "type": "string"
@@ -2556,6 +3248,16 @@
         "verification_status"
       ],
       "type": "object"
+    },
+    "SkillRunView": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/SkillRunRecord"
+        },
+        {
+          "$ref": "#/$defs/SkillRunRecordV2"
+        }
+      ]
     },
     "SkillTargetReview": {
       "additionalProperties": false,

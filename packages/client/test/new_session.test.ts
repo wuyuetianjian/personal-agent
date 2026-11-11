@@ -76,3 +76,25 @@ test('display JSON remains exact for astral controls, literal escapes and unload
 test('same settled request retains admission evidence after explicit abandon and failed later lookup',async()=>{
  let missing=false;const c=client(async()=>missing?Response.json({error:{code:'admission_not_found'}},{status:404}):Response.json({request_id:'settled',session_id:'settled-session',state:'unresolved',mcp_opt_in:false,reason:''}));const ops=new NewSessionOperations(c);await ops.recover('settled');ops.cancel();ops.abandon();missing=true;await assert.rejects(ops.recover('settled'));assert.equal(ops.admission?.state,'unresolved');assert.equal(ops.sessionID,'settled-session');assert.equal(ops.cancelRequested,true);assert.notEqual(ops.phase,'not_found');
 });
+
+for(const mode of ['plan','default','acceptEdits'] as const) {
+ test(`disabled native admission stays quarantined and recovers by GET only: ${mode}`,async()=>{
+  const calls:{method:string;url:string;body?:unknown}[]=[];let saved:string|null=null;
+  const c=client(async(u,i)=>{
+   const method=i?.method??'GET';const url=String(u);calls.push({method,url,...(i?.body?{body:JSON.parse(String(i.body))}:{})});
+   if(method==='POST')return Response.json({schema_version:1,error:{code:'workspace_unavailable_choose_chat_only'}},{status:409});
+   assert.ok(url.endsWith('/admissions/native-original'));return Response.json({request_id:'native-original',session_id:'unpublished',state:'unresolved',mcp_opt_in:false,reason:'Single-use admission; inspect only.'});
+  });
+  const ops=new NewSessionOperations(c,{id:()=> 'native-original',save:v=>saved=v});
+  const input={mode,model_id:'m',mcp:false,catalog_project_id:'',content:'private initial content'};
+  await assert.rejects(ops.create(input),/workspace_unavailable_choose_chat_only/);
+  assert.equal(ops.locked,true);assert.equal(ops.requestID,'native-original');assert.deepEqual(ops.pending,{...input,request_id:'native-original'});
+  assert.deepEqual(calls[0]?.body,{mode,model_id:'m',request_id:'native-original'});
+  assert.equal(await ops.create(input),null);await assert.rejects(ops.create({...input,mode:'chat_only'}),/different admission intent unresolved/);
+  ops.cancel();assert.equal(ops.locked,true);assert.equal(await ops.recover(),null);assert.equal(ops.phase,'unresolved');assert.equal(ops.admission?.mcp_opt_in,false);
+  assert.deepEqual(ops.pending,{...input,request_id:'native-original'});assert.equal(ops.requestID,'native-original');assert.equal(ops.result,null);
+  const restored=new NewSessionOperations(c,{restore:saved});assert.equal(restored.locked,true);assert.equal(restored.requestID,'native-original');restored.cancel();assert.equal(await restored.recover(),null);assert.equal(restored.phase,'unresolved');assert.equal(restored.locked,true);
+  assert.equal(calls.filter(v=>v.method==='POST').length,1);assert.equal(calls.filter(v=>v.method==='GET').length,2);
+  assert.ok(calls.every(v=>!v.url.includes('/messages')&&!v.url.endsWith('/status')));assert.ok(!JSON.stringify(calls).includes('chat_only'));assert.ok(!JSON.stringify(calls).includes('private initial content'));
+ });
+}

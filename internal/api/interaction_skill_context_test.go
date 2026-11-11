@@ -5,6 +5,7 @@ import (
 	"agent/internal/model"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -44,12 +45,13 @@ func TestPublicSkillContextThenChatAndQueue(t *testing.T) {
 			if w.Code != 200 {
 				t.Fatal(w.Code, w.Body.String())
 			}
-			var admitted interaction.SkillRunOperation
+			var admitted interaction.SkillRunOperationV2
 			if err := json.Unmarshal(w.Body.Bytes(), &admitted); err != nil {
 				t.Fatal(err)
 			}
 			awaitState(t, s, session, "completed")
-			before, err := s.store.SkillRun(t.Context(), session, admitted.RunID)
+			beforeView, err := s.store.SkillRunWithHooks(t.Context(), session, admitted.RunID)
+			before := beforeView.V2
 			if err != nil || before.Execution != "completed" {
 				t.Fatal(before, err)
 			}
@@ -82,7 +84,8 @@ func TestPublicSkillContextThenChatAndQueue(t *testing.T) {
 				t.Fatal("queued model preflight did not dispatch", w.Body.String())
 			}
 			awaitState(t, s, session, "completed")
-			after, err := s.store.SkillRun(t.Context(), session, admitted.RunID)
+			afterView, err := s.store.SkillRunWithHooks(t.Context(), session, admitted.RunID)
+			after := afterView.V2
 			if err != nil || !reflect.DeepEqual(before, after) {
 				t.Fatal("Skill evidence changed", err)
 			}
@@ -101,5 +104,88 @@ func TestPublicSkillContextThenChatAndQueue(t *testing.T) {
 				t.Fatal("hidden session or duplicated run", sessions, runs)
 			}
 		})
+	}
+}
+
+func TestPublicSkillContextWithInternalHooksThenChatAndQueue(t *testing.T) {
+	for _, next := range []string{"messages", "queue"} {
+		for _, deny := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/deny=%v", next, deny), func(t *testing.T) {
+				requests := make(chan model.TurnRequest, 4)
+				selection := testSelection()
+				selection.Provider = interactionStreamFunc(func(_ context.Context, r model.TurnRequest, _ func(model.ModelEvent) error) (model.TurnResult, error) {
+					requests <- r
+					return model.TurnResult{Content: "owned reply"}, nil
+				})
+				s, _ := serviceFixture(t, selection)
+				if !s.broker.Capabilities().Files.Enabled {
+					t.Skip("native unavailable")
+				}
+				session := namedSession(t, s, "hook-context", "plan")
+				base := "/api/v1/sessions/" + session
+				w := apiRequest(s, "POST", base+"/messages", `{"request_id":"real","content":"Never disclose private files."}`)
+				if w.Code != 202 {
+					t.Fatal(w.Code, w.Body.String())
+				}
+				awaitState(t, s, session, "completed")
+				<-requests
+				cat, rev := seedPublicRunSkill(t, s, session)
+				effect := "audit"
+				if deny {
+					effect = "deny"
+				}
+				policy := fmt.Sprintf(`{"schema_version":1,"evaluator":"declarative-hooks-v1","rules":[{"id":"owned","event":"before_node","node_ids":[],"capabilities":[],"statuses":[],"effect":%q}]}`, effect)
+				p, e := s.store.PrepareHooks(t.Context(), session, interaction.HookIntent{RequestID: "policy", Kind: "import", PolicyText: policy})
+				if e != nil {
+					t.Fatal(e)
+				}
+				a, e := s.store.DecideHooks(t.Context(), session, interaction.OperatorDecision{RequestID: "policy-c", OperationID: p.OperationID, Digest: p.Digest, Decision: "confirm"})
+				if e != nil {
+					t.Fatal(e)
+				}
+				p, e = s.store.PrepareHooks(t.Context(), session, interaction.HookIntent{RequestID: "enable", Kind: "enable", RevisionID: a.RevisionID})
+				if e != nil {
+					t.Fatal(e)
+				}
+				if _, e = s.store.DecideHooks(t.Context(), session, interaction.OperatorDecision{RequestID: "enable-c", OperationID: p.OperationID, Digest: p.Digest, Decision: "confirm"}); e != nil {
+					t.Fatal(e)
+				}
+				os.WriteFile(filepath.Join(s.options.Workspace, "README.md"), []byte("owned"), 0600)
+				preview, e := s.store.PrepareSkillRunWithHooks(t.Context(), session, interaction.SkillRunIntent{RequestID: "v2", CatalogID: cat, RevisionID: rev, ExecutionProfile: interaction.SkillRunProfile, Inputs: json.RawMessage(`{"readme":{"path":"README.md"},"search":{"paths":["README.md"],"query":"owned"}}`)})
+				if e != nil {
+					t.Fatal(e)
+				}
+				admitted, e := s.store.DecideSkillRunWithHooks(t.Context(), session, interaction.OperatorDecision{RequestID: "v2-c", OperationID: preview.OperationID, Digest: preview.Digest, Decision: "confirm"})
+				if e != nil {
+					t.Fatal(e)
+				}
+				engine, e := interaction.NewSkillRunEngine(s.store, admitted.V2.RunID)
+				if e != nil {
+					t.Fatal(e)
+				}
+				e = engine.Run(t.Context(), admitted.V2.RunID)
+				if (!deny && e != nil) || (deny && !errors.Is(e, interaction.ErrHookDenied)) {
+					t.Fatal(e)
+				}
+				view := apiRequest(s, "GET", base+"/context-view", "")
+				if view.Code != 200 || strings.Contains(view.Body.String(), "Explicit read-only") || strings.Contains(view.Body.String(), "declarative-hooks") || !strings.Contains(view.Body.String(), "Never disclose private files.") {
+					t.Fatal(view.Code, view.Body.String())
+				}
+				w = apiRequest(s, "POST", base+"/"+next, `{"request_id":"after","content":"ordinary next input"}`)
+				if w.Code != 202 {
+					t.Fatal(w.Code, w.Body.String())
+				}
+				select {
+				case request := <-requests:
+					raw, _ := json.Marshal(request.Messages)
+					if strings.Contains(string(raw), "Explicit read-only") || !strings.Contains(string(raw), "Never disclose private files.") || !strings.Contains(string(raw), "ordinary next input") {
+						t.Fatal(string(raw))
+					}
+				case <-time.After(3 * time.Second):
+					t.Fatal("no same-session model dispatch")
+				}
+				awaitState(t, s, session, "completed")
+			})
+		}
 	}
 }

@@ -48,14 +48,14 @@ func seedPublicRunSkill(t *testing.T, s *InteractionService, session string) (st
 	}
 	return d.CatalogID, d.RevisionID
 }
-func previewPublicRun(t *testing.T, s *InteractionService, session, catalog, revision, request, inputs string) interaction.SkillRunOperation {
+func previewPublicRun(t *testing.T, s *InteractionService, session, catalog, revision, request, inputs string) interaction.SkillRunOperationV2 {
 	t.Helper()
 	raw := fmt.Sprintf(`{"request_id":%q,"catalog_id":%q,"revision_id":%q,"execution_profile":"readonly-workspace-v1","inputs":%s}`, request, catalog, revision, inputs)
 	w := apiRequest(s, "POST", "/api/v1/sessions/"+session+"/skill-runs/preview", raw)
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	var p interaction.SkillRunOperation
+	var p interaction.SkillRunOperationV2
 	if e := json.Unmarshal(w.Body.Bytes(), &p); e != nil {
 		t.Fatal(e)
 	}
@@ -88,13 +88,13 @@ func TestPublicSkillRunLifecycleOfflineSingleDispatch(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	var d interaction.SkillRunOperation
+	var d interaction.SkillRunOperationV2
 	json.Unmarshal(w.Body.Bytes(), &d)
 	if d.State != "admitted" {
 		t.Fatal(d)
 	}
 	deadline := time.Now().Add(5 * time.Second)
-	var result interaction.SkillRunRecord
+	var result interaction.SkillRunRecordV2
 	for time.Now().Before(deadline) {
 		w = apiRequest(s, "GET", path+"/"+d.RunID, "")
 		json.Unmarshal(w.Body.Bytes(), &result)
@@ -255,12 +255,15 @@ func TestPublicSkillRunPartialAndStaleSelection(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	var d interaction.SkillRunOperation
+	var d interaction.SkillRunOperationV2
 	json.Unmarshal(w.Body.Bytes(), &d)
 	deadline := time.Now().Add(5 * time.Second)
-	var run interaction.SkillRunRecord
+	var run interaction.SkillRunRecordV2
 	for time.Now().Before(deadline) {
-		run, _ = s.store.SkillRun(t.Context(), session, d.RunID)
+		view, _ := s.store.SkillRunWithHooks(t.Context(), session, d.RunID)
+		if view.V2 != nil {
+			run = *view.V2
+		}
 		if run.Execution == "failed" {
 			break
 		}
@@ -382,5 +385,28 @@ func TestPublicSkillRunCreatedEventCarriesAdmittedIdentity(t *testing.T) {
 	rt.DB.SQL.QueryRow(`SELECT count(*) FROM interaction_api_actions WHERE request_id='confirm'`).Scan(&acks)
 	if ordinary != 1 || control != 0 || created != 1 || acks != 0 || retained <= 0 || retained > reserved || reserved > 8<<20 {
 		t.Fatal("created event changed bounded ledger semantics", ordinary, control, created, acks, retained, reserved)
+	}
+}
+
+func TestSkillHooksWireHandoffPublicV2(t *testing.T) {
+	s, _ := serviceFixture(t, testSelection())
+	if !s.broker.Capabilities().Files.Enabled {
+		t.Skip("native unavailable")
+	}
+	session := namedSession(t, s, "hooks-wire", "plan")
+	cat, rev := seedPublicRunSkill(t, s, session)
+	p, e := s.store.PrepareSkillRunWithHooks(t.Context(), session, interaction.SkillRunIntent{RequestID: "hooks-preview", CatalogID: cat, RevisionID: rev, ExecutionProfile: interaction.SkillRunProfile, Inputs: json.RawMessage(`{"readme":{"path":"README.md"},"search":{"paths":["README.md"],"query":"owned"}}`)})
+	if e != nil {
+		t.Fatal(e)
+	}
+	a, e := s.store.DecideSkillRunWithHooks(t.Context(), session, interaction.OperatorDecision{RequestID: "hooks-confirm", OperationID: p.OperationID, Digest: p.Digest, Decision: "confirm"})
+	if e != nil || a.V2 == nil {
+		t.Fatal(a, e)
+	}
+	for _, suffix := range []string{a.V2.RunID, "operations/hooks-preview", "operations/hooks-confirm"} {
+		w := apiRequest(s, "GET", "/api/v1/sessions/"+session+"/skill-runs/"+suffix, "")
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `"schema_version":2`) {
+			t.Fatal(w.Code, w.Body.String())
+		}
 	}
 }

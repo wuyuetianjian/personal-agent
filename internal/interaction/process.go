@@ -44,7 +44,7 @@ func (b *WorkspaceBroker) execCapability() Capability {
 	if !b.nonSandboxExec {
 		return commandCapability()
 	}
-	return platformExecCapability()
+	return currentNativeSupport().Exec
 }
 func execDigest(callDigest string, review *ExecReview) string {
 	raw, _ := json.Marshal(review)

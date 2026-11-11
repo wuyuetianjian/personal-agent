@@ -104,16 +104,18 @@ func (s *InteractionService) skillRuns(w http.ResponseWriter, r *http.Request, p
 			wireError(w, 400, "invalid_query")
 			return true
 		}
-		out, e = s.store.ListSkillRuns(ctx, p[1], cursor, limit)
+		out, e = s.store.ListSkillRunsWithHooks(ctx, p[1], cursor, limit)
 	} else if r.URL.RawQuery != "" {
 		wireError(w, 400, "invalid_query")
 		return true
 	} else if r.Method == "GET" && len(p) == 7 && p[3] == "controls" {
 		out, e = s.skillControlReceipt(ctx, p[1], p[4], p[5], p[6])
 	} else if r.Method == "GET" && len(p) == 5 && p[3] == "operations" {
-		out, e = s.store.SkillRunOperation(ctx, p[1], p[4])
+		out, e = s.store.SkillRunOperationWithHooks(ctx, p[1], p[4])
+	} else if r.Method == "GET" && len(p) == 5 && p[4] == "hooks" {
+		out, e = s.store.SkillHookReceipts(ctx, p[1], p[3])
 	} else if r.Method == "GET" && len(p) == 4 {
-		out, e = s.store.SkillRun(ctx, p[1], p[3])
+		out, e = s.store.SkillRunWithHooks(ctx, p[1], p[3])
 	} else if r.Method == "POST" && len(p) == 4 && (p[3] == "preview" || p[3] == "decision") {
 		const cap = 6*32768 + 4096
 		raw, err := io.ReadAll(io.LimitReader(r.Body, cap+1))
@@ -127,7 +129,7 @@ func (s *InteractionService) skillRuns(w http.ResponseWriter, r *http.Request, p
 				wireError(w, 400, "invalid_request")
 				return true
 			}
-			out, e = s.store.PrepareSkillRun(ctx, p[1], in)
+			out, e = s.store.PrepareSkillRunWithHooks(ctx, p[1], in)
 		} else {
 			v, ok := operatorBody(raw, []string{"request_id", "operation_id", "digest", "decision"})
 			if !ok || !skillWireIdentity(v["request_id"]) || !skillWireIdentity(v["operation_id"]) {
@@ -136,16 +138,23 @@ func (s *InteractionService) skillRuns(w http.ResponseWriter, r *http.Request, p
 			}
 			// A known replay consumes no extra worker and never redispatches. The native
 			// ledger verifies its fingerprint; this read is not authority to admit.
-			_, known := s.store.SkillRunOperation(ctx, p[1], v["request_id"])
+			_, known := s.store.SkillRunOperationWithHooks(ctx, p[1], v["request_id"])
 			if known != nil && v["decision"] == "confirm" && len(s.workers) >= maxInteractionExecutors {
 				wireError(w, 503, "service_capacity")
 				return true
 			}
-			var op interaction.SkillRunOperation
-			op, e = s.store.DecideSkillRun(ctx, p[1], interaction.OperatorDecision{RequestID: v["request_id"], OperationID: v["operation_id"], Digest: v["digest"], Decision: v["decision"]})
+			var op interaction.SkillRunOperationView
+			op, e = s.store.DecideSkillRunWithHooks(ctx, p[1], interaction.OperatorDecision{RequestID: v["request_id"], OperationID: v["operation_id"], Digest: v["digest"], Decision: v["decision"]})
 			out = op
-			if e == nil && op.State == "admitted" && known != nil {
-				run, err := s.store.GetRun(ctx, op.RunID)
+			state, runID := "", ""
+			if op.V1 != nil {
+				state, runID = op.V1.State, op.V1.RunID
+			}
+			if op.V2 != nil {
+				state, runID = op.V2.State, op.V2.RunID
+			}
+			if e == nil && state == "admitted" && known != nil {
+				run, err := s.store.GetRun(ctx, runID)
 				if err != nil {
 					e = err
 				} else {

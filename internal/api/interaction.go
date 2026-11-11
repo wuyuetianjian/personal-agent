@@ -74,7 +74,7 @@ func NewInteractionService(rt *InteractionRuntime, o InteractionOptions) (*Inter
 		cancel()
 		return nil, fmt.Errorf("NON-SANDBOXED exec requires an explicit workspace and a supported native platform: %s", s.broker.Capabilities().Exec.Reason)
 	}
-	if e = interaction.ValidateMCPConfig(o.MCP); e != nil || (o.MCP.Enabled && (o.Workspace == "" || !s.broker.Capabilities().Files.Enabled)) {
+	if e = interaction.ValidateMCPConfig(o.MCP); e != nil || (o.MCP.Enabled && (o.Workspace == "" || !s.broker.Capabilities().Files.Enabled || !interaction.NativeMCPStdioCapability().Enabled)) {
 		cancel()
 		s.broker.CloseMCP()
 		return nil, fmt.Errorf("MCP requires valid trusted configuration and explicit workspace")
@@ -194,7 +194,7 @@ func (s *InteractionService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	catalogPath := routePath == "api/v1/catalog/projects"
-	skillPath := skillRunRoute(strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/"), "/")) || skillRoute(strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/"), "/")) && strings.HasPrefix(r.URL.Path, "/api/v1/")
+	skillPath := hookRoute(strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/"), "/")) || skillRunRoute(strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/"), "/")) || skillRoute(strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/"), "/")) && strings.HasPrefix(r.URL.Path, "/api/v1/")
 	knowledgePath := knowledgeRoute(strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/"), "/")) && strings.HasPrefix(r.URL.Path, "/api/v1/")
 	operatorPath := operatorRoute(strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/"), "/")) && strings.HasPrefix(r.URL.Path, "/api/v1/")
 	if _, err := url.ParseQuery(r.URL.RawQuery); err != nil {
@@ -262,6 +262,9 @@ func (s *InteractionService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		wireError(w, 503, "stopping")
 		return
 	}
+	if s.hooks(w, r, parts[2:]) {
+		return
+	}
 	if s.skillRuns(w, r, parts[2:]) {
 		return
 	}
@@ -280,6 +283,9 @@ func (s *InteractionService) read(w http.ResponseWriter, r *http.Request, p []st
 	ctx := r.Context()
 	if len(p) == 2 && p[0] == "catalog" && p[1] == "projects" {
 		s.readActiveProjects(w, r)
+		return
+	}
+	if s.hooks(w, r, p) {
 		return
 	}
 	if s.skillRuns(w, r, p) {

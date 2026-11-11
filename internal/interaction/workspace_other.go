@@ -4,24 +4,19 @@ package interaction
 
 import (
 	"context"
-	"fmt"
+	"runtime"
 )
 
-// Go os.Root is available on these platforms. This implementation has not yet
-// supplied/verified the extra no-mount/no-hardlink and identity guarantees.
-func platformFileCapability() Capability {
-	return Capability{Reason: "native file adapter not implemented/verified on this platform; Linux openat2 guarantees required"}
+func platformFileCapability() Capability { return disabledNativeSupport(runtime.GOOS).Read }
+func workspaceIdentity(root string) (string, error) {
+	return (unavailableNativeAdapter{target: runtime.GOOS}).workspaceIdentity(root)
 }
-func workspaceIdentity(string) (string, error) {
-	return "", fmt.Errorf("%w: %s", ErrCapabilityUnavailable, platformFileCapability().Reason)
+func readWorkspaceFile(ctx context.Context, w WorkspaceBinding, name string) ([]byte, error) {
+	return (unavailableNativeAdapter{target: runtime.GOOS}).readWorkspaceFile(ctx, w, name)
 }
-func readWorkspaceFile(context.Context, WorkspaceBinding, string) ([]byte, error) {
-	return nil, ErrCapabilityUnavailable
+func replaceWorkspaceFile(ctx context.Context, w WorkspaceBinding, args PatchArguments) error {
+	return (unavailableNativeAdapter{target: runtime.GOOS}).replaceWorkspaceFile(ctx, w, args)
 }
-func replaceWorkspaceFile(context.Context, WorkspaceBinding, PatchArguments) error {
-	return ErrCapabilityUnavailable
-}
-
-func replaceWorkspaceFileChecked(context.Context, WorkspaceBinding, PatchArguments, func() error) error {
-	return ErrCapabilityUnavailable
+func replaceWorkspaceFileChecked(ctx context.Context, w WorkspaceBinding, args PatchArguments, beforeRename func() error) error {
+	return (unavailableNativeAdapter{target: runtime.GOOS}).replaceWorkspaceFileChecked(ctx, w, args, beforeRename)
 }

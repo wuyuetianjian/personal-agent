@@ -84,7 +84,7 @@ type SkillRunPage struct {
 }
 
 func skillRunDigest(p SkillRunOperation) string { p.Digest = ""; return operatorHash(p) }
-func skillRunReplay(ctx context.Context, tx *sql.Tx, session, request, fp string) (out SkillRunOperation, found bool, err error) {
+func skillRunReplayData(ctx context.Context, tx *sql.Tx, session, request, fp string) (out skillOperation, found bool, err error) {
 	var controlCount int
 	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM interaction_skill_controls WHERE request_id=?`, request).Scan(&controlCount); err != nil {
 		return
@@ -103,7 +103,7 @@ func skillRunReplay(ctx context.Context, tx *sql.Tx, session, request, fp string
 	if owner != session || old != fp {
 		return out, true, ErrConflict
 	}
-	err = json.Unmarshal([]byte(raw), &out)
+	out, err = decodeSkillOperation([]byte(raw))
 	return out, true, err
 }
 func skillRunWorkspace(ctx context.Context, tx *sql.Tx, session string) (w WorkspaceBinding, policy string, err error) {
@@ -116,7 +116,8 @@ func skillRunWorkspace(ctx context.Context, tx *sql.Tx, session string) (w Works
 	if err = json.Unmarshal([]byte(raw), &w.Policy); err != nil {
 		return
 	}
-	if mode == "chat_only" || !skillEnum(string(w.Policy.Mode), "plan", "default", "acceptEdits") || !platformFileCapability().Enabled {
+	support := currentNativeSupport()
+	if mode == "chat_only" || !skillEnum(string(w.Policy.Mode), "plan", "default", "acceptEdits") || !support.Read.Enabled || !support.Search.Enabled {
 		err = ErrCapabilityUnavailable
 		return
 	}
@@ -127,7 +128,7 @@ func skillRunAudit(ctx context.Context, tx *sql.Tx, p SkillRunOperation) error {
 	_, err := tx.ExecContext(ctx, `INSERT INTO security_audit_log(id,actor,action,target,status,reason,evidence_ids,created_at) VALUES(?,?,?,?,?,?,?,?)`, "skill-run:"+p.OperationID+":"+p.State, "session:"+p.SessionID, "skill.run", p.CatalogID, p.State, p.Reason, "[\""+p.OperationID+"\"]", time.Now().UTC())
 	return err
 }
-func (s *Store) PrepareSkillRun(ctx context.Context, session string, in SkillRunIntent) (out SkillRunOperation, err error) {
+func (s *Store) prepareSkillRun(ctx context.Context, session string, in SkillRunIntent, withHooks bool) (out skillOperation, err error) {
 	if !operatorRequestID(in.RequestID) || !operatorRequestID(in.CatalogID) || !operatorRequestID(in.RevisionID) || len(in.ExecutionProfile) > 64 || len(in.Inputs) > 32768 {
 		return out, ErrInvalid
 	}
@@ -140,8 +141,18 @@ func (s *Store) PrepareSkillRun(ctx context.Context, session string, in SkillRun
 	}
 	defer tx.Rollback()
 	fp := operatorHash([]any{session, "prepare_skill_run", in})
-	if old, found, e := skillRunReplay(ctx, tx, session, in.RequestID, fp); found || e != nil {
+	if old, found, e := skillRunReplayData(ctx, tx, session, in.RequestID, fp); found || e != nil {
+		if e == nil && old.hooks != nil && !withHooks {
+			return out, ErrConflict
+		}
 		return old, e
+	}
+	sel, err := hookSelectionAt(ctx, tx, session)
+	if err != nil {
+		return
+	}
+	if !withHooks && sel.Generation != 0 {
+		return out, ErrConflict
 	}
 	cat, err := skillCatalogAt(ctx, tx, in.CatalogID)
 	if err != nil {
@@ -168,8 +179,16 @@ func (s *Store) PrepareSkillRun(ctx context.Context, session string, in SkillRun
 	if canonical == nil {
 		canonical = json.RawMessage(`{}`)
 	}
-	out = SkillRunOperation{SchemaVersion: 1, Namespace: "runtime-rebuild-v1", OperationID: in.RequestID, SessionID: session, CatalogID: in.CatalogID, RevisionID: in.RevisionID, ScopeID: w.ScopeID, RootIdentity: w.RootIdentity, PolicyDigest: policy, ExpectedGeneration: cat.Generation, ExpectedRevision: cat.Revision, Review: review, ExpiresAtMS: time.Now().Add(10 * time.Minute).UnixMilli(), State: "pending", Reason: review.Reason}
-	out.Digest = skillRunDigest(out)
+	out.SkillRunOperation = SkillRunOperation{SchemaVersion: 1, Namespace: "runtime-rebuild-v1", OperationID: in.RequestID, SessionID: session, CatalogID: in.CatalogID, RevisionID: in.RevisionID, ScopeID: w.ScopeID, RootIdentity: w.RootIdentity, PolicyDigest: policy, ExpectedGeneration: cat.Generation, ExpectedRevision: cat.Revision, Review: review, ExpiresAtMS: time.Now().Add(10 * time.Minute).UnixMilli(), State: "pending", Reason: review.Reason}
+	if withHooks {
+		h, e := hookSnapshotAt(ctx, tx, session)
+		if e != nil {
+			return out, e
+		}
+		out.SchemaVersion = 2
+		out.hooks = &h
+	}
+	out.Digest = skillOperationDigest(out)
 	raw, _ := json.Marshal(out)
 	reserve := 4*(len(raw)+4096) + len(canonical)
 	var count, total, pending, local, requests int
@@ -193,12 +212,12 @@ func (s *Store) PrepareSkillRun(ctx context.Context, session string, in SkillRun
 	if _, err = tx.ExecContext(ctx, `INSERT INTO interaction_skill_run_requests VALUES(?,?,?,?,'')`, in.RequestID, session, out.OperationID, fp); err != nil {
 		return
 	}
-	if err = skillRunAudit(ctx, tx, out); err != nil {
+	if err = skillRunAudit(ctx, tx, out.SkillRunOperation); err != nil {
 		return
 	}
 	return out, tx.Commit()
 }
-func (s *Store) DecideSkillRun(ctx context.Context, session string, in OperatorDecision) (out SkillRunOperation, err error) {
+func (s *Store) decideSkillRun(ctx context.Context, session string, in OperatorDecision, withHooks bool) (out skillOperation, err error) {
 	if !operatorRequestID(in.RequestID) || !operatorRequestID(in.OperationID) || len(in.Digest) != 64 || !skillEnum(in.Decision, "confirm", "cancel") {
 		return out, ErrInvalid
 	}
@@ -208,17 +227,23 @@ func (s *Store) DecideSkillRun(ctx context.Context, session string, in OperatorD
 	}
 	defer tx.Rollback()
 	fp := operatorHash([]any{session, "decide_skill_run", in})
-	if old, found, e := skillRunReplay(ctx, tx, session, in.RequestID, fp); found || e != nil {
+	if old, found, e := skillRunReplayData(ctx, tx, session, in.RequestID, fp); found || e != nil {
+		if e == nil && old.hooks != nil && !withHooks {
+			return out, ErrConflict
+		}
 		return old, e
 	}
 	var raw, inputs, state string
 	if err = tx.QueryRowContext(ctx, `SELECT preview,inputs,state FROM interaction_skill_run_operations WHERE id=? AND session_id=?`, in.OperationID, session).Scan(&raw, &inputs, &state); err != nil {
 		return
 	}
-	if err = json.Unmarshal([]byte(raw), &out); err != nil {
+	if out, err = decodeSkillOperation([]byte(raw)); err != nil {
 		return
 	}
-	if state != "pending" || out.Digest != in.Digest || skillRunDigest(out) != in.Digest {
+	if out.hooks != nil && !withHooks {
+		return out, ErrConflict
+	}
+	if state != "pending" || out.Digest != in.Digest || skillOperationDigest(out) != in.Digest {
 		return out, ErrConflict
 	}
 	var requests int
@@ -228,6 +253,10 @@ func (s *Store) DecideSkillRun(ctx context.Context, session string, in OperatorD
 	if requests >= 2048 {
 		return out, ErrBudget
 	}
+	selection, selectionErr := hookSelectionAt(ctx, tx, session)
+	if selectionErr != nil {
+		return out, selectionErr
+	}
 	out.Decision, out.DecisionRequestID = in.Decision, in.RequestID
 	out.State, out.Reason = "stale", "preview_changed"
 	w, policy, authorityErr := skillRunWorkspace(ctx, tx, session)
@@ -235,6 +264,10 @@ func (s *Store) DecideSkillRun(ctx context.Context, session string, in OperatorD
 	switch {
 	case in.Decision == "cancel":
 		out.State, out.Reason = "cancelled", "user_cancelled"
+	case out.hooks == nil && (withHooks || selection.Generation != 0):
+		out.Reason = "hook_review_required"
+	case out.hooks != nil && !hookSnapshotMatches(*out.hooks, selection):
+		out.Reason = "selection_changed"
 	case time.Now().UnixMilli() >= out.ExpiresAtMS:
 		out.Reason = "preview_expired"
 	case out.Review.Eligibility != "ready":
@@ -273,12 +306,12 @@ func (s *Store) DecideSkillRun(ctx context.Context, session string, in OperatorD
 	if _, err = tx.ExecContext(ctx, `INSERT INTO interaction_skill_run_requests VALUES(?,?,?,?,?)`, in.RequestID, session, out.OperationID, fp, string(result)); err != nil {
 		return
 	}
-	if err = skillRunAudit(ctx, tx, out); err != nil {
+	if err = skillRunAudit(ctx, tx, out.SkillRunOperation); err != nil {
 		return
 	}
 	return out, tx.Commit()
 }
-func (s *Store) admitSkillRun(ctx context.Context, tx *sql.Tx, out *SkillRunOperation, rev SkillRevisionRecord, inputs, request string) error {
+func (s *Store) admitSkillRun(ctx context.Context, tx *sql.Tx, out *skillOperation, rev SkillRevisionRecord, inputs, request string) error {
 	var count, total int
 	if err := tx.QueryRowContext(ctx, `SELECT count(*),coalesce(sum(reserved_bytes),0) FROM interaction_skill_runs`).Scan(&count, &total); err != nil {
 		return err
@@ -290,15 +323,30 @@ func (s *Store) admitSkillRun(ctx context.Context, tx *sql.Tx, out *SkillRunOper
 	id := uuid.NewString()
 	b := out.Review.Budgets
 	pin := SkillRunPin{SchemaVersion: 1, SessionID: out.SessionID, RunID: id, CatalogID: out.CatalogID, RevisionID: out.RevisionID, CatalogGeneration: out.ExpectedGeneration, ScopeID: out.ScopeID, RootIdentity: out.RootIdentity, PolicyDigest: out.PolicyDigest, ArtifactHash: rev.Review.ArtifactHash, ContentHash: rev.Review.ContentHash, ReviewHash: operatorHash(out.Review), InputsHash: out.Review.InputsHash, PlanHash: out.Review.PlanHash, ExecutionProfile: SkillRunProfile, AdmissionTimeMS: now.UnixMilli(), DeadlineMS: now.Add(120 * time.Second).UnixMilli(), Budgets: b}
-	pRaw, _ := json.Marshal(pin)
+	var pinValue any = pin
+	slab := 0
+	if out.hooks != nil {
+		if err := validateHookSnapshotAt(ctx, tx, out.SessionID, *out.hooks); err != nil {
+			return err
+		}
+		pin.SchemaVersion = 2
+		pinValue = skillPinV2(pin, hookPin(*out.hooks))
+		slab = hookRunReservation
+	}
+	pRaw, _ := json.Marshal(pinValue)
 	plan, _ := json.Marshal(out.Review.Nodes)
 	run := Run{ID: id, SessionID: out.SessionID, RequestID: request, Message: Message{Content: "Explicit read-only skill run"}, State: RunRunning, Version: 1}
 	msg, _ := json.Marshal(run.Message)
 	if _, err := tx.ExecContext(ctx, `INSERT INTO interaction_runs(`+runColumns+`,execution_kind) VALUES(?,?,?,?,?,?,?)`, id, out.SessionID, request, string(msg), RunRunning, 1, skillRunAction); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO interaction_skill_runs(run_id,session_id,catalog_id,revision_id,pin,pin_hash,inputs,plan,retained_bytes) VALUES(?,?,?,?,?,?,?,?,?)`, id, out.SessionID, out.CatalogID, out.RevisionID, string(pRaw), operatorHash(pin), inputs, string(plan), len(pRaw)+len(plan)+len(inputs)+len(msg)+4096); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO interaction_skill_runs(run_id,session_id,catalog_id,revision_id,pin,pin_hash,inputs,plan,retained_bytes) VALUES(?,?,?,?,?,?,?,?,?)`, id, out.SessionID, out.CatalogID, out.RevisionID, string(pRaw), operatorHash(pinValue), inputs, string(plan), len(pRaw)+len(plan)+len(inputs)+len(msg)+4096+slab); err != nil {
 		return err
+	}
+	if out.hooks != nil {
+		if err := insertHookSnapshot(ctx, tx, id, out.SessionID, *out.hooks, operatorHash(pinValue)); err != nil {
+			return err
+		}
 	}
 	cp := Checkpoint{Action: skillRunAction, Phase: PhaseQueued, Deadline: time.UnixMilli(pin.DeadlineMS), Budgets: Budgets{MaxSteps: b.MaxAttempts, MaxDuration: 120 * time.Second, MaxTokens: 1, MaxOutputTokens: 1, MaxOutputBytes: b.MaxOutputBytes, MaxToolResultBytes: b.MaxResultBytes, MaxEvents: b.MaxOrdinaryEvents, MaxConcurrent: 4}, Calls: []ToolCall{}}
 	for i, node := range out.Review.Nodes {
@@ -323,21 +371,28 @@ func (s *Store) SkillRunOperation(ctx context.Context, session, request string) 
 	var raw string
 	err = s.db.QueryRowContext(ctx, `SELECT CASE WHEN r.result='' THEN o.result ELSE r.result END FROM interaction_skill_run_requests r JOIN interaction_skill_run_operations o ON o.id=r.operation_id WHERE r.request_id=? AND r.session_id=?`, request, session).Scan(&raw)
 	if err == nil {
-		err = json.Unmarshal([]byte(raw), &out)
+		var op skillOperation
+		op, err = decodeSkillOperation([]byte(raw))
+		if err == nil {
+			if op.hooks != nil {
+				return out, ErrConflict
+			}
+			out = op.SkillRunOperation
+		}
 	}
 	return
 }
-func (s *Store) SkillRun(ctx context.Context, session, id string) (out SkillRunRecord, err error) {
+func (s *Store) skillRunRecord(ctx context.Context, session, id string) (out SkillRunRecord, hooks *HookRunPin, err error) {
 	var raw, phase string
 	var terminal bool
 	err = s.db.QueryRowContext(ctx, `SELECT s.pin,s.revoked,s.terminal,coalesce(e.phase,'needs_reconciliation') FROM interaction_skill_runs s LEFT JOIN interaction_engine e ON e.run_id=s.run_id WHERE s.run_id=? AND s.session_id=?`, id, session).Scan(&raw, &out.Revoked, &terminal, &phase)
 	if err != nil {
 		return
 	}
-	if err = json.Unmarshal([]byte(raw), &out.Pin); err != nil {
+	if out.Pin, hooks, err = decodeSkillPin([]byte(raw)); err != nil {
 		return
 	}
-	out.SchemaVersion, out.SessionID, out.RunID, out.Execution, out.Evaluation, out.VerificationStatus = 1, session, id, phase, "not_run", "not_evaluated"
+	out.SchemaVersion, out.SessionID, out.RunID, out.Execution, out.Evaluation, out.VerificationStatus = out.Pin.SchemaVersion, session, id, phase, "not_run", "not_evaluated"
 	if terminal && out.Revoked {
 		out.Execution = "revoked"
 	} else if !skillEnum(phase, "queued", "failed", "cancelled", "needs_reconciliation", "completed") {
@@ -346,7 +401,7 @@ func (s *Store) SkillRun(ctx context.Context, session, id string) (out SkillRunR
 	out.Nodes = []SkillRunNodeResult{}
 	rows, e := s.db.QueryContext(ctx, `SELECT result FROM interaction_skill_node_results WHERE run_id=? ORDER BY ordinal`, id)
 	if e != nil {
-		return out, e
+		return out, hooks, e
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -360,7 +415,7 @@ func (s *Store) SkillRun(ctx context.Context, session, id string) (out SkillRunR
 		}
 		out.Nodes = append(out.Nodes, n)
 	}
-	return out, rows.Err()
+	return out, hooks, rows.Err()
 }
 func (s *Store) ListSkillRuns(ctx context.Context, session, cursor string, limit int) (out SkillRunPage, err error) {
 	out = SkillRunPage{SchemaVersion: 1, SessionID: session, Runs: []SkillRunRecord{}}

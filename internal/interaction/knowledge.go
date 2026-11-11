@@ -168,7 +168,11 @@ func (s *Store) PrepareKnowledge(ctx context.Context, session string, in Knowled
 	}
 	if kind == "file" && in.Kind != "deactivate" {
 		var b []byte
-		b, e = readWorkspaceFile(ctx, w, source)
+		if !currentNativeSupport().Read.Enabled {
+			e = ErrCapabilityUnavailable
+		} else {
+			b, e = readWorkspaceFile(ctx, w, source)
+		}
 		if e != nil {
 			return out, fmt.Errorf("%w: %w", ErrKnowledgeSource, e)
 		}
@@ -294,7 +298,13 @@ func (s *Store) DecideKnowledge(ctx context.Context, session string, in Operator
 			break
 		}
 		if out.SourceKind == "file" && out.Kind != "deactivate" {
-			b, err := readWorkspaceFile(ctx, w, out.Source)
+			var b []byte
+			var err error
+			if !currentNativeSupport().Read.Enabled {
+				err = ErrCapabilityUnavailable
+			} else {
+				b, err = readWorkspaceFile(ctx, w, out.Source)
+			}
 			if err != nil || rag.HashText(string(b)) != out.ContentHash {
 				reject("Workspace file changed or unavailable; prepare a new exact reread preview.")
 				break

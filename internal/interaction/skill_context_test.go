@@ -240,3 +240,85 @@ func TestSkillContextUsesImmutableKindNotLabelsOrCheckpointAction(t *testing.T) 
 		t.Fatal("model transcript validation bypassed", err)
 	}
 }
+
+func TestSkillHooksContextAllStatesAndBoundaries(t *testing.T) {
+	for _, outcome := range []string{"denied", "audited", "unknown", "revoked"} {
+		t.Run(outcome, func(t *testing.T) {
+			s, in := skillRunSetup(t)
+			real := contextModelRun(t, s, "real-restriction", "Never disclose private files.", RunFailed)
+			policy := strings.Replace(hookPolicyExample, "workspace.search", "workspace.read", 1)
+			if outcome != "denied" {
+				policy = strings.Replace(policy, `"deny"`, `"audit"`, 1)
+			}
+			hookEnable(t, s, policy)
+			p, e := s.PrepareSkillRunWithHooks(t.Context(), "s", in)
+			if e != nil {
+				t.Fatal(e)
+			}
+			a, e := s.DecideSkillRunWithHooks(t.Context(), "s", OperatorDecision{RequestID: "context-hooks-c", OperationID: p.OperationID, Digest: p.Digest, Decision: "confirm"})
+			if e != nil {
+				t.Fatal(e)
+			}
+			id := a.V2.RunID
+			engine, _ := NewSkillRunEngine(s, id)
+			switch outcome {
+			case "audited":
+				hookOwnedFile(t, s)
+				if e = engine.Run(t.Context(), id); e != nil {
+					t.Fatal(e)
+				}
+			case "denied":
+				if e = engine.Run(t.Context(), id); !errors.Is(e, ErrHookDenied) {
+					t.Fatal(e)
+				}
+			case "unknown":
+				hookJournal(t, s, id, nil)
+				if e = engine.Recover(t.Context(), id); !errors.Is(e, ErrReconciliation) {
+					t.Fatal(e)
+				}
+			case "revoked":
+				hookDecide(t, s, hookPrepare(t, s, "off", "disable", "", ""), "off-c", "confirm")
+				engine.Run(t.Context(), id)
+			}
+			before, e := s.SkillRunWithHooks(t.Context(), "s", id)
+			if e != nil {
+				t.Fatal(e)
+			}
+			for _, boundary := range []string{"", real.ID, id} {
+				h, e := admittedContextFrom(t.Context(), s.db, "s", boundary)
+				if e != nil || len(h.messages) != 1 || h.messages[0].Content != real.Message.Content || h.latest != real.Message || h.pendingID != "" || h.userSources[0] != "run:"+real.ID {
+					t.Fatal(outcome, boundary, h, e)
+				}
+			}
+			if _, e := admittedContextFrom(t.Context(), s.db, "s", "foreign"); !errors.Is(e, ErrInvalid) {
+				t.Fatal(e)
+			}
+			built, e := NewContextAssembler(s).Build(t.Context(), "s", TokenBudget{Total: 32000, Output: 2048})
+			if e != nil {
+				t.Fatal(e)
+			}
+			raw, _ := json.Marshal(built.Messages)
+			if strings.Contains(string(raw), "declarative-hooks") || strings.Contains(string(raw), "Explicit read-only") || !strings.Contains(string(raw), real.Message.Content) {
+				t.Fatal(string(raw))
+			}
+			after, e := s.SkillRunWithHooks(t.Context(), "s", id)
+			if e != nil || !reflect.DeepEqual(before, after) {
+				t.Fatal("history altered evidence", e)
+			}
+			if outcome == "unknown" {
+				if _, e = s.BranchSession(t.Context(), "s", SessionOperation{Kind: "branch", RequestID: "blocked-branch", BoundaryRunID: id, ExpectedCursor: sessionCursor(t, s, "s")}); !errors.Is(e, ErrConflict) {
+					t.Fatal(e)
+				}
+			} else {
+				next := contextModelRun(t, s, "next", "Keep the real next instruction.", RunCancelled)
+				h, e := s.admittedContext(t.Context(), "s")
+				if e != nil || len(h.messages) != 2 || h.latest != next.Message {
+					t.Fatal(h, e)
+				}
+				if _, e = s.BranchSession(t.Context(), "s", SessionOperation{Kind: "branch", RequestID: "stale-branch", BoundaryRunID: id, ExpectedCursor: sessionCursor(t, s, "s") - 1}); !errors.Is(e, ErrConflict) {
+					t.Fatal(e)
+				}
+			}
+		})
+	}
+}

@@ -571,14 +571,27 @@ func (e *Engine) finish(ctx context.Context, r Run, owner string, cp *Checkpoint
 		if state == RunCompleted && !complete {
 			return ErrReconciliation
 		}
-		if _, err = tx.ExecContext(ctx, `UPDATE interaction_skill_runs SET terminal=1 WHERE run_id=?`, r.ID); err != nil {
-			return err
-		}
 	}
 	cancellationWon := cancelled && state != RunCancelled
 	if cancelled {
 		state = RunCancelled
 		cp.Phase = PhaseCancelled
+	}
+	if kind == skillRunAction {
+		status := string(state)
+		var revoked bool
+		if err = tx.QueryRowContext(ctx, `SELECT revoked FROM interaction_skill_runs WHERE run_id=?`, r.ID).Scan(&revoked); err != nil {
+			return err
+		}
+		if revoked {
+			status = "revoked"
+		}
+		if err = hookRunTerminal(ctx, tx, r.ID, status); err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE interaction_skill_runs SET terminal=1 WHERE run_id=?`, r.ID); err != nil {
+			return err
+		}
 	}
 	raw, err := json.Marshal(cp)
 	if err != nil {
@@ -801,18 +814,32 @@ func (e *Engine) execute(ctx context.Context, r Run, owner string, cp *Checkpoin
 	if err := e.check(ctx, r.ID, cp); err != nil {
 		return err
 	}
-	cp.Steps++
-	cp.Phase = PhaseExecuting
-	if err := e.save(ctx, r, owner, cp, "tool.started", p); err != nil {
-		return err
-	}
 	journal := runtime.SQLiteSideEffectStore{DB: e.store.db}
-	_, claimed, err := journal.Claim(ctx, runtime.SideEffectRecord{IdempotencyKey: effectKey(r.ID, p.ID), WorkflowID: r.ID, NodeID: p.ID, CapabilityID: p.Call.Name})
-	if err != nil {
-		return err
+	var err error
+	var hooks bool
+	if cp.Action == skillRunAction {
+		_, hooks, err = hookRunSnapshotAt(ctx, e.store.db, r.ID)
+		if err != nil {
+			return err
+		}
 	}
-	if !claimed {
-		return e.reconcile(r, owner, cp)
+	if hooks {
+		if err = e.startSkillNode(ctx, r, owner, cp); err != nil {
+			return err
+		}
+	} else {
+		cp.Steps++
+		cp.Phase = PhaseExecuting
+		if err = e.save(ctx, r, owner, cp, "tool.started", p); err != nil {
+			return err
+		}
+		_, claimed, claimErr := journal.Claim(ctx, runtime.SideEffectRecord{IdempotencyKey: effectKey(r.ID, p.ID), WorkflowID: r.ID, NodeID: p.ID, CapabilityID: p.Call.Name})
+		if claimErr != nil {
+			return claimErr
+		}
+		if !claimed {
+			return e.reconcile(r, owner, cp)
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		return e.reconcile(r, owner, cp)

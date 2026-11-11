@@ -50,6 +50,9 @@ func TestMCPAPIExplicitSessionOptInAndRestartRevocation(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer func() { s.Close() }()
+	if caps := s.broker.Capabilities(); caps.Exec.Enabled || caps.Exec.Reason != "NON-SANDBOXED exec disabled by default; explicit immutable host and session opt-in required" {
+		t.Fatal("MCP must not require or grant Exec opt-in", caps)
+	}
 	if r := apiRequest(s, "GET", "/api/v1/status", ""); r.Code != 200 || !strings.Contains(r.Body.String(), `"configured"`) {
 		t.Fatal(r.Code, r.Body.String())
 	}

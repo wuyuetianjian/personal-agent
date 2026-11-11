@@ -13,12 +13,13 @@ import (
 )
 
 func main() {
-	types := []reflect.Type{reflect.TypeOf(api.SkillRunControlReceipt{}), reflect.TypeOf(interaction.SkillRunIntent{}), reflect.TypeOf(interaction.SkillRunBudgets{}), reflect.TypeOf(interaction.SkillRunNode{}), reflect.TypeOf(interaction.SkillRunReview{}), reflect.TypeOf(interaction.SkillRunPin{}), reflect.TypeOf(interaction.SkillRunOperation{}), reflect.TypeOf(interaction.SkillRunNodeResult{}), reflect.TypeOf(interaction.SkillRunRecord{}), reflect.TypeOf(interaction.SkillRunPage{}), reflect.TypeOf(interaction.ToolCall{}), reflect.TypeOf(interaction.ToolResult{}), reflect.TypeOf(interaction.SkillIntent{}), reflect.TypeOf(interaction.SkillOperation{}), reflect.TypeOf(interaction.SkillCatalogEntry{}), reflect.TypeOf(interaction.SkillVersionEntry{}), reflect.TypeOf(interaction.SkillRevisionRecord{}), reflect.TypeOf(interaction.SkillProvenance{}), reflect.TypeOf(interaction.SkillReview{}), reflect.TypeOf(interaction.SkillManifest{}), reflect.TypeOf(interaction.SkillField{}), reflect.TypeOf(interaction.SkillRequirements{}), reflect.TypeOf(interaction.SkillPermissions{}), reflect.TypeOf(interaction.SkillPrivacy{}), reflect.TypeOf(interaction.SkillBudget{}), reflect.TypeOf(interaction.SkillVerification{}), reflect.TypeOf(interaction.SkillWorkflow{}), reflect.TypeOf(interaction.SkillNode{}), reflect.TypeOf(interaction.SkillTargetReview{}), reflect.TypeOf(api.SkillCatalogPage{}), reflect.TypeOf(api.SkillVersionPage{}), reflect.TypeOf(api.SessionAdmissionView{}), reflect.TypeOf(interaction.ProjectLabel{}), reflect.TypeOf(interaction.KnowledgeIntent{}), reflect.TypeOf(interaction.KnowledgeOperation{}), reflect.TypeOf(interaction.KnowledgeItem{}), reflect.TypeOf(interaction.KnowledgeMatch{}), reflect.TypeOf(api.KnowledgePage{}), reflect.TypeOf(api.KnowledgeSearch{}), reflect.TypeOf(interaction.OperatorIntent{}), reflect.TypeOf(interaction.OperatorDecision{}), reflect.TypeOf(interaction.OperatorOperation{}), reflect.TypeOf(api.OperatorField{}), reflect.TypeOf(api.OperatorRecord{}), reflect.TypeOf(api.OperatorAction{}), reflect.TypeOf(api.OperatorPage{}), reflect.TypeOf(api.JobArtifact{}), reflect.TypeOf(interaction.Job{}), reflect.TypeOf(interaction.JobView{}), reflect.TypeOf(interaction.JobOperationRecord{}), reflect.TypeOf(api.JobDetail{}), reflect.TypeOf(interaction.QueueItem{}), reflect.TypeOf(interaction.QueueView{}), reflect.TypeOf(interaction.QueueOperationRecord{}), reflect.TypeOf(interaction.EditCheckpoint{}), reflect.TypeOf(interaction.EditCheckpointInventory{}), reflect.TypeOf(interaction.SessionOperation{}), reflect.TypeOf(interaction.SessionOperationRecord{}), reflect.TypeOf(interaction.SessionProvenance{}), reflect.TypeOf(interaction.ContextVersion{}), reflect.TypeOf(interaction.ContextMessage{}), reflect.TypeOf(interaction.SessionContextView{}), reflect.TypeOf(model.ChatToolCall{}), reflect.TypeOf(model.ChatToolFunction{}), reflect.TypeOf(api.SessionView{}), reflect.TypeOf(api.ApprovalView{}), reflect.TypeOf(api.ToolView{}), reflect.TypeOf(api.RunView{}), reflect.TypeOf(api.Snapshot{}), reflect.TypeOf(api.WireEvent{}), reflect.TypeOf(interaction.EditReview{}), reflect.TypeOf(interaction.EnvironmentChange{}), reflect.TypeOf(interaction.ExecReview{}), reflect.TypeOf(interaction.MCPReview{}), reflect.TypeOf(interaction.MCPServerView{}), reflect.TypeOf(interaction.MCPStatus{})}
+	hookGolden()
+	types := []reflect.Type{reflect.TypeOf(interaction.HookIntent{}), reflect.TypeOf(interaction.HookPolicy{}), reflect.TypeOf(interaction.HookRule{}), reflect.TypeOf(interaction.HookMatch{}), reflect.TypeOf(interaction.HookOperation{}), reflect.TypeOf(interaction.HookSelection{}), reflect.TypeOf(interaction.HookRevision{}), reflect.TypeOf(interaction.HookRevisionPage{}), reflect.TypeOf(interaction.HookRunSnapshot{}), reflect.TypeOf(interaction.HookRunPin{}), reflect.TypeOf(interaction.HookReceipt{}), reflect.TypeOf(interaction.HookReceiptList{}), reflect.TypeOf(interaction.SkillRunOperationV2{}), reflect.TypeOf(interaction.SkillRunPinV2{}), reflect.TypeOf(interaction.SkillRunRecordV2{}), reflect.TypeOf(interaction.SkillRunPageV2{}), reflect.TypeOf(api.SkillRunControlReceipt{}), reflect.TypeOf(interaction.SkillRunIntent{}), reflect.TypeOf(interaction.SkillRunBudgets{}), reflect.TypeOf(interaction.SkillRunNode{}), reflect.TypeOf(interaction.SkillRunReview{}), reflect.TypeOf(interaction.SkillRunPin{}), reflect.TypeOf(interaction.SkillRunOperation{}), reflect.TypeOf(interaction.SkillRunNodeResult{}), reflect.TypeOf(interaction.SkillRunRecord{}), reflect.TypeOf(interaction.SkillRunPage{}), reflect.TypeOf(interaction.ToolCall{}), reflect.TypeOf(interaction.ToolResult{}), reflect.TypeOf(interaction.SkillIntent{}), reflect.TypeOf(interaction.SkillOperation{}), reflect.TypeOf(interaction.SkillCatalogEntry{}), reflect.TypeOf(interaction.SkillVersionEntry{}), reflect.TypeOf(interaction.SkillRevisionRecord{}), reflect.TypeOf(interaction.SkillProvenance{}), reflect.TypeOf(interaction.SkillReview{}), reflect.TypeOf(interaction.SkillManifest{}), reflect.TypeOf(interaction.SkillField{}), reflect.TypeOf(interaction.SkillRequirements{}), reflect.TypeOf(interaction.SkillPermissions{}), reflect.TypeOf(interaction.SkillPrivacy{}), reflect.TypeOf(interaction.SkillBudget{}), reflect.TypeOf(interaction.SkillVerification{}), reflect.TypeOf(interaction.SkillWorkflow{}), reflect.TypeOf(interaction.SkillNode{}), reflect.TypeOf(interaction.SkillTargetReview{}), reflect.TypeOf(api.SkillCatalogPage{}), reflect.TypeOf(api.SkillVersionPage{}), reflect.TypeOf(api.SessionAdmissionView{}), reflect.TypeOf(interaction.ProjectLabel{}), reflect.TypeOf(interaction.KnowledgeIntent{}), reflect.TypeOf(interaction.KnowledgeOperation{}), reflect.TypeOf(interaction.KnowledgeItem{}), reflect.TypeOf(interaction.KnowledgeMatch{}), reflect.TypeOf(api.KnowledgePage{}), reflect.TypeOf(api.KnowledgeSearch{}), reflect.TypeOf(interaction.OperatorIntent{}), reflect.TypeOf(interaction.OperatorDecision{}), reflect.TypeOf(interaction.OperatorOperation{}), reflect.TypeOf(api.OperatorField{}), reflect.TypeOf(api.OperatorRecord{}), reflect.TypeOf(api.OperatorAction{}), reflect.TypeOf(api.OperatorPage{}), reflect.TypeOf(api.JobArtifact{}), reflect.TypeOf(interaction.Job{}), reflect.TypeOf(interaction.JobView{}), reflect.TypeOf(interaction.JobOperationRecord{}), reflect.TypeOf(api.JobDetail{}), reflect.TypeOf(interaction.QueueItem{}), reflect.TypeOf(interaction.QueueView{}), reflect.TypeOf(interaction.QueueOperationRecord{}), reflect.TypeOf(interaction.EditCheckpoint{}), reflect.TypeOf(interaction.EditCheckpointInventory{}), reflect.TypeOf(interaction.SessionOperation{}), reflect.TypeOf(interaction.SessionOperationRecord{}), reflect.TypeOf(interaction.SessionProvenance{}), reflect.TypeOf(interaction.ContextVersion{}), reflect.TypeOf(interaction.ContextMessage{}), reflect.TypeOf(interaction.SessionContextView{}), reflect.TypeOf(model.ChatToolCall{}), reflect.TypeOf(model.ChatToolFunction{}), reflect.TypeOf(api.SessionView{}), reflect.TypeOf(api.ApprovalView{}), reflect.TypeOf(api.ToolView{}), reflect.TypeOf(api.RunView{}), reflect.TypeOf(api.Snapshot{}), reflect.TypeOf(api.WireEvent{}), reflect.TypeOf(interaction.EditReview{}), reflect.TypeOf(interaction.EnvironmentChange{}), reflect.TypeOf(interaction.ExecReview{}), reflect.TypeOf(interaction.MCPReview{}), reflect.TypeOf(interaction.MCPServerView{}), reflect.TypeOf(interaction.MCPStatus{})}
 	var b strings.Builder
 	b.WriteString("// Generated by go run ./cmd/protocolgen. Do not edit.\n")
 	defs := map[string]any{}
 	for _, t := range types {
-		fmt.Fprintf(&b, "export interface %s {\n", t.Name())
+		fmt.Fprintf(&b, "export interface %s {\n", tsName(t.Name()))
 		props := map[string]any{}
 		required := []string{}
 		for i := 0; i < t.NumField(); i++ {
@@ -38,11 +39,24 @@ func main() {
 				required = append(required, name)
 			}
 			fieldType := tsType(f.Type)
+			if f.Name == "SchemaVersion" && (strings.HasPrefix(t.Name(), "Hook") || strings.HasPrefix(t.Name(), "SkillRun")) {
+				fieldType = "1"
+				if strings.HasSuffix(t.Name(), "V2") {
+					fieldType = "2"
+				}
+			}
 			if skillNullable(t.Name(), f.Name) {
 				fieldType += " | null"
 			}
 			fmt.Fprintf(&b, "  %s%s: %s;\n", name, optional, fieldType)
 			props[name] = schema(f.Type)
+			if f.Name == "SchemaVersion" && (strings.HasPrefix(t.Name(), "Hook") || strings.HasPrefix(t.Name(), "SkillRun")) {
+				version := 1
+				if strings.HasSuffix(t.Name(), "V2") {
+					version = 2
+				}
+				props[name] = map[string]any{"const": version}
+			}
 			if skillNullable(t.Name(), f.Name) {
 				props[name] = map[string]any{"anyOf": []any{schema(f.Type), map[string]string{"type": "null"}}}
 			}
@@ -50,6 +64,12 @@ func main() {
 		b.WriteString("}\n")
 		defs[t.Name()] = map[string]any{"type": "object", "properties": props, "required": required, "additionalProperties": false}
 	}
+	for _, name := range []string{"SkillRunOperation", "SkillRunRecord", "SkillRunPin", "SkillRunPage"} {
+		fmt.Fprintf(&b, "export type %s = %sV1 | %sV2;\n", name, name, name)
+	}
+	b.WriteString("export type SkillRunView = SkillRunRecord;\nexport type SkillRunOperationView = SkillRunOperation;\n")
+	defs["SkillRunView"] = map[string]any{"oneOf": []any{map[string]string{"$ref": "#/$defs/SkillRunRecord"}, map[string]string{"$ref": "#/$defs/SkillRunRecordV2"}}}
+	defs["SkillRunOperationView"] = map[string]any{"oneOf": []any{map[string]string{"$ref": "#/$defs/SkillRunOperation"}, map[string]string{"$ref": "#/$defs/SkillRunOperationV2"}}}
 	b.WriteString("export type ApprovalReview = {kind: 'edit'; edit: EditReview} | {kind: 'exec'; exec: ExecReview} | {kind: 'mcp'; mcp: MCPReview};\n")
 	defs["ApprovalReview"] = map[string]any{"oneOf": []any{
 		map[string]any{"type": "object", "required": []string{"kind", "edit"}, "additionalProperties": false, "properties": map[string]any{"kind": map[string]string{"const": "edit"}, "edit": map[string]string{"$ref": "#/$defs/EditReview"}}},
@@ -69,7 +89,7 @@ func tsType(t reflect.Type) string {
 	case reflect.Pointer:
 		return tsType(t.Elem())
 	case reflect.Struct:
-		return t.Name()
+		return tsName(t.Name())
 	case reflect.String:
 		return "string"
 	case reflect.Bool:
@@ -120,5 +140,13 @@ func must(e error) {
 // Zero-artifact disable reviews preserve the Go zero-value manifest. Optional
 // dependencies also serialize null. Do not normalize immutable evidence.
 func skillNullable(t, f string) bool {
-	return t == "SkillRunNodeResult" && f == "Result" || t == "SkillRunNode" && f == "DependsOn" || t == "SkillManifest" && f == "Inputs" || t == "SkillRequirements" && f == "Capabilities" || t == "SkillWorkflow" && f == "Nodes" || t == "SkillNode" && f == "DependsOn"
+	return t == "HookOperation" && f == "Policy" || t == "SkillRunNodeResult" && f == "Result" || t == "SkillRunNode" && f == "DependsOn" || t == "SkillManifest" && f == "Inputs" || t == "SkillRequirements" && f == "Capabilities" || t == "SkillWorkflow" && f == "Nodes" || t == "SkillNode" && f == "DependsOn"
+}
+
+func tsName(name string) string {
+	switch name {
+	case "SkillRunOperation", "SkillRunRecord", "SkillRunPin", "SkillRunPage":
+		return name + "V1"
+	}
+	return name
 }

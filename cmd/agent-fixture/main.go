@@ -35,11 +35,15 @@ func run() error {
 	parent := flag.String("runtime-parent", "", "empty creates a temporary runtime")
 	workspace := flag.String("workspace", "", "empty creates a temporary workspace")
 	operatorFixture := flag.Bool("operator-fixture", false, "seed owned read-only metadata inventory fixtures")
+	queuedHookRun := flag.Bool("queued-hook-run", false, "seed one owned queued Hook-pinned Skill run without starting an executor")
 	safeMCP := flag.Bool("safe-mcp", false, "explicit owned stdio MCP helper only")
 	mcpResult := flag.String("mcp-result", "", "owned helper result mode")
 	safeExec := flag.Bool("safe-exec", false, "opt in to fixed safe exec in an owned temporary workspace only")
 	chatOnly := flag.Bool("chat-only-fixture", false, "simulate unavailable native adapters; not native-platform evidence")
 	flag.Parse()
+	if *queuedHookRun && (*workspace != "" || *parent != "" || *operatorFixture || *safeExec || *safeMCP || *chatOnly) {
+		return fmt.Errorf("queued-hook-run requires an exclusive owned temporary workspace/runtime")
+	}
 	if *operatorFixture && (*workspace != "" || *parent != "") {
 		return fmt.Errorf("operator-fixture requires owned temporary workspace/runtime")
 	}
@@ -121,6 +125,16 @@ func run() error {
 		return e
 	}
 	defer service.Close()
+	info := map[string]string{"url": "http://" + l.Addr().String(), "workspace": *workspace, "runtime_parent": *parent, "provider": "offline fixture; not real model evidence"}
+	if *queuedHookRun {
+		seed, err := seedQueuedHookRun(ctx, service, interaction.NewStore(rt.DB.SQL), l.Addr().String(), token)
+		if err != nil {
+			return err
+		}
+		for key, value := range seed {
+			info[key] = value
+		}
+	}
 	var handler http.Handler = service
 	if *chatOnly {
 		handler = chatOnlyDisplayFixture(service)
@@ -128,7 +142,7 @@ func run() error {
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(l) }()
-	_ = json.NewEncoder(os.Stdout).Encode(map[string]string{"url": "http://" + l.Addr().String(), "workspace": *workspace, "runtime_parent": *parent, "provider": "offline fixture; not real model evidence"})
+	_ = json.NewEncoder(os.Stdout).Encode(info)
 	select {
 	case <-ctx.Done():
 		service.Close()

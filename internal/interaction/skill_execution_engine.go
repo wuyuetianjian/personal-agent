@@ -27,8 +27,12 @@ func skillRunData(ctx context.Context, q contextQuery, id string) (pin SkillRunP
 	if err != nil {
 		return pin, nil, false, ErrReconciliation
 	}
-	if json.Unmarshal([]byte(raw), &pin) != nil || json.Unmarshal([]byte(planRaw), &plan) != nil || kind != skillRunAction || pin.RunID != id || pin.SessionID != session || pin.ExecutionProfile != SkillRunProfile || operatorHash(pin) != hash || operatorHash(plan) != pin.PlanHash || skillBytesHash(inputs) != pin.InputsHash || len(plan) == 0 || len(plan) > 16 {
+	pin, _, err = decodeSkillPin([]byte(raw))
+	if err != nil || json.Unmarshal([]byte(planRaw), &plan) != nil || kind != skillRunAction || pin.RunID != id || pin.SessionID != session || pin.ExecutionProfile != SkillRunProfile || skillBytesHash(raw) != hash || operatorHash(plan) != pin.PlanHash || skillBytesHash(inputs) != pin.InputsHash || len(plan) == 0 || len(plan) > 16 {
 		return pin, nil, false, ErrReconciliation
+	}
+	if _, _, err = hookRunSnapshotAt(ctx, q, id); err != nil {
+		return pin, nil, false, err
 	}
 	var artifact, contentHash string
 	if err = q.QueryRowContext(ctx, `SELECT raw_artifact,content_hash FROM interaction_skill_revisions WHERE id=? AND catalog_id=?`, pin.RevisionID, pin.CatalogID).Scan(&artifact, &contentHash); err != nil {
@@ -117,7 +121,7 @@ func validateSkillCheckpointAt(ctx context.Context, q contextQuery, id string, c
 	if cp.Steps < done || cp.Steps > done+len(cp.Pending) {
 		return ErrReconciliation
 	}
-	return nil
+	return validateHookCheckpointAt(ctx, q, id, cp, plan)
 }
 
 // persistedSkillCheckpoint validates the durable identity at a serialized boundary.
@@ -142,6 +146,11 @@ func skillOutcomeState(ctx context.Context, q contextQuery, id string) (failed, 
 	if err != nil {
 		return false, false, err
 	}
+	stopped, stopErr := hookStopAt(ctx, q, id)
+	if stopErr != nil {
+		return false, false, stopErr
+	}
+	failed = stopped
 	complete = true
 	for _, node := range plan {
 		var raw string
@@ -251,7 +260,21 @@ func (b *SkillRunBroker) Execute(ctx context.Context, proposal string) (ToolResu
 	if p.RunID != b.runID {
 		return ToolResult{}, ErrConflict
 	}
-	return b.native.Execute(ctx, proposal)
+	_, hasHooks, hookErr := hookRunSnapshotAt(ctx, b.store.db, b.runID)
+	if hookErr != nil {
+		return ToolResult{}, hookErr
+	}
+	result, execErr := b.native.Execute(ctx, proposal)
+	// The legacy native adapter reports some pre-dispatch refusals as a known
+	// ToolResult. A v2 journal without the final native claim is still an unknown
+	// invocation: do not complete its journal or fabricate an after observation.
+	if hasHooks {
+		var executed bool
+		if err := b.store.db.QueryRowContext(context.Background(), `SELECT executed FROM interaction_tool_proposals WHERE id=? AND run_id=?`, proposal, b.runID).Scan(&executed); err != nil || !executed {
+			return ToolResult{}, ErrReconciliation
+		}
+	}
+	return result, execErr
 }
 
 // skillDispatchClaim is the only native content-read admission boundary. Catalog
@@ -271,6 +294,12 @@ func (b *WorkspaceBroker) skillDispatchClaim(ctx context.Context, p preparedTool
 	}
 	pin, plan, revoked, err := skillRunData(ctx, tx, p.RunID)
 	if err != nil {
+		return err
+	}
+	if err = hookCurrentAuthority(ctx, tx, p.RunID, pin); err != nil {
+		return err
+	}
+	if err = hookBeforeEvidence(ctx, tx, p.RunID, p.Proposal, true); err != nil {
 		return err
 	}
 	if p.RunID != b.skillRunID || revoked {
@@ -339,6 +368,9 @@ func skillNodeObservation(ctx context.Context, tx *sql.Tx, id string, o ToolObse
 		n.Outcome, n.Reason = "failed", "tool_refused"
 	}
 	raw, _ := json.Marshal(n)
+	if err = hookNodeObservation(ctx, tx, id, o); err != nil {
+		return err
+	}
 	if old == string(raw) {
 		return nil
 	}

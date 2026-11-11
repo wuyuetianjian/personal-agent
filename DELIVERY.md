@@ -10,7 +10,7 @@
 - 已配置且明确选择的 stdio MCP；知识库本地检索及确认后入库；项目元数据创建、重命名、归档/恢复和新会话描述标签。
 - 不可变 Skill 目录的 Go 内核、HTTP API、TS SDK/控制器。**已接入 Skill 目录 Web/Ink/机器 CLI 元数据生命周期；选中版本本身不授权执行；确定性只读执行内核、独立运行 API 与 Web/Ink/机器 CLI 已接入；语义评估保持 not_run。**
 
-这是一份有明确边界的 rebuilt preview，不是全量 Claude Code 兼容实现。Hooks、MCP HTTP/Tasks，以及重建界面的若干管理写入能力仍未完成。不同项目标签如果使用同一工作区，会共享该工作区的知识范围；标签不提供隔离或权限。
+这是一份有明确边界的 rebuilt preview，不是全量 Claude Code 兼容实现。现已提供仅用于只读 Skill 运行的有界、会话拥有的声明式拒绝/审计 Hooks；可执行/通用 Hooks、MCP HTTP/Tasks，以及重建界面的若干管理写入能力仍未完成。不同项目标签如果使用同一工作区，会共享该工作区的知识范围；标签不提供隔离或权限。
 
 ## 先准备工具链
 
@@ -80,6 +80,10 @@ pnpm --filter @personal-agent/terminal start --url http://127.0.0.1:7319 \
 - 新服务使用独立 `runtime-rebuild-v1` 命名空间，拒绝未知 schema；旧 preview 数据迁移未验收，不要用旧二进制写新库。
 - 本次是源码交付，不含生产部署、自动更新、平台签名或公开发布。
 
+Native readiness is tracked internally for Read, Search, Replace, Undo, Exec and MCP stdio; the public Files/Exec shape and Linux permissions are unchanged. Files still requires all four file operations. MCP adds its own native-readiness requirement to the existing Files, workspace, configuration and explicit session opt-in gates, independently of Exec. macOS, Windows and other non-Linux targets remain disabled. Compile-only evidence is not native execution or support acceptance. Later activation requires real per-target filesystem/identity, reparse/symlink, ACL/DACL, locking/recovery, replacement/undo, exec and separate MCP qualification.
+
+原生实现就绪状态在内部区分 Read、Search、Replace、Undo、Exec 与 MCP stdio；公开 Files/Exec 结构及 Linux 权限保持不变，Files 仍要求全部四种文件操作。MCP 在现有 Files、工作区、主机配置及会话明确启用条件上增加独立原生就绪门槛，不依赖 Exec。macOS、Windows 及其他非 Linux 目标保持禁用；仅交叉编译不能证明原生执行或支持验收。后续启用必须完成各真实目标的文件系统/身份、reparse/symlink、ACL/DACL、锁定与恢复、替换/撤销、exec 及独立 MCP 验收。
+
 ## 复验
 
 ```sh
@@ -104,12 +108,12 @@ This is a bounded, reproducible **source preview**, not a complete Claude Code r
 
 Use the build commands above and `serve-agent`, not the legacy release/install path. The local `agent-fixture` provides deterministic, disposable five-minute demos; it is not a real model. Real usage requires your own configured model, private token, separate runtime directory and explicit workspace. A synthetic provider-tool probe is a separate intentional outbound request, never automatic.
 
-Skill catalog metadata is available in Web, Ink and machine CLI through the strict shared controller. Separate deterministic read-only Skill-run endpoints and actual Web/Ink/machine clients are now available. Enabled remains only an exact metadata selection; every run needs its own preview and confirmation. Hooks, MCP HTTP/Tasks and some management mutations are unavailable. Linux exec and MCP startup are explicitly non-sandboxed and opt-in. Native Windows/macOS file/exec behavior, real providers, Firefox/WebKit and system IME remain unqualified. Project labels grant neither permissions nor knowledge isolation. Unknown effects require read-only reconciliation, never blind retries.
+Skill catalog metadata is available in Web, Ink and machine CLI through the strict shared controller. Separate deterministic read-only Skill-run endpoints and actual Web/Ink/machine clients are now available. Enabled remains only an exact metadata selection; every run needs its own preview and confirmation. Bounded session-owned declarative deny/audit Hooks are available for read-only Skill runs. Executable/general Hooks, MCP HTTP/Tasks and some management mutations remain unavailable. Linux exec and MCP startup are explicitly non-sandboxed and opt-in. Native Windows/macOS file/exec behavior, real providers, Firefox/WebKit and system IME remain unqualified. Project labels grant neither permissions nor knowledge isolation. Unknown effects require read-only reconciliation, never blind retries.
 
 
 ### Read-only Skill runs / 只读 Skill 运行
 
-This is a bounded deterministic `readonly-workspace-v1` profile, not a legacy workflow/model bridge. Catalog structural review, enabled revision selection, run eligibility/admission, actual node execution and evaluation are separate. `completed` means the admitted native reads/searches succeeded; evaluation remains `not_run`, verification `not_evaluated`. Only Linux native fixtures are qualified, with no OS-sandbox claim. Hooks and other profiles are unavailable.
+This is a bounded deterministic `readonly-workspace-v1` profile, not a legacy workflow/model bridge. Catalog structural review, enabled revision selection, run eligibility/admission, actual node execution and evaluation are separate. `completed` means the admitted native reads/searches succeeded; evaluation remains `not_run`, verification `not_evaluated`. Only Linux native fixtures are qualified, with no OS-sandbox claim. Session-owned declarative deny/audit Hooks for this profile are available as described below; executable/general Hooks and other execution profiles remain unavailable.
 
 Web: open Skill catalog in an existing plan/default/acceptEdits session with supported native workspace binding. Under Read-only Skill execution, enter the exact catalog/revision IDs and a JSON object keyed by the manifest's same-named object inputs. Read accepts `{path:"note.txt"}`; search accepts `{paths:["note.txt"],query:"literal"}`. Preview is content-free; inspect scope/root/policy, compiled native calls, hashes, fixed budgets and expiry, then explicitly confirm. Read the admitted run, or use full-evidence run history/detail and exact stop/resume. No provider probe or hidden session is needed. chat_only and unsupported profiles remain blocked.
 
@@ -124,3 +128,15 @@ Only recovery identity is persisted: Web sessionStorage `agent-skill-run-operati
 Fixed limits: 16 attempts/nodes, 120-second admission deadline, 32 KiB canonical input, 64 KiB serialized result envelope per node, 1 MiB aggregate outputs/artifacts, 512 ordinary plus 64 control/recovery events. Lifetime reservations/retained copies are also bounded; capacity refusals do not silently truncate outputs, create another run or bypass confirmation. Logical payload limits do not promise SQLite/WAL physical size. No purge, real-provider qualification, MCP/network execution, platform widening or semantic evaluation is included.
 
 中文：独立运行入口现已接入 Web、Ink 与机器 CLI，仅支持固定工作区的确定性只读读取/搜索。目录历史结构审核、选中版本、运行资格、准入、节点实际结果与语义评估严格分离。每次运行均需精确版本、JSON 输入、独立预览与明确确认；不调用模型，不创建隐藏会话。完成只代表原生读取/搜索成功，evaluation 始终为 `not_run`，verification 为 `not_evaluated`。未知响应及重载/重启后保持全局隔离，仅按原始会话/请求/运行/动作 GET 读取恢复，绝不重发 POST。只保存恢复标识，不保存输入、令牌、清单或结果。停用或切换版本会永久撤销后续节点；已完成的读取不能撤回，已有证据保留。限额、保留容量、支持平台及 Hooks 边界如上，不能将只读运行误认为沙箱或通用 Skill 执行器。
+
+Declarative Hook kernel and clients: Go/SQLite schema-2 read-only Skill snapshots, reviewed session policy selection, before-claim deny and causal audit receipts are implemented through the public Hook API and TypeScript Web/Ink/machine controls. New run previews/admissions include the complete schema-2 policy snapshot; clients strictly read retained schema-1 and schema-2 evidence without dropping fields. Executable/general Hooks, model/Jobs hooks, writes, provider/MCP execution, new native platforms and a release remain outside scope; this is not an OS sandbox or semantic verification. Logical bounds are 16 MiB of policy management reservation and a 160 KiB Hook slab inside each existing 8 MiB Skill execution reservation; these are not SQLite/WAL physical-size promises.
+
+中文：声明式 Hook 内核及客户端现通过公开 Hook API 与 TypeScript Web/Ink/机器控件提供 Go/SQLite schema-2 只读 Skill 快照、经审核的会话策略选择、调用声明前拒绝以及与实际结果同事务的审计回执。新运行预览/准入包含完整 schema-2 策略快照；客户端严格读取保留的 schema-1 和 schema-2 证据，不丢弃字段。可执行/通用 Hooks、模型/Jobs Hooks、写入、provider/MCP 执行、新原生平台及发布仍不在范围内，也不提供操作系统沙箱或语义验证。策略管理逻辑预留上限为 16 MiB，每个 Skill 的现有 8 MiB 预算内固定预留 160 KiB；这些不是 SQLite/WAL 物理文件大小保证。
+
+## Declarative Hooks client stage / 声明式策略客户端阶段
+
+Added bounded session-owned policy management to the existing API, generated strict v1/v2 contracts, shared SDK quarantine, Web, Ink and machine entry points. New run admission always pins the reviewed policy snapshot; legacy reads remain exact. This is the same execution owner, native allowlist, original control receipt route and immutable context-kind separation, with no extra scheduler, callback runtime, model/Jobs hook, platform qualification or publication.
+
+交付边界：仅声明式 `before_node` 拒绝及 `after_node`/`run_terminal` 审计；分别确认导入、启用/禁用和运行。丢失响应仅按原 ID GET 核对，恢复不自动确认、不重发 POST，客户端仅保存恢复 ID。选择改变永久撤销旧的未结束运行，禁用后重新启用也不会恢复。容量是逻辑保留上限，不提供清理/退款或 SQLite/WAL 物理大小承诺。执行观察不代表评估或验证通过（`not_run` / `not_evaluated`）。
+
+Verification commands include `go test ./...`, `go vet ./...`, affected-package `go test -race`, `pnpm test`, `pnpm typecheck`, `pnpm build`, protocol generation/parity (including both Skill goldens and `hooks.golden.json`), actual Chromium `apps/web/test/hooks.test.ts`, compiled real machine entry tests, and `hooks_pty.py`/`hooks_recovery_pty.py`. Command availability is not a claim that a particular checkout passed; inspect the actual command results for the exact revision under review. Owned offline fixtures are the only permitted runtime evidence. No real provider/MCP/service, non-test run, user-data migration, merge, push or release is part of this stage.

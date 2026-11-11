@@ -119,12 +119,13 @@ func (s *Store) EditCheckpoints(ctx context.Context, session string) (EditCheckp
 	if err != nil {
 		return out, err
 	}
-	out.Supported = platformFileCapability().Enabled && w.Policy.Mode != ModePlan
+	undo := currentNativeSupport().Undo
+	out.Supported = undo.Enabled && w.Policy.Mode != ModePlan
 	if w.Policy.Mode == ModePlan {
 		out.Reason = "Unsupported in plan mode. " + out.Reason
 	}
-	if !platformFileCapability().Enabled {
-		out.Reason = platformFileCapability().Reason + ". " + out.Reason
+	if !undo.Enabled {
+		out.Reason = undo.Reason + ". " + out.Reason
 	}
 	if identity, e := workspaceIdentity(w.Policy.Root); e != nil || identity != w.RootIdentity {
 		out.Supported = false
@@ -200,7 +201,7 @@ func (s *Store) UndoEdit(ctx context.Context, session string, in SessionOperatio
 	if err = json.Unmarshal([]byte(policy), &wp); err != nil {
 		return out, err
 	}
-	if wp.Mode == ModePlan || !platformFileCapability().Enabled {
+	if wp.Mode == ModePlan || !currentNativeSupport().Undo.Enabled {
 		return out, ErrCapabilityUnavailable
 	}
 	w := WorkspaceBinding{SessionID: session, ScopeID: p.Scope, RootIdentity: p.RootIdentity, Policy: wp}
