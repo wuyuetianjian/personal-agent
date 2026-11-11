@@ -50,7 +50,7 @@ been released. Raw, the driver's lock and a connection mutex do not prevent a
 second shared-cache connection from changing the shared Pager. A one-connection
 pool or an assumed default does not fix this lifetime problem.
 
-The next experiment therefore has a separate `sqlite-nativeprobe-private`
+The experiment therefore has a separate `sqlite-nativeprobe-private`
 driver and private connection wrapper. Only this wrapper may expose journal
 capture. The constructor must reject caller URIs and construct its own fixed
 private-cache/win32 URI from a strictly validated absolute DOS filename; it is
@@ -59,6 +59,16 @@ Factory, validator and child-harness shared-default control initially used
 explicit refusal stubs. Five positive factory contracts failed three times at
 fd7eacc in run 43008362582. Factory validation and journal behavior are separate
 qualification stages; constructor-blocked WAL tests do not prove journal RED.
+At 712e0be in run 43009315063, all six factory contracts passed three times,
+including the three child completion markers. Only the three positive WAL
+contracts then failed three times at the explicit journal refusal stub.
+
+The implementation now holds the driver lock and SQLite database mutex across
+main/journal capture and metadata-only duplication. It uses the public
+sqlite3_file/io_methods prefix and the pinned generated function-slot ABI, not
+private winFile layout. All acquired duplicates are closed on failure; borrowed
+SQLite handles are never closed. This implementation still requires its own
+native qualification; constructor success is not journal success.
 
 Tests include an isolated child with global shared-cache default enabled. With
 read_uncommitted enabled, controlled private connections must see committed data,

@@ -62,10 +62,99 @@ func (c *conn) ExperimentalDuplicateMainFileHandle() (uintptr, error) {
 	return uintptr(duplicate), nil
 }
 
-// ExperimentalDuplicateMainAndJournalFileHandles is a RED-phase interface for
-// current-open WAL qualification only, not complete storage protection.
-func (c *experimentalPrivateConn) ExperimentalDuplicateMainAndJournalFileHandles() ([]uintptr, error) {
-	return nil, errors.New("sqlite: experimental current journal identity not implemented")
+// ExperimentalDuplicateMainAndJournalFileHandles observes the actual main and
+// currently open journal of this controlled private-cache connection. Current
+// WAL is the qualification target, not SHM or complete storage protection.
+// Borrowed sqlite3_file/method pointers never escape the locked window.
+func (c *experimentalPrivateConn) ExperimentalDuplicateMainAndJournalFileHandles() (result []uintptr, err error) {
+	if c == nil || c.conn == nil {
+		return nil, errors.New("sqlite: experimental journal identity: nil private connection")
+	}
+	c.Lock()
+	defer c.Unlock()
+	if c.db == 0 || c.tls == nil || c.inMemory {
+		return nil, errors.New("sqlite: experimental journal identity: closed or in-memory connection")
+	}
+	mutex := sqlite3.Xsqlite3_db_mutex(c.tls, c.db)
+	if mutex == 0 {
+		return nil, errors.New("sqlite: experimental journal identity: missing database mutex")
+	}
+	sqlite3.Xsqlite3_mutex_enter(c.tls, mutex)
+	defer sqlite3.Xsqlite3_mutex_leave(c.tls, mutex)
+	// FULLMUTEX is recursive: fileControl may enter it again. c.Lock alone only
+	// guards driver lifetime; the factory's cache=private excludes shared Pager.
+	var owned []windows.Handle
+	defer func() {
+		if err != nil {
+			for i := len(owned) - 1; i >= 0; i-- {
+				err = errors.Join(err, windows.CloseHandle(owned[i]))
+			}
+			result = nil
+		}
+	}()
+	duplicate := func(original windows.Handle) error {
+		if original == 0 || original == windows.InvalidHandle {
+			return errors.New("sqlite: experimental journal identity: invalid native handle")
+		}
+		var h windows.Handle
+		e := windows.DuplicateHandle(windows.CurrentProcess(), original,
+			windows.CurrentProcess(), &h, windows.FILE_READ_ATTRIBUTES|windows.SYNCHRONIZE, false, 0)
+		// Own any returned duplicate even on failure, so all error paths clean up.
+		if h != 0 && h != windows.InvalidHandle {
+			owned = append(owned, h)
+		}
+		if e != nil {
+			return e
+		}
+		if h == 0 || h == windows.InvalidHandle {
+			return errors.New("sqlite: experimental journal identity: invalid duplicate")
+		}
+		return nil
+	}
+	size := int(unsafe.Sizeof(uintptr(0)))
+	mainSlot := c.tls.Alloc(size)
+	defer c.tls.Free(size)
+	*(*uintptr)(unsafe.Pointer(mainSlot)) = 0
+	if err = c.fileControl("main", sqlite3.SQLITE_FCNTL_WIN32_GET_HANDLE, mainSlot); err != nil {
+		return nil, err
+	}
+	if err = duplicate(windows.Handle(*(*uintptr)(unsafe.Pointer(mainSlot)))); err != nil {
+		return nil, err
+	}
+
+	journalSlot := c.tls.Alloc(size)
+	defer c.tls.Free(size)
+	*(*uintptr)(unsafe.Pointer(journalSlot)) = 0
+	if err = c.fileControl("main", sqlite3.SQLITE_FCNTL_JOURNAL_POINTER, journalSlot); err != nil {
+		return nil, err
+	}
+	file := *(*uintptr)(unsafe.Pointer(journalSlot))
+	if file == 0 {
+		return nil, errors.New("sqlite: experimental journal identity: no current journal object")
+	}
+	methods := (*sqlite3.Tsqlite3_file)(unsafe.Pointer(file)).FpMethods
+	if methods == 0 {
+		return nil, errors.New("sqlite: experimental journal identity: journal is not open")
+	}
+	table := (*sqlite3.Tsqlite3_io_methods)(unsafe.Pointer(methods))
+	if table.FiVersion < 1 || table.FxFileControl == 0 {
+		return nil, errors.New("sqlite: experimental journal identity: unsupported journal methods")
+	}
+	nativeSlot := c.tls.Alloc(size)
+	defer c.tls.Free(size)
+	*(*uintptr)(unsafe.Pointer(nativeSlot)) = 0
+	// These fields are the public sqlite3_file/sqlite3_io_methods prefix, NOT
+	// winFile layout. The thunk representation/signature is fixed to modernc
+	// v1.58.0 generated _sqlite3OsFileControl, not a portable Go or Windows ABI.
+	call := *(*func(*libc.TLS, uintptr, int32, uintptr) int32)(unsafe.Pointer(&struct{ uintptr }{table.FxFileControl}))
+	rc := call(c.tls, file, int32(sqlite3.SQLITE_FCNTL_WIN32_GET_HANDLE), nativeSlot)
+	if rc != sqlite3.SQLITE_OK {
+		return nil, fmt.Errorf("sqlite: experimental journal WIN32_GET_HANDLE rc=%d", rc)
+	}
+	if err = duplicate(windows.Handle(*(*uintptr)(unsafe.Pointer(nativeSlot)))); err != nil {
+		return nil, err
+	}
+	return []uintptr{uintptr(owned[0]), uintptr(owned[1])}, nil
 }
 
 // Narrow experimental factory: deliberately bypasses Driver.Open's registered
