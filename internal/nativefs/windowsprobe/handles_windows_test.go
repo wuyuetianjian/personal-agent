@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"syscall"
 	"testing"
 	"unsafe"
 
@@ -45,10 +46,21 @@ func captureHandleInventory(t *testing.T) handleInventory {
 	createMarker := dll.NewProc("PssWalkMarkerCreate")
 	freeMarker := dll.NewProc("PssWalkMarkerFree")
 	walk := dll.NewProc("PssWalkSnapshot")
-	for _, proc := range []*windows.LazyProc{capture, free, createMarker, freeMarker, walk} {
+	fileType := dll.NewProc("GetFileType")
+	for _, proc := range []*windows.LazyProc{capture, free, createMarker, freeMarker, walk, fileType} {
 		if err := proc.Find(); err != nil {
 			t.Fatal(err)
 		}
+	}
+	// x/sys GetFileType maps a zero result plus ERROR_SUCCESS to EINVAL.
+	// The public API permits FILE_TYPE_UNKNOWN with no error; preserve that
+	// distinction using the raw call (Go's syscall trampoline clears LastError).
+	getFileType := func(h windows.Handle) (uint32, error) {
+		kind, _, err := fileType.Call(uintptr(h))
+		if kind != 0 || err == syscall.Errno(0) {
+			return uint32(kind), nil
+		}
+		return 0, err
 	}
 	var snapshot, marker windows.Handle
 	status, _, _ := capture.Call(uintptr(windows.CurrentProcess()), 4 /* PSS_CAPTURE_HANDLES only */, 0, uintptr(unsafe.Pointer(&snapshot)))
@@ -90,13 +102,13 @@ func captureHandleInventory(t *testing.T) handleInventory {
 		// Classify the current value first: some non-file objects cannot be
 		// duplicated. Disk results are then pinned and rechecked. This is a
 		// controlled persistent-disk-leak detector, not an atomic process audit.
-		kind, queryErr := windows.GetFileType(entry.Handle)
+		kind, queryErr := getFileType(entry.Handle)
 		if queryErr == nil && kind == windows.FILE_TYPE_DISK {
 			var duplicate windows.Handle
 			if err := windows.DuplicateHandle(windows.CurrentProcess(), entry.Handle, windows.CurrentProcess(), &duplicate, 0, false, windows.DUPLICATE_SAME_ACCESS); err != nil {
 				t.Fatalf("duplicate captured disk handle %#x: %v", entry.Handle, err)
 			}
-			confirmed, confirmErr := windows.GetFileType(duplicate)
+			confirmed, confirmErr := getFileType(duplicate)
 			closeErr := windows.CloseHandle(duplicate)
 			if confirmErr != nil || confirmed != windows.FILE_TYPE_DISK || closeErr != nil {
 				t.Fatalf("disk classification changed or close failed: kind=%d query=%v close=%v", confirmed, confirmErr, closeErr)
@@ -119,6 +131,8 @@ func captureHandleInventory(t *testing.T) handleInventory {
 				typ = "Pipe"
 			case windows.FILE_TYPE_CHAR:
 				typ = "Character"
+			case windows.FILE_TYPE_UNKNOWN:
+				typ = "UnknownFileType"
 			default:
 				t.Fatalf("unknown captured file type %#x for handle %#x", kind, entry.Handle)
 			}
