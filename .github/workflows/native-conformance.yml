@@ -115,7 +115,10 @@ jobs:
           pnpm install --frozen-lockfile --ignore-scripts
       - name: Run TypeScript tests
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
-        run: pnpm test
+        run: node --test packages/protocol/test/*.test.ts packages/client/test/*.test.ts apps/terminal/test/*.test.ts
+      - name: Run Markdown safety tests independently
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: node --import ./apps/terminal/node_modules/tsx/dist/loader.mjs --test apps/web/test/markdown.test.tsx
       - name: Check TypeScript types
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: pnpm typecheck

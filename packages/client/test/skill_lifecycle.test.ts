@@ -1,3 +1,4 @@
+import {fixtureName,readFixtureInfo,stopFixture} from './fixture_process.ts';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn,spawnSync} from 'node:child_process';
@@ -8,12 +9,12 @@ import {join} from 'node:path';
 import {AgentClient,SkillOperations} from '../src/index.ts';
 
 test('real Go/SDK skill lifecycle survives lost prepare and decision across daemon restarts with GET-only recovery',{timeout:90000},async()=>{
- const dir=await mkdtemp(join(tmpdir(),'skill-sdk-')),bin=join(dir,'fixture'),runtime=join(dir,'runtime'),workspace=join(dir,'workspace');
+ const dir=await mkdtemp(join(tmpdir(),'skill-sdk-')),bin=join(dir,fixtureName()),runtime=join(dir,'runtime'),workspace=join(dir,'workspace');
  await mkdir(runtime);await mkdir(workspace);
- const build=spawnSync('go',['build','-o',bin,'./cmd/agent-fixture'],{encoding:'utf8',timeout:60000});assert.equal(build.status,0,build.stderr);
+ const build=spawnSync(process.env['GO_BINARY']??'go',['build','-o',bin,'./cmd/agent-fixture'],{encoding:'utf8',timeout:60000});assert.equal(build.status,0,build.stderr);
  let child:ChildProcessWithoutNullStreams|undefined;const token='owned-skill-fixture';let saved:string|null=null;let previewPosts=0,decisionPosts=0;let drop='preview';let lifecycle=false;const paths:string[]=[];
- async function stop(){if(child&&child.exitCode===null){await new Promise<void>(resolve=>{const timer=setTimeout(()=>child?.kill('SIGKILL'),5000);child!.once('exit',()=>{clearTimeout(timer);resolve()});child!.kill('SIGINT')})}child=undefined}
- async function start(){child=spawn(bin,['--runtime-parent',runtime,'--workspace',workspace],{env:{...process.env,PA_AGENT_TOKEN:token},stdio:'pipe'});let stderr='';child.stderr.on('data',v=>stderr+=v);const server=child;const info=await new Promise<{url:string}>((resolve,reject)=>{let line='';const timer=setTimeout(()=>reject(Error('fixture start timeout: '+stderr)),10000);server.once('exit',()=>{clearTimeout(timer);reject(Error('fixture exited: '+stderr))});server.stdout.on('data',v=>{line+=v;if(line.includes('\n')){clearTimeout(timer);resolve(JSON.parse(line.split('\n')[0]!))}})});
+ async function stop(){await stopFixture(child);child=undefined}
+ async function start(){child=spawn(bin,['--runtime-parent',runtime,'--workspace',workspace],{env:{...process.env,PA_AGENT_TOKEN:token},stdio:'pipe'});const info=await readFixtureInfo(child);
  return new AgentClient({baseURL:info.url,token:()=>token,fetch:async(url,init)=>{const path=new URL(String(url)).pathname;if(lifecycle){paths.push(path);assert.notEqual(path,'/api/v1/status')}if(path.endsWith('/skills/preview'))previewPosts++;if(path.endsWith('/skills/decision'))decisionPosts++;const response=await fetch(url,init);if(drop&&path.endsWith('/skills/'+drop)){assert.equal(response.status,200);await response.text();drop='';throw Error('fixture drops acknowledged response')}return response}})
  }
  try{

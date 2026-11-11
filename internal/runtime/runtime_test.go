@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -681,7 +683,11 @@ func TestWorkflowEngineExecutesAllowlistedToolExecutor(t *testing.T) {
 	ctx := context.Background()
 	db := openRuntimeTestDB(t)
 	cfg := configForRuntimeTest()
-	cfg.Tools.Allowlist = []config.ToolConfig{{ID: "tool.echo", Enabled: true, Program: "/bin/echo", Args: []string{"allowlisted"}, SideEffectLevel: "read_only"}}
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Tools.Allowlist = []config.ToolConfig{{ID: "tool.echo", Enabled: true, Program: binary, Args: []string{"--allowlisted-tool-fixture"}, SideEffectLevel: "read_only"}}
 	rt := NewLocal(cfg, db, &orchestrator.InMemoryEvidenceBus{})
 	if err := rt.Workflows.Create(ctx, workflow.Run{
 		ID: "wf-tool", TaskID: "task-tool", Status: workflow.StatusPending, InputJSON: `{"input":"ignored ; rm -rf /"}`,
@@ -1102,13 +1108,17 @@ func TestStdioMCPClientHonorsContextCancellation(t *testing.T) {
 }
 
 func TestToolExecutorHonorsContextCancellation(t *testing.T) {
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	db := openRuntimeTestDB(t)
 	rt := NewLocal(configForRuntimeTest(), db, nil)
 	done := make(chan error, 1)
 	go func() {
 		_, err := (ToolExecutor{
-			Config:   config.ToolConfig{ID: "tool.sleep", Enabled: true, Program: "/bin/sh", Args: []string{"-c", "sleep 2"}},
+			Config:   config.ToolConfig{ID: "tool.sleep", Enabled: true, Program: binary, Args: []string{"--tool-wait-fixture"}},
 			Evidence: rt.Evidence,
 		}).Execute(ctx, agent.TaskNode{TaskID: "task-tool-cancel", ID: "tool", Type: "tool.sleep", Role: agent.RoleTool, Input: "ignored"}, workflowInput{})
 		done <- err
@@ -1312,4 +1322,16 @@ func checkpointCount(t *testing.T, db *sql.DB, workflowID string, nodeID string)
 		t.Fatalf("checkpoint count query error = %v", err)
 	}
 	return count
+}
+
+func TestMain(m *testing.M) {
+	if len(os.Args) == 2 && os.Args[1] == "--tool-wait-fixture" {
+		time.Sleep(30 * time.Second)
+		os.Exit(0)
+	}
+	if len(os.Args) == 2 && os.Args[1] == "--allowlisted-tool-fixture" {
+		fmt.Print("allowlisted")
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
 }

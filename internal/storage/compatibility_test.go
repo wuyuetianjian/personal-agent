@@ -204,7 +204,7 @@ func TestApplyMigrationFailureRollsBackDDLDataAndLedger(t *testing.T) {
 
 func TestReadOnlyPreflightEscapesPathsAndDoesNotCreateMissingFiles(t *testing.T) {
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "owned # ? fixture.db")
+	path := filepath.Join(t.TempDir(), "owned # % fixture.db")
 	if err := ValidateSQLiteFile(ctx, path); !errors.Is(err, ErrIncompatibleSchema) {
 		t.Fatal(err)
 	}
@@ -228,10 +228,14 @@ func TestReadOnlyPreflightEscapesPathsAndDoesNotCreateMissingFiles(t *testing.T)
 	if err = os.Chmod(path, 0400); err != nil {
 		t.Fatal(err)
 	}
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err = ValidateSQLiteFile(ctx, path); err != nil {
 		t.Fatal(err)
 	}
-	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0400 {
+	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != before.Mode().Perm() {
 		t.Fatal("preflight changed file permissions", err)
 	}
 }

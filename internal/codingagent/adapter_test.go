@@ -2,10 +2,11 @@ package codingagent
 
 import (
 	"context"
+	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCLIAdaptersMapRequests(t *testing.T) {
@@ -48,9 +49,27 @@ func TestCLIAdaptersMapRequests(t *testing.T) {
 
 func fakeBinary(t *testing.T) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "agent")
-	if err := os.WriteFile(path, []byte("#!/bin/sh\nprintf '%s' \"$*\"\n"), 0o755); err != nil {
+	path, err := os.Executable()
+	if err != nil {
 		t.Fatal(err)
 	}
 	return path
+}
+
+// Reuse the native test binary as a child process, without a shell or Go toolchain.
+func TestMain(m *testing.M) {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "exec", "-p":
+			fmt.Print(strings.Join(os.Args[1:], " "))
+			os.Exit(0)
+		case "--executor-ok":
+			fmt.Print("ok")
+			os.Exit(0)
+		case "--executor-wait":
+			time.Sleep(30 * time.Second)
+			os.Exit(0)
+		}
+	}
+	os.Exit(m.Run())
 }

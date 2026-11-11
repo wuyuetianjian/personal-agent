@@ -1,0 +1,2 @@
+# Wire goldens are byte-exact JSON fixtures, independent of checkout defaults.
+protocol/v1/*.json text eol=lf

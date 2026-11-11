@@ -14,6 +14,16 @@ import (
 
 const hookPolicyFixture = `{"schema_version":1,"evaluator":"declarative-hooks-v1","rules":[{"id":"deny-search","event":"before_node","node_ids":[],"capabilities":["workspace.search"],"statuses":[],"effect":"deny"}]}`
 
+// Hook management is stored metadata, not workspace execution. Retain the
+// Linux plan-mode coverage and exercise the actually supported chat-only mode
+// on targets whose workspace admission deliberately fails closed.
+func hookManagementMode(s *InteractionService) string {
+	if s.broker.Capabilities().Files.Enabled {
+		return "plan"
+	}
+	return "chat_only"
+}
+
 func hookHTTPPrepare(t *testing.T, s *InteractionService, session, request, kind, revision, policy string) interaction.HookOperation {
 	t.Helper()
 	b, _ := json.Marshal(interaction.HookIntent{RequestID: request, Kind: kind, RevisionID: revision, PolicyText: policy})
@@ -40,7 +50,7 @@ func hookHTTPDecide(t *testing.T, s *InteractionService, p interaction.HookOpera
 }
 func TestHooksHTTPBoundary(t *testing.T) {
 	s, rt := serviceFixture(t, testSelection())
-	session := namedSession(t, s, "hook-boundary", "plan")
+	session := namedSession(t, s, "hook-boundary", hookManagementMode(s))
 	base := "/api/v1/sessions/" + session + "/hooks"
 	s.options.Resolve = func(context.Context, string) (ProviderSelection, error) {
 		t.Error("policy management resolved provider")
@@ -114,8 +124,8 @@ func TestHooksHTTPBoundary(t *testing.T) {
 }
 func TestHooksHTTPAtomicLifecycle(t *testing.T) {
 	s, rt := serviceFixture(t, testSelection())
-	session := namedSession(t, s, "hook-cycle", "plan")
-	foreign := namedSession(t, s, "hook-foreign", "plan")
+	session := namedSession(t, s, "hook-cycle", hookManagementMode(s))
+	foreign := namedSession(t, s, "hook-foreign", hookManagementMode(s))
 	base := "/api/v1/sessions/" + session + "/hooks"
 	p := hookHTTPPrepare(t, s, session, "hp", "import", "", hookPolicyFixture)
 	if p.State != "pending" || p.Policy == nil {
@@ -268,7 +278,7 @@ func TestHooksHTTPPublicPinsDenialAndLegacyReview(t *testing.T) {
 }
 func TestHooksHTTPRefusalAndUnknown(t *testing.T) {
 	s, rt := serviceFixture(t, testSelection())
-	session := namedSession(t, s, "hook-fault", "plan")
+	session := namedSession(t, s, "hook-fault", hookManagementMode(s))
 	base := "/api/v1/sessions/" + session + "/hooks"
 	p := hookHTTPPrepare(t, s, session, "original", "disable", "", "")
 	for _, body := range []string{`{"request_id":"different","operation_id":"original","digest":"bad","decision":"confirm"}`, fmt.Sprintf(`{"request_id":"original","operation_id":"original","digest":%q,"decision":"confirm"}`, p.Digest)} {

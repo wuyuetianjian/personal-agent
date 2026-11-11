@@ -478,30 +478,69 @@ func TestEngineCancelRejectsApprovalConsumption(t *testing.T) {
 	}
 }
 func TestEngineDurationAndConcurrencyLimits(t *testing.T) {
-	entered := make(chan struct{})
-	e, s, id := engineFixture(t, streamFunc(func(c context.Context, r model.TurnRequest, emit func(model.ModelEvent) error) (model.TurnResult, error) {
-		close(entered)
-		<-c.Done()
-		return model.TurnResult{}, c.Err()
-	}), nil)
-	e.options.Budgets.MaxDuration = 100 * time.Millisecond
-	e.options.Budgets.MaxConcurrent = 1
-	done := make(chan error, 1)
-	go func() { done <- e.Run(context.Background(), id) }()
-	<-entered
-	if err := s.CreateSession(context.Background(), "s2"); err != nil {
-		t.Fatal(err)
-	}
-	r, err := s.CreateRun(context.Background(), "s2", "r2", Message{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = e.Run(context.Background(), r.ID); !errors.Is(err, ErrCapacity) {
-		t.Fatal(err)
-	}
-	if err = <-done; !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatal(err)
-	}
+	t.Run("concurrency while a provider is held", func(t *testing.T) {
+		entered := make(chan struct{}, 2)
+		e, s, id := engineFixture(t, streamFunc(func(c context.Context, r model.TurnRequest, emit func(model.ModelEvent) error) (model.TurnResult, error) {
+			entered <- struct{}{}
+			<-c.Done()
+			return model.TurnResult{}, c.Err()
+		}), nil)
+		e.options.Budgets.MaxConcurrent = 1
+		// Prepare both durable runs before starting the clock. On Windows the
+		// SQLite writes can take longer than a deliberately short duration limit.
+		if err := s.CreateSession(context.Background(), "s2"); err != nil {
+			t.Fatal(err)
+		}
+		r, err := s.CreateRun(context.Background(), "s2", "r2", Message{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		done := make(chan error, 1)
+		go func() { done <- e.Run(ctx, id) }()
+		select {
+		case <-entered:
+		case err := <-done:
+			t.Fatal("first run never entered provider", err)
+		}
+		attempt, stopAttempt := context.WithTimeout(ctx, 5*time.Second)
+		capacityErr := e.Run(attempt, r.ID)
+		stopAttempt()
+		cancel()
+		firstErr := <-done
+		if !errors.Is(capacityErr, ErrCapacity) {
+			t.Fatal("second run was not refused while first was active", capacityErr)
+		}
+		if !errors.Is(firstErr, context.Canceled) {
+			t.Fatal(firstErr)
+		}
+		if len(entered) != 0 {
+			t.Fatal("capacity refusal called the provider")
+		}
+	})
+	t.Run("duration cancels an active provider", func(t *testing.T) {
+		entered := make(chan bool, 1)
+		e, _, id := engineFixture(t, streamFunc(func(c context.Context, r model.TurnRequest, emit func(model.ModelEvent) error) (model.TurnResult, error) {
+			entered <- c.Err() == nil
+			<-c.Done()
+			return model.TurnResult{}, c.Err()
+		}), nil)
+		// Allow durable setup on slower native filesystems, then prove that the
+		// engine's own deadline reaches a provider that entered with a live context.
+		e.options.Budgets.MaxDuration = 5 * time.Second
+		if err := e.Run(context.Background(), id); !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatal(err)
+		}
+		select {
+		case live := <-entered:
+			if !live {
+				t.Fatal("provider entered with an already expired context")
+			}
+		default:
+			t.Fatal("deadline expired before the provider was exercised")
+		}
+	})
 }
 
 func TestProposalDigestRejectsAmbiguousArguments(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 
 func TestProcessExecutorCompletes(t *testing.T) {
 	result, err := (ProcessExecutor{}).Run(context.Background(), ExecRequest{
-		Args: []string{"/bin/sh", "-c", "printf ok"},
+		Args: []string{fakeBinary(t), "--executor-ok"},
 	})
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
@@ -21,7 +21,7 @@ func TestProcessExecutorCompletes(t *testing.T) {
 
 func TestProcessExecutorTimeout(t *testing.T) {
 	result, err := (ProcessExecutor{GracePeriod: 10 * time.Millisecond}).Run(context.Background(), ExecRequest{
-		Args:    []string{"/bin/sh", "-c", "sleep 2"},
+		Args:    []string{fakeBinary(t), "--executor-wait"},
 		Timeout: 20 * time.Millisecond,
 	})
 	if err == nil {
@@ -38,7 +38,7 @@ func TestProcessExecutorCancellation(t *testing.T) {
 	errs := make(chan error, 1)
 	go func() {
 		result, err := (ProcessExecutor{GracePeriod: 10 * time.Millisecond}).Run(ctx, ExecRequest{
-			Args: []string{"/bin/sh", "-c", "sleep 2"},
+			Args: []string{fakeBinary(t), "--executor-wait"},
 		})
 		done <- result
 		errs <- err

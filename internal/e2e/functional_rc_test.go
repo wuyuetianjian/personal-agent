@@ -89,11 +89,15 @@ func TestFunctionalRCMockBackedE2E(t *testing.T) {
 	claude := rcCodingRunner{backend: "claude"}
 	rt.Executors.Register("coding.codex", runtime.CodingExecutor{Runner: codex, Backend: "codex", Config: rt.Config, Evidence: rt.Evidence})
 	rt.Executors.Register("coding.claude", runtime.CodingExecutor{Runner: claude, Backend: "claude", Config: rt.Config, Evidence: rt.Evidence})
-	codingInput := `{"repository_path":"` + repo + `","prompt":"make rc change","privacy":"private","required":["coding"],"allow_write":true,"test_commands":[["go","test","./..."]]}`
+	repoJSON, err := json.Marshal(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	codingInput := `{"repository_path":` + string(repoJSON) + `,"prompt":"make rc change","privacy":"private","required":["coding"],"allow_write":true,"test_commands":[["go","test","./..."]]}`
 	if err := runOneNodeWorkflow(ctx, rt, "wf-rc-codex", "task-rc-codex", "codex", "coding.codex", string(agent.RoleTool), codingInput, "wf-rc-codex:codex"); err != nil {
 		t.Fatalf("codex workflow: %v", err)
 	}
-	reviewInput := `{"repository_path":"` + repo + `","prompt":"review rc change","privacy":"private","required":["code_review"],"allow_write":false}`
+	reviewInput := `{"repository_path":` + string(repoJSON) + `,"prompt":"review rc change","privacy":"private","required":["code_review"],"allow_write":false}`
 	if err := runOneNodeWorkflow(ctx, rt, "wf-rc-claude", "task-rc-claude", "claude-review", "coding.claude", string(agent.RoleTool), reviewInput, "wf-rc-claude:claude-review"); err != nil {
 		t.Fatalf("claude workflow: %v", err)
 	}

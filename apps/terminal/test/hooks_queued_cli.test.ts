@@ -1,3 +1,4 @@
+import {fixtureName,readFixtureInfo,stopFixture} from '../../../packages/client/test/fixture_process.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn,spawnSync} from 'node:child_process';
@@ -14,19 +15,15 @@ test('actual compiled CLI disable loss and re-enable never revive an owned queue
  let server:ReturnType<typeof spawn>|undefined;
  let proxy:ReturnType<typeof createServer>|undefined;
  try{
-  const binary=join(dir,'fixture'),cli=join(dir,'cli.mjs');
-  const build=spawnSync('go',['build','-o',binary,'./cmd/agent-fixture'],{encoding:'utf8',timeout:60000});
+  const binary=join(dir,fixtureName()),cli=join(dir,'cli.mjs');
+  const build=spawnSync(process.env['GO_BINARY']??'go',['build','-o',binary,'./cmd/agent-fixture'],{encoding:'utf8',timeout:60000});
   assert.equal(build.status,0,build.stderr);
   const external=spawnSync(binary,['--queued-hook-run','--workspace',dir],{env,encoding:'utf8',timeout:5000});
   assert.equal(external.status,1);assert.match(external.stderr,/requires an exclusive owned temporary workspace/);
   buildHookCLI(cli);
-  await symlink(resolve('apps/terminal/node_modules'),join(dir,'node_modules'),'dir');
+  await symlink(resolve('apps/terminal/node_modules'),join(dir,'node_modules'),process.platform==='win32'?'junction':'dir');
   server=spawn(binary,['--queued-hook-run'],{env,stdio:['ignore','pipe','pipe']});
-  let errors='',line='';
-  server.stderr!.on('data',chunk=>errors+=String(chunk));
-  for await(const chunk of server.stdout!){line+=String(chunk);if(line.includes('\n'))break}
-  assert.ok(line.trim(),'owned queued fixture did not start: '+errors);
-  const info=JSON.parse(line) as {url:string;runtime_parent:string;hook_session_id:string;hook_run_id:string;hook_revision_id:string};
+  const info=await readFixtureInfo<{url:string;runtime_parent:string;hook_session_id:string;hook_run_id:string;hook_revision_id:string}>(server);
   const calls:{method:string;path:string}[]=[];
   let dropDecision=false;
   proxy=createServer(async(req,res)=>{
@@ -93,7 +90,7 @@ test('actual compiled CLI disable loss and re-enable never revive an owned queue
   t.diagnostic(JSON.stringify({initial:'queued',disabled:'revoked, queued',reenabled:'still revoked, queued',explicit_resume:finished.execution,generation:3,final_counts:stable,hook_decision_posts:2,resume_posts:1,repeated_recovery:'GET only'}));
  }finally{
   if(proxy){proxy.closeAllConnections();await new Promise<void>(resolve=>proxy!.close(()=>resolve()))}
-  if(server&&server.exitCode===null){const end=once(server,'exit');server.kill('SIGINT');await end}
+  await stopFixture(server);
   await rm(dir,{recursive:true,force:true});
  }
 });

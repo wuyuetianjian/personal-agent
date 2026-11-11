@@ -9,7 +9,7 @@ import {buildHookCLI} from './build_hooks_cli.mjs';
 test('compiled top-level help exposes Hook prepare, separate decisions and original-request GET recovery without authentication',()=>{
  const dir=mkdtempSync(join(tmpdir(),'hooks-help-'));
  try{
-  symlinkSync(resolve('apps/terminal/node_modules'),join(dir,'node_modules'),'dir');
+  symlinkSync(resolve('apps/terminal/node_modules'),join(dir,'node_modules'),process.platform==='win32'?'junction':'dir');
   const entry=join(dir,'cli.mjs');
   buildHookCLI(entry);
   const env={...process.env};
