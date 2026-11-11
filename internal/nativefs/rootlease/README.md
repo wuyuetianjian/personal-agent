@@ -140,3 +140,17 @@ owned creation and bounded handle I/O, but still requires native verification
 against those unchanged contracts. It is not yet connected to the TEMP VFS;
 that SQL spill contract continues to refuse. Sequential contract results do not
 qualify concurrent interleavings or complete namespace confinement.
+
+At 636b63e (run 43021783102), the four unchanged sequential adapter contracts
+passed three times each. The next test-only checks exercise controlled Create
+revocation, write/close overlap and competing growth while one write is held.
+Their bounded scheduler windows are regression evidence, not a formal proof of
+all possible races; the implementation is unchanged for these checks.
+
+A separate statement-lifetime contract addresses idle Conn-bound prepared
+statements, which database/sql does not always put in its physical connection's
+openStmt set. The current controlled workload explicitly closes all statements.
+The new contract first uses a safe fake native driver through real database/sql;
+missing drain fails before any real SQLite late-close case is entered. Only
+once that protocol passes may the real prepared-statement lifecycle run. This
+is a protocol RED, not proof that native statement drain has already succeeded.
