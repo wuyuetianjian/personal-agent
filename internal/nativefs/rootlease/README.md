@@ -132,3 +132,11 @@ offset/EOF I/O, independent lineage ownership, bounded failures and parent
 mutation. Its constructor and methods initially refuse. These are adapter
 contract REDs until implemented, not evidence that the described I/O or failure
 paths have already run. The TEMP SQL consumer remains a separate required RED.
+
+At 762ce08 (run 43020075092), all four adapter groups failed three times at the
+explicit unimplemented constructor, while the existing 20-item identity job
+passed with zero TEMP events. The private adapter implementation now supplies
+owned creation and bounded handle I/O, but still requires native verification
+against those unchanged contracts. It is not yet connected to the TEMP VFS;
+that SQL spill contract continues to refuse. Sequential contract results do not
+qualify concurrent interleavings or complete namespace confinement.
