@@ -5,7 +5,10 @@
 package sqlite
 
 import (
+	"database/sql"
+	"database/sql/driver"
 	"errors"
+	"os"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -51,4 +54,30 @@ func (c *conn) ExperimentalDuplicateMainFileHandle() (uintptr, error) {
 		return 0, errors.New("sqlite: experimental main identity: invalid duplicate")
 	}
 	return uintptr(duplicate), nil
+}
+
+// ExperimentalDuplicateMainAndJournalFileHandles is a RED-phase interface for
+// current-open WAL qualification only, not complete storage protection.
+func (c *experimentalPrivateConn) ExperimentalDuplicateMainAndJournalFileHandles() ([]uintptr, error) {
+	return nil, errors.New("sqlite: experimental current journal identity not implemented")
+}
+
+// Refusal-only factory: constructor and global-control RED precede implementation.
+type experimentalPrivateDriver struct{}
+type experimentalPrivateConn struct{ *conn }
+
+func init() { sql.Register("sqlite-nativeprobe-private", &experimentalPrivateDriver{}) }
+func (*experimentalPrivateDriver) Open(string) (driver.Conn, error) {
+	return nil, errors.New("sqlite: experimental private factory not implemented")
+}
+
+// Pure validation seam: it must never open a path, including rejected inputs.
+func (*experimentalPrivateDriver) ExperimentalValidateFilename(string) error {
+	return errors.New("sqlite: experimental private filename validation not implemented")
+}
+func (*experimentalPrivateDriver) ExperimentalEnableSharedCacheForSubprocess() error {
+	if os.Getenv("SQLITE_PRIVATE_CACHE_CHILD") != "qualification-v1" {
+		return errors.New("sqlite: shared-cache control requires dedicated child")
+	}
+	return errors.New("sqlite: experimental child shared-cache control not implemented")
 }

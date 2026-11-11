@@ -42,3 +42,30 @@ The callback must last through protected reading and duplicate cleanup. This
 covers neither WAL/SHM/journals/attachments nor private directory ancestry or
 other connections. It cannot activate admission or any production capability.
 A formal driver API and full protected-storage design remain prerequisites.
+
+### Current WAL requires controlled private-cache construction
+
+A journal `sqlite3_file*` returned by SQLite is borrowed after Btree locks have
+been released. Raw, the driver's lock and a connection mutex do not prevent a
+second shared-cache connection from changing the shared Pager. A one-connection
+pool or an assumed default does not fix this lifetime problem.
+
+The next experiment therefore has a separate `sqlite-nativeprobe-private`
+driver and private connection wrapper. Only this wrapper may expose journal
+capture. The constructor must reject caller URIs and construct its own fixed
+private-cache/win32 URI from a strictly validated absolute DOS filename; it is
+not a replacement for production storage.OpenSQLite or its hooks/extensions.
+Factory, validator and child-only shared-default control start as explicit
+refusal stubs. Their native RED is distinct from later journal-behavior RED.
+
+Tests include an isolated child with global shared-cache default enabled. With
+read_uncommitted enabled, controlled private connections must see committed data,
+while both ordinary default-cache and explicit shared-cache controls must see
+the pending value. This avoids the driver's unlock-notify retry and also proves
+the global-default control really took effect, rather than trusting a label. The child helper is excluded from
+the parent manifest. Current-WAL tests retain both actual main/journal duplicates
+through reading and refuse incomplete observations; missing journal is not
+proof that sidecar data is absent. Rollback, SHM, stale/future sidecars,
+attachments and temp files remain unqualified. No production capability is
+activated. Disk-handle lifetime checks use a positive-controlled exact PSS set,
+not a tolerance on Go runtime thread/event handle counts.

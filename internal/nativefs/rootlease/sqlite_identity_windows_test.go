@@ -44,10 +44,11 @@ func duplicateExperimentalMain(raw any) (windows.Handle, error) {
 }
 
 type sqliteIdentityBackend struct {
-	root         *windowsprobe.Root
-	db           *sql.DB
-	acquisitions atomic.Int32
-	closes       atomic.Int32
+	includeJournal bool
+	root           *windowsprobe.Root
+	db             *sql.DB
+	acquisitions   atomic.Int32
+	closes         atomic.Int32
 }
 
 func (b *sqliteIdentityBackend) read(ctx context.Context, components []string) (data []byte, err error) {
@@ -65,6 +66,20 @@ func (b *sqliteIdentityBackend) read(ctx context.Context, components []string) (
 	}()
 	err = connection.Raw(func(raw any) (err error) {
 		b.acquisitions.Add(1)
+		if b.includeJournal {
+			var handles []windows.Handle
+			handles, err = duplicateExperimentalCurrentWAL(raw)
+			if err != nil {
+				return err
+			}
+			defer func() {
+				if e := closeWALDuplicates(handles); e != nil {
+					err = errors.Join(err, e)
+				}
+			}()
+			data, err = b.root.ExperimentalReadExcluding(ctx, components, handles)
+			return err
+		}
 		duplicate, err := duplicateExperimentalMain(raw)
 		if err != nil {
 			return err

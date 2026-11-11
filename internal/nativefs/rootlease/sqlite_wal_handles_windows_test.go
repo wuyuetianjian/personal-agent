@@ -1,0 +1,199 @@
+//go:build windows && nativeprobe_sqlite_identity
+
+package rootlease
+
+import (
+	"errors"
+	"fmt"
+	"golang.org/x/sys/windows"
+	"syscall"
+	"testing"
+	"unsafe"
+)
+
+// Test-only copy of the native-qualified windowsprobe PSS layout/walk logic.
+// No production API; no object path capture or total-handle-count heuristic.
+// PSS_HANDLE_ENTRY, Windows 64-bit SDK layout. Only handle values are consumed;
+// capture does not request object names, process cloning, or thread contexts.
+type pssHandleEntry struct {
+	Handle                                               windows.Handle
+	Flags, ObjectType                                    uint32
+	CaptureTime                                          windows.Filetime
+	Attributes, GrantedAccess, HandleCount, PointerCount uint32
+	PagedPoolCharge, NonPagedPoolCharge                  uint32
+	CreationTime                                         windows.Filetime
+	TypeNameLength                                       uint16
+	TypeName                                             *uint16
+	ObjectNameLength                                     uint16
+	ObjectName                                           *uint16
+	TypeSpecific                                         [6]uint64
+}
+
+type handleInventory struct {
+	files        map[windows.Handle]bool
+	types        map[string]int
+	invalidTypes map[windows.Handle]string
+}
+
+func captureHandleInventory(t *testing.T) handleInventory {
+	t.Helper()
+	var layout pssHandleEntry
+	if unsafe.Sizeof(uintptr(0)) != 8 || unsafe.Sizeof(layout) != 136 || unsafe.Offsetof(layout.TypeNameLength) != 56 || unsafe.Offsetof(layout.TypeName) != 64 || unsafe.Offsetof(layout.ObjectName) != 80 || unsafe.Offsetof(layout.TypeSpecific) != 88 {
+		t.Fatal("unsupported PSS_HANDLE_ENTRY ABI")
+	}
+	dll := windows.NewLazySystemDLL("kernel32.dll")
+	capture := dll.NewProc("PssCaptureSnapshot")
+	free := dll.NewProc("PssFreeSnapshot")
+	createMarker := dll.NewProc("PssWalkMarkerCreate")
+	freeMarker := dll.NewProc("PssWalkMarkerFree")
+	walk := dll.NewProc("PssWalkSnapshot")
+	fileType := dll.NewProc("GetFileType")
+	for _, proc := range []*windows.LazyProc{capture, free, createMarker, freeMarker, walk, fileType} {
+		if err := proc.Find(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// x/sys GetFileType maps a zero result plus ERROR_SUCCESS to EINVAL.
+	// The public API permits FILE_TYPE_UNKNOWN with no error; preserve that
+	// distinction using the raw call (Go's syscall trampoline clears LastError).
+	getFileType := func(h windows.Handle) (uint32, error) {
+		kind, _, err := fileType.Call(uintptr(h))
+		if kind != 0 || err == syscall.Errno(0) {
+			return uint32(kind), nil
+		}
+		return 0, err
+	}
+	var snapshot, marker windows.Handle
+	status, _, _ := capture.Call(uintptr(windows.CurrentProcess()), 4 /* PSS_CAPTURE_HANDLES only */, 0, uintptr(unsafe.Pointer(&snapshot)))
+	if status != 0 {
+		t.Fatalf("PssCaptureSnapshot: status=%d", status)
+	}
+	defer func() {
+		status, _, _ := free.Call(uintptr(windows.CurrentProcess()), uintptr(snapshot))
+		if status != 0 {
+			t.Errorf("PssFreeSnapshot: status=%d", status)
+		}
+	}()
+	status, _, _ = createMarker.Call(0, uintptr(unsafe.Pointer(&marker)))
+	if status != 0 {
+		t.Fatalf("PssWalkMarkerCreate: status=%d", status)
+	}
+	defer func() {
+		status, _, _ := freeMarker.Call(uintptr(marker))
+		if status != 0 {
+			t.Errorf("PssWalkMarkerFree: status=%d", status)
+		}
+	}()
+	result := handleInventory{files: map[windows.Handle]bool{}, types: map[string]int{}, invalidTypes: map[windows.Handle]string{}}
+	all := map[windows.Handle]bool{}
+	for i := 0; i < 65536; i++ {
+		var entry pssHandleEntry
+		status, _, _ = walk.Call(uintptr(snapshot), 2 /* PSS_WALK_HANDLES */, uintptr(marker), uintptr(unsafe.Pointer(&entry)), unsafe.Sizeof(entry))
+		if status == uintptr(windows.ERROR_NO_MORE_ITEMS) {
+			return result
+		}
+		if status != 0 {
+			t.Fatalf("PssWalkSnapshot: status=%d", status)
+		}
+		if entry.Handle == 0 || entry.Handle == windows.InvalidHandle || all[entry.Handle] {
+			t.Fatalf("invalid/duplicate PSS handle: %#x", entry.Handle)
+		}
+		all[entry.Handle] = true
+		// PSS supplies handle values, not complete type metadata for every object.
+		// Classify the current value first: some non-file objects cannot be
+		// duplicated. Disk results are then pinned and rechecked. This is a
+		// controlled persistent-disk-leak detector, not an atomic process audit.
+		kind, queryErr := getFileType(entry.Handle)
+		if queryErr == nil && kind == windows.FILE_TYPE_DISK {
+			var duplicate windows.Handle
+			if err := windows.DuplicateHandle(windows.CurrentProcess(), entry.Handle, windows.CurrentProcess(), &duplicate, 0, false, windows.DUPLICATE_SAME_ACCESS); err != nil {
+				t.Fatalf("duplicate captured disk handle %#x: %v", entry.Handle, err)
+			}
+			confirmed, confirmErr := getFileType(duplicate)
+			closeErr := windows.CloseHandle(duplicate)
+			if confirmErr != nil || confirmed != windows.FILE_TYPE_DISK || closeErr != nil {
+				t.Fatalf("disk classification changed or close failed: kind=%d query=%v close=%v", confirmed, confirmErr, closeErr)
+			}
+		}
+		typ := ""
+		if queryErr != nil {
+			if !errors.Is(queryErr, windows.ERROR_INVALID_HANDLE) {
+				t.Fatalf("GetFileType captured handle %#x: %v", entry.Handle, queryErr)
+			}
+			// Could be a non-file object or a value closed since the snapshot.
+			// Do not call it a Thread/Event or infer its former object type.
+			typ = "InvalidForGetFileType"
+
+		} else {
+			switch kind {
+			case windows.FILE_TYPE_DISK:
+				typ = "Disk"
+				result.files[entry.Handle] = true
+			case windows.FILE_TYPE_PIPE:
+				typ = "Pipe"
+			case windows.FILE_TYPE_CHAR:
+				typ = "Character"
+			case windows.FILE_TYPE_UNKNOWN:
+				typ = "UnknownFileType"
+			default:
+				t.Fatalf("unknown captured file type %#x for handle %#x", kind, entry.Handle)
+			}
+		}
+		result.types[typ]++
+	}
+	t.Fatal("PSS handle enumeration exceeded hard bound")
+	return result
+}
+
+func sameDiskHandles(a, b handleInventory) bool {
+	if len(a.files) != len(b.files) {
+		return false
+	}
+	for h := range a.files {
+		if !b.files[h] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestNativeSQLiteCurrentWALHandleInventoryPositiveControl(t *testing.T) {
+	dir := nativeLongFixturePath(t)
+	p, err := windows.UTF16PtrFromString(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, access := range []uint32{windows.FILE_READ_ATTRIBUTES, windows.FILE_READ_ATTRIBUTES | windows.FILE_LIST_DIRECTORY | windows.SYNCHRONIZE} {
+		t.Run(fmt.Sprintf("access_%x", access), func(t *testing.T) {
+			captureHandleInventory(t) // warm PSS before taking the strict baseline
+			before := captureHandleInventory(t)
+			h, err := windows.CreateFile(p, access, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			open := true
+			defer func() {
+				if open {
+					windows.CloseHandle(h)
+				}
+			}()
+			during := captureHandleInventory(t)
+			if before.files[h] || !during.files[h] || len(during.files) != len(before.files)+1 {
+				t.Fatalf("PSS did not detect exactly one known extra Disk handle %#x: before=%v during=%v", h, before.files, during.files)
+			}
+			for old := range before.files {
+				if !during.files[old] {
+					t.Fatalf("PSS lost baseline Disk handle %#x", old)
+				}
+			}
+			if err := windows.CloseHandle(h); err != nil {
+				t.Fatal(err)
+			}
+			open = false
+			after := captureHandleInventory(t)
+			if !sameDiskHandles(before, after) {
+				t.Fatalf("Disk handles did not restore after closing control: before=%v after=%v", before.files, after.files)
+			}
+		})
+	}
+}

@@ -180,3 +180,21 @@ test('cold cache redirect containing temporary work refuses before copy/test and
 test('preexisting replacement directory is never owned or deleted after mkdir EEXIST',async t=>{
  const calls=await stagedRun(t,{obstructCopy:true}); assert.equal(calls.some(a=>a[0]==='test'),false);
 });
+
+test('manifest includes controlled private construction and current-WAL contracts',()=>{
+ const names=EXPECTED_TESTS['agent/internal/nativefs/rootlease'];
+ for(const name of [
+  'TestNativeSQLiteCurrentWALProtectedAndIdentities',
+  'TestNativeSQLiteCurrentWALDuplicateRightsAndOwnership',
+  'TestNativeSQLiteCurrentWALMissingJournalRefusesWithoutLeak',
+  'TestNativeSQLiteCurrentWALCheckpointAndConnectionRecreation',
+  'TestNativeSQLiteCurrentWALHandleInventoryPositiveControl',
+  'TestNativeSQLitePrivateFactoryAcceptsAbsoluteFilename',
+  'TestNativeSQLitePrivateFactoryRejectsUntrustedDSN',
+  'TestNativeSQLitePrivateFactoryEncodesLiteralFilename',
+  'TestNativeSQLitePrivateFactoryJournalInterfaceBoundary',
+  'TestNativeSQLitePrivateFactoryDriverInterfaces',
+  'TestNativeSQLitePrivateFactoryOverridesGlobalSharedCache',
+ ]) assert.ok(names.includes(name),'missing '+name);
+ assert.ok(!names.includes('TestPrivateCacheChildHelper'),'child helper must not count as parent evidence');
+});

@@ -47,6 +47,12 @@ export const EXPECTED_TESTS = Object.freeze({
   'agent/internal/nativefs/rootlease': Object.freeze([
     'TestNativeSQLiteMainIdentityProtectedAndNeighbor', 'TestNativeSQLiteMainIdentityDuplicateCloseDoesNotCloseSQLite',
     'TestNativeSQLiteMainIdentityUnavailableInputs', 'TestNativeSQLiteMainIdentityConnectionRecreation', 'TestNativeSQLiteMainIdentityCloseLifetimes',
+    'TestNativeSQLiteCurrentWALProtectedAndIdentities', 'TestNativeSQLiteCurrentWALDuplicateRightsAndOwnership',
+    'TestNativeSQLiteCurrentWALMissingJournalRefusesWithoutLeak', 'TestNativeSQLiteCurrentWALCheckpointAndConnectionRecreation',
+    'TestNativeSQLiteCurrentWALHandleInventoryPositiveControl',
+    'TestNativeSQLitePrivateFactoryAcceptsAbsoluteFilename', 'TestNativeSQLitePrivateFactoryRejectsUntrustedDSN',
+    'TestNativeSQLitePrivateFactoryEncodesLiteralFilename', 'TestNativeSQLitePrivateFactoryJournalInterfaceBoundary',
+    'TestNativeSQLitePrivateFactoryDriverInterfaces', 'TestNativeSQLitePrivateFactoryOverridesGlobalSharedCache',
   ]),
 });
 
@@ -214,7 +220,7 @@ export async function runExperiment({platform=process.platform,repo=DEFAULT_REPO
     const events=createEventValidator();
     await command(args,{...options,onStdout:chunk=>events.feed(chunk)});
     events.finish();
-    log('Native event manifest verified: 9 required tests, 3 passes each, both package passes, no fail/skip events.');
+    log('Native event manifest verified: '+Object.values(EXPECTED_TESTS).reduce((total,names)=>total+names.length,0)+' required tests, 3 passes each, both package passes, no fail/skip events.');
   } catch(error) {
     failure=error;
   } finally {
