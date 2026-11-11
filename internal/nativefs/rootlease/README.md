@@ -67,8 +67,10 @@ The implementation now holds the driver lock and SQLite database mutex across
 main/journal capture and metadata-only duplication. It uses the public
 sqlite3_file/io_methods prefix and the pinned generated function-slot ABI, not
 private winFile layout. All acquired duplicates are closed on failure; borrowed
-SQLite handles are never closed. This implementation still requires its own
-native qualification; constructor success is not journal success.
+SQLite handles are never closed. At cf16173 in run 43011024828, the dedicated
+Windows job passed all 20 required contracts three times with both package
+completions and no fail/skip events. This qualifies the tested current-main/WAL
+experiment, not complete storage protection or general native readiness.
 
 Tests include an isolated child with global shared-cache default enabled. With
 read_uncommitted enabled, controlled private connections must see committed data,
@@ -81,3 +83,17 @@ proof that sidecar data is absent. Rollback, SHM, stale/future sidecars,
 attachments and temp files remain unqualified. No production capability is
 activated. Disk-handle lifetime checks use a positive-controlled exact PSS set,
 not a tolerance on Go runtime thread/event handle counts.
+
+### Remaining storage boundary
+
+The stock Windows VFS reopens saved paths for later sidecars. A pinned directory
+identity does not confine those opens: directory write-attributes/reparse changes
+can redirect future storage even when rename/delete sharing is denied. Current
+main/WAL exclusions do not cover SHM, historical or future objects. A separate
+same-user process or disk workspace copy does not remove that namespace race.
+
+SHM source review also found separate mapping and per-connection locking-handle
+opens with different lock windows. No external private-layout getter or global
+syscall interception is introduced. Production remains disabled pending complete
+controlled storage I/O and native qualification, not merely a larger list of
+currently observed identities.
