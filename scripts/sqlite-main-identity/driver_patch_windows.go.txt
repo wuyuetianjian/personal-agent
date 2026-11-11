@@ -1,0 +1,15 @@
+//go:build windows && nativeprobe_sqlite_identity
+
+// Experimental overlay patch for modernc.org/sqlite v1.58.0 only.
+// Not a production interface, DB exclusion proof, or WAL/SHM protection.
+package sqlite
+
+import "errors"
+
+// ExperimentalDuplicateMainFileHandle will return an independently owned,
+// non-inheritable FILE_READ_ATTRIBUTES|SYNCHRONIZE duplicate of SQLite's actual
+// main handle. Call only within sql.Conn.Raw. The caller owns only the duplicate.
+// RED phase: refuse until native tests demonstrate the missing implementation.
+func (c *conn) ExperimentalDuplicateMainFileHandle() (uintptr, error) {
+ return 0, errors.New("sqlite: experimental main identity not implemented")
+}

@@ -189,3 +189,31 @@ jobs:
         run: git rev-parse HEAD
       - name: Run isolated native foundation evidence
         run: go test -v -count=3 -timeout=5m ./internal/nativefs/windowsprobe ./internal/nativefs/rootlease
+
+  windows-sqlite-main-evidence:
+    name: Windows experimental SQLite main-object evidence
+    runs-on: windows-2025
+    timeout-minutes: 12
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Record exact source and experimental scope
+        run: |
+          git rev-parse HEAD
+          echo 'Only actual SQLite main-file identity, not WAL/SHM or complete DB exclusion. Production remains disabled.'
+      - name: Test isolated experiment runner
+        run: node --test scripts/sqlite-main-identity-runner.test.mjs
+      - name: Run fixed-source SQLite main-object experiment
+        run: node scripts/sqlite-main-identity-runner.mjs

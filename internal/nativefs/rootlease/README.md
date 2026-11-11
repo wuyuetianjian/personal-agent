@@ -24,3 +24,19 @@ race detection, including blocked acquisition/abort/shutdown and copied binding
 checks. Windows lifecycle tests exercise real root ownership under the current
 runner token, not an independent standard-user account. Native results must be
 checked for the exact commit; cross-compilation is not runtime qualification.
+
+## Explicit SQLite main-object experiment
+
+An additional `nativeprobe_sqlite_identity` test build exercises a real SQLite
+main-file owner through this private registry's test-only backend. A dedicated
+runner creates a temporary copy of the exact checksummed SQLite module plus a
+reviewable experiment-only driver patch; it never edits the module cache or
+production go.mod. The initial patch/guard intentionally refuse until native
+RED tests establish the missing behavior. Compilation is not runtime evidence.
+
+Each read borrows the actual SQL connection and obtains an owned metadata-only
+handle duplicate inside Raw; no saved path is reopened to manufacture identity.
+The callback must last through protected reading and duplicate cleanup. This
+covers neither WAL/SHM/journals/attachments nor private directory ancestry or
+other connections. It cannot activate admission or any production capability.
+A formal driver API and full protected-storage design remain prerequisites.
