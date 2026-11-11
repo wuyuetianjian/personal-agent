@@ -10,23 +10,92 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"agent/internal/nativefs/windowsprobe"
+	"golang.org/x/sys/windows"
 )
 
 // Positive delivery contract: refusing xOpen must fail real SQLite spill, not skip.
 func TestNativeSQLiteTempSpillUsesOwnedScratch(t *testing.T) {
-	owner, err := windowsprobe.NewExperimentalTempVFS()
+	dir, err := os.MkdirTemp("", "agent-temp-vfs-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := owner.Close(); err != nil {
-			t.Error(err)
+		if e := os.Remove(dir); e != nil {
+			t.Error(e)
 		}
 	}()
+	// Host-created fixture directory is the trusted initial authority, not a
+	// production pathname acquisition or user-controlled VFS filename.
+	p, err := windows.UTF16PtrFromString(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	captureHandleInventory(t)
+	baseline := captureHandleInventory(t)
+	observed, e := windows.CreateFile(p, windows.FILE_READ_ATTRIBUTES, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer func() {
+		h := observed
+		observed = 0
+		if h != 0 {
+			if e := windows.CloseHandle(h); e != nil {
+				t.Error(e)
+			}
+		}
+	}()
+	live := captureHandleInventory(t)
+	controlOK := !baseline.files[observed] && live.files[observed]
+	ownedObservation := observed
+	observed = 0
+	if e := windows.CloseHandle(ownedObservation); e != nil {
+		t.Fatal(e)
+	}
+	if !controlOK || !sameDiskHandles(baseline, captureHandleInventory(t)) {
+		t.Fatal("TEMP PSS positive control failed")
+	}
+	h, err := windows.CreateFile(p, windows.FILE_LIST_DIRECTORY|windows.FILE_READ_ATTRIBUTES|windows.SYNCHRONIZE, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rootID struct {
+		Volume uint64
+		ID     [16]byte
+	}
+	idErr := windows.GetFileInformationByHandleEx(h, windows.FileIdInfo, (*byte)(unsafe.Pointer(&rootID)), uint32(unsafe.Sizeof(rootID)))
+	root, rootErr := windowsprobe.NewRoot(h)
+	closeErr := windows.CloseHandle(h)
+	if root != nil {
+		defer func() {
+			if e := root.Close(); e != nil {
+				t.Error(e)
+			}
+		}()
+	}
+	if e := errors.Join(idErr, rootErr, closeErr); e != nil {
+		t.Fatal(e)
+	}
+	owner, err := windowsprobe.NewExperimentalTempVFSWithScratch(root)
+	if owner != nil {
+		defer func() {
+			if e := owner.Close(); e != nil {
+				t.Error(e)
+			}
+		}()
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := root.Close(); e != nil {
+		t.Fatal(e)
+	}
 	err = owner.WithConnection(context.Background(), func(conn *sql.Conn) error {
 		for _, q := range []string{"PRAGMA temp_store=FILE", "PRAGMA temp.page_size=4096", "PRAGMA temp.cache_size=8", "PRAGMA cache_spill=ON"} {
 			if _, err := conn.ExecContext(context.Background(), q); err != nil {
@@ -95,6 +164,7 @@ func TestNativeSQLiteTempSpillUsesOwnedScratch(t *testing.T) {
 		if count != 1024 || sum != 1023*1024/2 || byteCount != int64(1024*8192) {
 			return fmt.Errorf("SQL checksum count=%d sum=%d bytes=%d", count, sum, byteCount)
 		}
+		readsBeforeScans := owner.Stats().ReadBytes
 		for _, descending := range []bool{false, true} {
 			direction := "ASC"
 			if descending {
@@ -137,6 +207,22 @@ func TestNativeSQLiteTempSpillUsesOwnedScratch(t *testing.T) {
 				return err
 			}
 		}
+		if owner.Stats().ReadBytes <= readsBeforeScans {
+			return errors.New("host SHA scans did not perform actual kernel reads")
+		}
+		observed, observeErr := owner.Evidence()
+		if observeErr != nil {
+			return observeErr
+		}
+		if len(observed) == 0 {
+			return errors.New("no live qualified TEMP metadata")
+		}
+		for _, item := range observed {
+			if item.Volume != rootID.Volume || item.ID == [16]byte{} || item.Size <= 0 {
+				return fmt.Errorf("invalid live TEMP metadata: %+v", item)
+			}
+		}
+
 		return nil
 	})
 	stats := owner.Stats()
@@ -150,6 +236,27 @@ func TestNativeSQLiteTempSpillUsesOwnedScratch(t *testing.T) {
 	if stats.Opened == 0 || stats.WrittenBytes == 0 || stats.ReadBytes == 0 {
 		t.Fatal("SQL completed without actual owned scratch disk evidence")
 	}
+	if stats.PeakKernelSize == 0 || stats.LastFileID == [16]byte{} || stats.LastVolume == 0 {
+		t.Fatalf("missing actual kernel size/identity: %+v", stats)
+	}
+	if stats.ClosedSuccessfully != stats.Opened || stats.LiveFiles != 0 || stats.InflightCallbacks != 0 {
+		t.Fatalf("TEMP file/callback drain incomplete: %+v", stats)
+	}
+	if e := owner.Close(); e != nil {
+		t.Fatal(e)
+	}
+	terminal := owner.Stats()
+	if terminal.RegistrationAlive || terminal.MethodsAlive || terminal.PhysicalConnections != 0 || terminal.ConnectionLeases != 0 || terminal.LiveFiles != 0 || terminal.InflightCallbacks != 0 {
+		t.Fatalf("TEMP lifecycle retained resources: %+v", terminal)
+	}
+
+	if entries, e := os.ReadDir(dir); e != nil || len(entries) != 0 {
+		t.Fatalf("TEMP objects remain: %v %v", entries, e)
+	}
+	if after := captureHandleInventory(t); !sameDiskHandles(baseline, after) {
+		t.Fatalf("TEMP disk handle leak: before=%v after=%v", baseline.files, after.files)
+	}
+
 }
 func errorsJoinClose(stmt *sql.Stmt, prior error) error {
 	if err := stmt.Close(); err != nil {

@@ -33,6 +33,11 @@ type ExperimentalTempStats struct {
 	NamedAttempts                                           uint64
 	ClosedSuccessfully, LiveFiles, InflightCallbacks        uint64
 	BackendReadCalls, BackendWriteCalls                     uint64
+	PeakKernelSize                                          uint64
+	LastFileID                                              [16]byte
+	LastVolume                                              uint64
+	RegistrationAlive, MethodsAlive                         bool
+	PhysicalConnections, ConnectionLeases                   int
 }
 type ExperimentalTempVFS struct {
 	mu                sync.Mutex
@@ -46,6 +51,8 @@ type ExperimentalTempVFS struct {
 	scratch           *scratchStore
 	ioMethods         uintptr
 	ioCloseErr        error
+	finalizing        bool
+	registeredVFS     uintptr
 }
 
 var tempOwners = struct {
@@ -89,6 +96,7 @@ func NewExperimentalTempVFS() (*ExperimentalTempVFS, error) {
 		libc.Xfree(tls, o.cname)
 		return nil, errors.New("allocate TEMP VFS")
 	}
+	o.registeredVFS = o.vfs
 	*(*sqlite3.Tsqlite3_vfs)(unsafe.Pointer(o.vfs)) = sqlite3.Tsqlite3_vfs{
 		FiVersion: 1, FszOsFile: int32(unsafe.Sizeof(tempVFSFile{})), FmxPathname: 512, FzName: o.cname, FpAppData: o.token,
 		FxOpen: tempSlots.open, FxDelete: tempSlots.del, FxAccess: tempSlots.access, FxFullPathname: tempSlots.full,
@@ -111,7 +119,12 @@ func NewExperimentalTempVFS() (*ExperimentalTempVFS, error) {
 func (o *ExperimentalTempVFS) Stats() ExperimentalTempStats {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	return o.stats
+	result := o.stats
+	result.RegistrationAlive = o.vfs != 0
+	result.MethodsAlive = o.ioMethods != 0
+	result.PhysicalConnections = o.physical
+	result.ConnectionLeases = o.active
+	return result
 }
 
 // The callback must close all Rows and finish transactions before returning.
@@ -140,8 +153,9 @@ func (o *ExperimentalTempVFS) withDriver(ctx context.Context, fn func(*sql.Conn)
 		e := db.Close()
 		o.mu.Lock()
 		physicalError := o.closeFailure
+		ioError := o.ioCloseErr
 		o.mu.Unlock()
-		result = errors.Join(result, e, physicalError)
+		result = errors.Join(result, e, physicalError, ioError)
 		// An uncertain physical close must retain the VFS allocation, not free it.
 		if e == nil && connectionCloseErr == nil {
 			o.mu.Lock()
@@ -161,37 +175,47 @@ func (o *ExperimentalTempVFS) withDriver(ctx context.Context, fn func(*sql.Conn)
 }
 func (o *ExperimentalTempVFS) Close() error {
 	o.mu.Lock()
-	defer o.mu.Unlock()
 	o.closing = true
-	if o.active != 0 || o.physical != 0 {
-		return errors.Join(ErrExperimentalTempBusy, o.closeFailure)
+	if o.active != 0 || o.physical != 0 || o.stats.LiveFiles != 0 || o.stats.InflightCallbacks != 0 || o.finalizing {
+		e := errors.Join(ErrExperimentalTempBusy, o.closeFailure, o.ioCloseErr)
+		o.mu.Unlock()
+		return e
 	}
 	if o.vfs == 0 {
-		return o.ioCloseErr
+		e := o.ioCloseErr
+		o.mu.Unlock()
+		return e
 	}
+	o.finalizing = true
+	store := o.scratch
+	o.mu.Unlock()
+	// Namespace/IO authority is drained outside owner and registry locks.
+	var scratchErr error
+	if store != nil {
+		scratchErr = store.Close()
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.finalizing = false
+	o.ioCloseErr = errors.Join(o.ioCloseErr, scratchErr)
+	if errors.Is(scratchErr, errScratchBusy) {
+		return errors.Join(ErrExperimentalTempBusy, o.ioCloseErr)
+	}
+	o.scratch = nil
 	tls := libc.NewTLS()
 	defer tls.Close()
 	if rc := sqlite3.Xsqlite3_vfs_unregister(tls, o.vfs); rc != sqlite3.SQLITE_OK {
-		return fmt.Errorf("unregister TEMP VFS: %d", rc)
+		return errors.Join(o.ioCloseErr, fmt.Errorf("unregister TEMP VFS: %d", rc))
 	}
 	tempOwners.Lock()
 	delete(tempOwners.m, o.token)
 	tempOwners.Unlock()
-	// Refusal stage: no file/callback can acquire scratch. No scratch IO or
-	// file lock exists to wait on. Real bridge integration must add callback/file
-	// drain and release the owner lock before draining the scratch store.
-	var scratchErr error
-	if o.scratch != nil {
-		scratchErr = o.scratch.Close()
-		o.scratch = nil
-	}
 	libc.Xfree(tls, o.ioMethods)
 	o.ioMethods = 0
 	libc.Xfree(tls, o.vfs)
 	libc.Xfree(tls, o.cname)
 	o.vfs = 0
 	o.cname = 0
-	o.ioCloseErr = errors.Join(o.ioCloseErr, scratchErr)
 	return o.ioCloseErr
 }
 func tempOpen(tls *libc.TLS, vfs, name, file uintptr, flags int32, out uintptr) int32 {
@@ -204,15 +228,21 @@ func tempOpen(tls *libc.TLS, vfs, name, file uintptr, flags int32, out uintptr) 
 	if vfs == 0 || file == 0 {
 		return sqlite3.SQLITE_CANTOPEN
 	}
-	token := (*sqlite3.Tsqlite3_vfs)(unsafe.Pointer(vfs)).FpAppData
+	// Resolve immutable registered address without dereferencing possibly retired
+	// foreign VFS memory. Lookup itself never holds registry while acquiring owner.
+	var o *ExperimentalTempVFS
 	tempOwners.Lock()
-	o := tempOwners.m[token]
+	for _, candidate := range tempOwners.m {
+		if candidate.registeredVFS == vfs {
+			o = candidate
+			break
+		}
+	}
 	tempOwners.Unlock()
 	if o == nil {
 		return sqlite3.SQLITE_CANTOPEN
 	}
 	o.mu.Lock()
-	defer o.mu.Unlock()
 	o.stats.Attempts++
 	o.stats.LastFlags = flags
 	if name != 0 {
@@ -221,8 +251,14 @@ func tempOpen(tls *libc.TLS, vfs, name, file uintptr, flags int32, out uintptr) 
 	if name == 0 && flags == tempOpenFlags {
 		o.stats.TempAttempts++
 	}
-	// Stage-one refusal: no filesystem API, no token, no methods published.
-	return sqlite3.SQLITE_CANTOPEN
+	if o.closing || name != 0 || flags != tempOpenFlags || o.scratch == nil {
+		o.mu.Unlock()
+		return sqlite3.SQLITE_CANTOPEN
+	}
+	o.stats.InflightCallbacks++
+	o.mu.Unlock()
+	defer func() { o.mu.Lock(); o.stats.InflightCallbacks--; o.mu.Unlock() }()
+	return tempOpenScratch(o, file, out)
 }
 func tempDelete(*libc.TLS, uintptr, uintptr, int32) int32 { return sqlite3.SQLITE_IOERR_DELETE }
 func tempAccess(_ *libc.TLS, _ uintptr, _ uintptr, _ int32, out uintptr) int32 {

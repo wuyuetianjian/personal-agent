@@ -176,3 +176,20 @@ and a version-1 foreign methods table. It still refuses every open and does not
 publish the table to a file. New positive ABI tests are expected to fail at that
 refusal; this is not evidence that read/write callbacks executed. Production
 capabilities remain disabled.
+
+At `9d03992`, all four new ABI contracts failed in three native rounds at the
+explicit root-bearing `xOpen` refusal, while the existing eight non-spill TEMP
+contracts passed. The experimental bridge now connects only anonymous exact-flag
+TEMP_DB opens to owned scratch handles. File tokens bind to their foreign POD
+address; close revokes new admission and drains all previously admitted callbacks
+before consuming the handle. The real SQL test retains its workload and checksums,
+and additionally requires fresh live handle metadata, actual read-byte growth
+during scans, an empty fixture directory and exact handle-inventory restoration.
+This implementation is pending native qualification and does not qualify main,
+WAL, SHM, arbitrary namespace races or production features. The final local tagged
+Windows vet check still fails with 37 `unsafe.Pointer` diagnostics at translated
+foreign-ABI boundaries; untagged production vet passing does not erase that result.
+`PeakKernelSize` is the maximum actual size sampled after successful writes, not
+an exhaustive peak across truncate-only growth. VFS close errors are reported by
+`WithConnection` separately from driver close errors because SQLite's destructor
+can discard the VFS return code; explicit owner close retains those errors too.
