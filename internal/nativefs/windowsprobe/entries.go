@@ -68,3 +68,15 @@ func parseDirectoryRecords(data []byte) ([]Entry, int, error) {
 		data = data[int(next):]
 	}
 }
+
+// directoryQueryCompletion uses the routine's nonpending status, not IOSB.Status.
+// At termination Information is not consumed. Only successful pages carry bytes.
+func directoryQueryCompletion(status uint32, information uintptr, capacity int) (int, bool, error) {
+	if status == 0x80000006 { // STATUS_NO_MORE_FILES
+		return 0, true, nil
+	}
+	if status != 0 || information == 0 || capacity <= 0 || information > uintptr(capacity) {
+		return 0, false, errUnsafe
+	}
+	return int(information), false, nil
+}

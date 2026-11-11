@@ -101,3 +101,49 @@ parent/child and sibling close order, independently retained ancestors, exact
 names, reparse refusal, cumulative depth and warmed handle-count checks.
 The existing deterministic metadata swap test exercises the shared I/O-guard
 helper; it is not a scheduler-controlled race injection into OpenDirectory.
+
+## Bounded descendant observations
+
+`ObserveEntries(ctx, components)` lists one descendant directory without opening
+its individual entries. It requires at least one component, so it does not scan
+the original caller root. Each call uses OpenDirectory's freshly opened final
+NT file object: DuplicateHandle alone would share a directory scan cursor and
+the first search expression, which a per-Root mutex cannot isolate.
+
+The NT class-60 query uses an aligned 64 KiB buffer and parses only the actual
+IO_STATUS_BLOCK byte count. Bounds apply across all pages: 16 system calls,
+1,024 raw records (including dot entries), and 256 returned observations. Only
+literal dot/dot-dot entries are omitted. Unsupported names or reparse/offline/
+device/recall attributes refuse the entire operation; errors and cancellation
+return no partial list. Malformed linked records and invalid UTF-16 are rejected.
+ReparseTag is ignored on non-reparse records because that field is undefined.
+
+Returned names, directory flags and 128-bit IDs are observations on the root's
+volume, not permission to read, a single-hardlink proof, or a persistent identity.
+No per-entry content handles are acquired. The exclusive-leaf test establishes
+that success does not depend on obtaining leaf I/O access; the no-leaf-open
+property is also an implementation constraint. Concurrent scan tests exercise
+independent calls, not deterministic adversarial scheduling. Pre/post directory
+metadata can detect some mutations, but results are not an atomic snapshot or a
+complete enumeration guarantee under concurrent directory changes. Sync calls
+still have no hard cancellation deadline. Filters may participate in queries.
+
+Portable record tests completed RED→GREEN. Test-first revision `ed54287` ran in
+[Actions 42975484187](https://github.com/wuyuetianjian/personal-agent/actions/runs/42975484187)
+and the native observation contracts failed because ObserveEntries was absent.
+The implementation still requires the native no-skip gate; compilation alone
+is not evidence of NT query behavior. Native tests cover empty/Unicode entries,
+multiple pages, repeated/concurrent fresh scans, independently held ancestor
+roots, exclusive leaf access, reparse/protected-name refusal, the 256/257 bound,
+cancellation already requested, closure and handle release. Abnormal NT return
+statuses, forced query-budget exhaustion and in-flight cancellation are not
+fault-injected by these tests.
+
+API reference: [NtQueryDirectoryFileEx](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/nf-ntifs-ntquerydirectoryfileex).
+
+Synchronous query completion follows the routine's nonpending NTSTATUS, not an
+assumed equality with IO_STATUS_BLOCK.Status. Only STATUS_SUCCESS consumes the
+reported byte count; STATUS_NO_MORE_FILES terminates without reading the buffer.
+Pending, overflow and zero-progress success are rejected. This distinction is
+covered by a portable completion-classification test and follows Microsoft's
+[IO_STATUS_BLOCK contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/ns-wdm-_io_status_block).

@@ -60,6 +60,13 @@ This is not an arbitrary-path root constructor, durable namespace binding or
 production capability. Native tests cover close ordering, ancestry guards,
 refusals and leaked handles; the initial trust-anchor problem remains open.
 
+A bounded descendant-directory observation experiment uses a freshly opened
+file object rather than a duplicated shared scan cursor. It returns at most 256
+names/type/ID observations, never opens listed file contents, and makes no
+snapshot, link-count or authorization claim. Unsafe records and exhausted
+query/record budgets return no partial results. This is preparation for further
+Search design, not an enabled Search adapter.
+
 The first actual NTFS run exposed a mistaken sharing assumption: handles opened
 only for attributes did not prevent ordinary `MoveFileEx` renames, even with no
 `FILE_SHARE_DELETE`. These metadata handles pin objects, not names. They cannot

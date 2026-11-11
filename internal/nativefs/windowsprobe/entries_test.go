@@ -116,3 +116,24 @@ func TestDirectoryRecordsRawRecordBudget(t *testing.T) {
 		t.Fatalf("raw budget: len=%d n=%d err=%v", len(got), n, err)
 	}
 }
+
+func TestDirectoryQueryCompletion(t *testing.T) {
+	// Nonpending routine status is authoritative; IOSB.Status is deliberately
+	// absent from this interface. Termination does not consume Information.
+	if n, done, err := directoryQueryCompletion(0, 88, 65536); err != nil || done || n != 88 {
+		t.Fatalf("success: %d %v %v", n, done, err)
+	}
+	for _, info := range []uintptr{0, 65537, ^uintptr(0)} {
+		if n, done, err := directoryQueryCompletion(0x80000006, info, 65536); err != nil || !done || n != 0 {
+			t.Fatalf("normal termination: %d %v %v", n, done, err)
+		}
+	}
+	for _, c := range []struct {
+		status uint32
+		info   uintptr
+	}{{0, 0}, {0, 65537}, {0x103, 88}, {0x80000005, 88}, {0xc000000d, 88}} {
+		if n, done, err := directoryQueryCompletion(c.status, c.info, 65536); err == nil || done || n != 0 {
+			t.Fatalf("invalid completion %#x/%d: %d %v %v", c.status, c.info, n, done, err)
+		}
+	}
+}
