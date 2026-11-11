@@ -24,10 +24,14 @@ func actualDirectoryGuard(t *testing.T) (string, *Root, windows.Handle) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := windows.CloseHandle(meta); err != nil {
+			t.Error(err)
+		}
+	}()
 	before, inspectErr := inspect(meta)
-	closeErr := windows.CloseHandle(meta)
-	if inspectErr != nil || closeErr != nil {
-		t.Fatalf("metadata fixture: inspect=%v close=%v", inspectErr, closeErr)
+	if inspectErr != nil {
+		t.Fatal(inspectErr)
 	}
 	guard, _, err := acquireIOGuard(root.h, "parent", before)
 	if err != nil {
@@ -88,10 +92,14 @@ func TestNativeFileGuardStillRefusesOrdinaryWriter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := windows.CloseHandle(meta); err != nil {
+			t.Error(err)
+		}
+	}()
 	before, inspectErr := inspect(meta)
-	closeErr := windows.CloseHandle(meta)
-	if inspectErr != nil || closeErr != nil {
-		t.Fatalf("file metadata: %v %v", inspectErr, closeErr)
+	if inspectErr != nil {
+		t.Fatal(inspectErr)
 	}
 	guard, _, err := acquireIOGuard(root.h, "file", before)
 	if err != nil {
@@ -179,5 +187,51 @@ func TestNativeDirectoryShareWriteDerivedLineageOwnership(t *testing.T) {
 	}
 	if err := os.Rename(parentPath, filepath.Join(dir, "moved")); err != nil {
 		t.Fatalf("closed derived lineage retained guard: %v", err)
+	}
+}
+
+func TestNativeDirectoryCandidateChangedToWritableFileRefuses(t *testing.T) {
+	dir, root := fixture(t)
+	path := filepath.Join(dir, "object")
+	if err := os.Mkdir(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	meta, err := openRelative(root.h, "object", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := windows.CloseHandle(meta); err != nil {
+			t.Error(err)
+		}
+	}()
+	expected, err := inspect(meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(path, filepath.Join(dir, "original")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("replacement-not-to-read"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	writer, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	captureHandleInventory(t)
+	before := captureHandleInventory(t)
+	guard, _, err := acquireIOGuard(root.h, "object", expected)
+	if guard != 0 {
+		windows.CloseHandle(guard)
+		t.Fatal("returned replaced-directory candidate")
+	}
+	if !errors.Is(err, errUnsafe) {
+		t.Fatalf("expected post-open identity/type refusal, not permissive use or sharing-only refusal: %v", err)
+	}
+	after := captureHandleInventory(t)
+	if !sameDiskHandles(before, after) {
+		t.Fatal("rejected writable file candidate leaked disk handle")
 	}
 }

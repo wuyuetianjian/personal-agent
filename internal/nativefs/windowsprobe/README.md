@@ -33,7 +33,7 @@ than one. Metadata-only handles do not participate in ordinary I/O sharing
 checks. A separate FILE_READ_DATA/FILE_LIST_DIRECTORY I/O guard must match the
 metadata object's full ID and applicable consistency checks before traversal or reading; directory
 metadata and I/O guards remain retained throughout the read. All native acquisition uses FILE_OPEN with
-no backup intent, inheritance, or sharing relaxation. Errors return no bytes.
+no backup intent or inheritance. Sharing is selected before the open as described below, never retried more permissively. Errors return no bytes.
 
 Microsoft's [ReOpenFile contract](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-reopenfile)
 requires a CreateFile-origin handle. Since descendant metadata handles here
@@ -244,3 +244,20 @@ sibling-mutation acquisition expectations on native Windows. Controlled fixtures
 set LastWrite explicitly after actual sibling changes because natural NTFS time
 updates were not consistently visible; no retry or timing tolerance hides this.
 The implementation requires new exact-head native evidence before qualification.
+
+## Directory-only write sharing
+
+A qualified directory I/O candidate now opens with SHARE_READ|SHARE_WRITE, still
+without SHARE_DELETE or DELETE access. This allows a separately ACL-authorized
+narrow writer handle to flush the same parent; the guard itself gains no write
+rights. Ordinary file I/O guards remain SHARE_READ only. Selection uses the
+expected metadata type, and actual identity/type/attributes/name are checked
+before any traversal, read or flush. A swapped candidate is not used. Existing
+caller root sharing cannot be strengthened or relaxed by duplication.
+
+This policy follows the explicit flush and reparse-mutation experiments. It
+does not claim that directory metadata is immutable, exclude every filesystem
+mutation primitive, qualify standard-user operation, or implement Replace/Undo.
+Test-first f5c4636 failed native directory writer opens with sharing violation
+while file-writer and directory DELETE/rename refusal tests passed. The new
+implementation still needs its exact-head native GREEN result.

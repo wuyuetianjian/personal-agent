@@ -199,6 +199,10 @@ func exactName(h windows.Handle, name string) error {
 	return nil
 }
 func openRelative(parent windows.Handle, name string, data bool) (windows.Handle, error) {
+	return openRelativeShared(parent, name, data, windows.FILE_SHARE_READ)
+}
+
+func openRelativeShared(parent windows.Handle, name string, data bool, share uint32) (windows.Handle, error) {
 	n, err := windows.NewNTUnicodeString(name)
 	if err != nil {
 		return 0, err
@@ -213,16 +217,21 @@ func openRelative(parent windows.Handle, name string, data bool) (windows.Handle
 	}
 	var h windows.Handle
 	var io windows.IO_STATUS_BLOCK
-	err = windows.NtCreateFile(&h, access, &oa, &io, nil, 0, windows.FILE_SHARE_READ, windows.FILE_OPEN, windows.FILE_OPEN_REPARSE_POINT|windows.FILE_OPEN_NO_RECALL|windows.FILE_SYNCHRONOUS_IO_NONALERT, 0, 0)
+	err = windows.NtCreateFile(&h, access, &oa, &io, nil, 0, share, windows.FILE_OPEN, windows.FILE_OPEN_REPARSE_POINT|windows.FILE_OPEN_NO_RECALL|windows.FILE_SYNCHRONOUS_IO_NONALERT, 0, 0)
 	return h, err
 }
 
 // acquireIOGuard is the metadata-to-I/O boundary. Metadata-only handles do
 // NOT participate in ordinary read/write/delete sharing checks. Requesting
 // FILE_READ_DATA (the same bit as FILE_LIST_DIRECTORY) creates a participating
-// no-delete guard. Never traverse/read it until full identity is checked.
+// no-delete guard. The caller retains the metadata handle through this call,
+// preventing identity reuse. Never traverse/read until qualification completes.
 func acquireIOGuard(parent windows.Handle, name string, expected snapshot) (windows.Handle, snapshot, error) {
-	h, err := openRelative(parent, name, true)
+	share := uint32(windows.FILE_SHARE_READ)
+	if expected.Standard.Directory != 0 {
+		share |= windows.FILE_SHARE_WRITE
+	}
+	h, err := openRelativeShared(parent, name, true, share)
 	if err != nil {
 		return 0, snapshot{}, err
 	}
