@@ -25,13 +25,14 @@ export function validateInputs(mod, sum) {
 }
 
 export function testArguments(modfile) {
-  return ['test', '-json', '-modfile='+modfile, '-tags=nativeprobe_sqlite_identity', '-count=3', '-timeout=10m', '-run=^TestNativeSQLiteTemp',
+  return ['test', '-json', '-modfile='+modfile, '-tags=nativeprobe_sqlite_identity', '-count=3', '-timeout=10m', '-run=^('+Object.values(EXPECTED_TESTS).flat().join('|')+')$',
     './internal/nativefs/rootlease', './internal/nativefs/windowsprobe'];
 }
 
 export const EXPECTED_TESTS=Object.freeze({
   'agent/internal/nativefs/rootlease': Object.freeze(['TestNativeSQLiteTempSpillUsesOwnedScratch']),
-  'agent/internal/nativefs/windowsprobe': Object.freeze(['TestNativeSQLiteTempVFSRejectsPathsAndFlags','TestNativeSQLiteTempVFSRegistrationOwnership']),
+  'agent/internal/nativefs/windowsprobe': Object.freeze(['TestNativeSQLiteTempVFSRejectsPathsAndFlags','TestNativeSQLiteTempVFSRegistrationOwnership',
+    'TestNativeSQLiteTempScratchOffsetIO','TestNativeSQLiteTempScratchOwnership','TestNativeSQLiteTempScratchFailures','TestNativeSQLiteTempScratchParentMutation']),
 });
 // Keep only the fixed manifest's counters and one bounded JSON line. Output
 // events, including arbitrary printed PASS text, cannot count as test results.
@@ -172,7 +173,7 @@ export async function runExperiment({platform=process.platform,repo=DEFAULT_REPO
     try { await command(['mod','verify','-modfile='+modfile],options); }
     catch(error) { testFailure=testFailure?new AggregateError([testFailure,error],'native test and post verification failed'):error; }
     if(testFailure)throw testFailure;
-    log('Stock TEMP manifest verified: 3 required tests, run/pass three times each, both package passes, no failure/skip. Experimental only, not production qualification.');
+    log('Stock TEMP manifest verified: '+Object.values(EXPECTED_TESTS).flat().length+' required tests, run/pass three times each, both package passes, no failure/skip. Experimental only, not production qualification.');
   } catch(error) { failure=error; }
   finally {
     const errors=[];

@@ -118,3 +118,17 @@ This foreign ABI uses pinned-version function slots and foreign allocations.
 Explicit tagged go vet reports unsafe-pointer diagnostics at those conversions;
 compilation is not a clean tagged-vet result. These accesses require independent
 ABI/lifetime review and native evidence. No production vet gate is disabled.
+
+At 2c37706 (run 43017837341), the stock TEMP job reached exactly that refusal
+three times: anonymous flags 0x21e, on insert 2, with no scratch objects opened.
+Both path/flag and physical-close ownership contracts passed three times. The
+separate legacy identity job accidentally selected this new TEMP contract via
+its broad test-name prefix, so that job failed despite its original 20 tests
+passing. Both runners now select their complete fixed manifests by exact names;
+no failed events or required tests are filtered out.
+
+The next private owned-scratch adapter has four explicit contract groups for
+offset/EOF I/O, independent lineage ownership, bounded failures and parent
+mutation. Its constructor and methods initially refuse. These are adapter
+contract REDs until implemented, not evidence that the described I/O or failure
+paths have already run. The TEMP SQL consumer remains a separate required RED.

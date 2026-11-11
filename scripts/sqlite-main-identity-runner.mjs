@@ -35,7 +35,7 @@ export function validateInputs(mod, sum, patch) {
 }
 
 export function testArguments(modfile) {
-  return ['test', '-json', '-modfile='+modfile, '-tags=nativeprobe_sqlite_identity', '-count=3', '-timeout=10m', '-run=^TestNative(Protected|SQLite)',
+  return ['test', '-json', '-modfile='+modfile, '-tags=nativeprobe_sqlite_identity', '-count=3', '-timeout=10m', '-run=^('+Object.values(EXPECTED_TESTS).flat().join('|')+')$',
     './internal/nativefs/rootlease', './internal/nativefs/windowsprobe'];
 }
 

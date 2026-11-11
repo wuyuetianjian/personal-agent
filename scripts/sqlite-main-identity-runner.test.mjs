@@ -1,3 +1,4 @@
+import { EXPECTED_TESTS as OTHER_TESTS } from './sqlite-temp-vfs-runner.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, symlink, realpath } from 'node:fs/promises';
@@ -19,7 +20,7 @@ test('fixed source pins and exact experimental patch gate are required', () => {
 });
 
 test('test command cannot omit isolation, tags, repetition or native packages', () => {
- assert.deepEqual(testArguments('/tmp/experiment.mod'), ['test','-json','-modfile=/tmp/experiment.mod','-tags=nativeprobe_sqlite_identity','-count=3','-timeout=10m','-run=^TestNative(Protected|SQLite)','./internal/nativefs/rootlease','./internal/nativefs/windowsprobe']);
+ assert.deepEqual(testArguments('/tmp/experiment.mod'), ['test','-json','-modfile=/tmp/experiment.mod','-tags=nativeprobe_sqlite_identity','-count=3','-timeout=10m','-run=^('+Object.values(EXPECTED_TESTS).flat().join('|')+')$','./internal/nativefs/rootlease','./internal/nativefs/windowsprobe']);
 });
 
 test('module copy retains source/lib/licenses but excludes testdata and git at every level', async t => {
@@ -98,7 +99,7 @@ async function stagedRun(t, {failTest=false, wrongDownload=false, noEvents=false
   await action;
   assert.ok(logs.some(s=>s.includes('modernc.org/sqlite v1.58.0')));
   assert.ok(logs.some(s=>/patch SHA256=[0-9a-f]{64}/.test(s)));
-  assert.ok(logs.some(s=>s.includes('go test')&&s.includes('-run=^TestNative(Protected|SQLite)')));
+  assert.ok(logs.some(s=>s.includes('go test')&&s.includes(testArguments('ignored').find(a=>a.startsWith('-run=')))));
  }
  if(obstructCopy) {
   assert.equal(await readFile(path.join(blockedCopy,'unexpected'),'utf8'),'not owned by runner');
@@ -197,4 +198,14 @@ test('manifest includes controlled private construction and current-WAL contract
   'TestNativeSQLitePrivateFactoryOverridesGlobalSharedCache',
  ]) assert.ok(names.includes(name),'missing '+name);
  assert.ok(!names.includes('TestPrivateCacheChildHelper'),'child helper must not count as parent evidence');
+});
+
+test('exact anchored command matches only this manifest, never the independent experiment',()=>{
+ const names=Object.values(EXPECTED_TESTS).flat(),other=Object.values(OTHER_TESTS).flat();
+ assert.equal(names.length,20);
+ const text=testArguments('x.mod').find(a=>a.startsWith('-run=')).slice(5);
+ assert.ok(text.startsWith('^(')&&text.endsWith(')$'));assert.ok(!text.includes('?!'));
+ const regex=new RegExp(text);
+ for(const name of names){assert.ok(regex.test(name));for(const extra of ['Before'+name,name+'After',name+'Extra'])assert.equal(regex.test(extra),false,extra);}
+ for(const name of other)assert.equal(regex.test(name),false,name);
 });

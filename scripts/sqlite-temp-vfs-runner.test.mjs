@@ -1,3 +1,4 @@
+import { EXPECTED_TESTS as OTHER_TESTS } from './sqlite-main-identity-runner.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,realpath,mkdir,readFile,writeFile,readdir,rm} from 'node:fs/promises';
@@ -13,9 +14,9 @@ test('stock pins forbid version, sum and replacement drift',()=>{
  for(const bad of [mod.replace('v1.58.0','v1.59.0'),mod+'replace modernc.org/sqlite => ../evil\n',mod+'replace (\n modernc.org/sqlite => ../evil\n)\n'])assert.throws(()=>validateInputs(bad,sum));
  assert.throws(()=>validateInputs(mod,sum.replace('38u40','wrong')));
 });
-test('manifest is exactly the three TEMP tests with fixed command',()=>{
- assert.deepEqual(EXPECTED_TESTS,{'agent/internal/nativefs/rootlease':['TestNativeSQLiteTempSpillUsesOwnedScratch'],'agent/internal/nativefs/windowsprobe':['TestNativeSQLiteTempVFSRejectsPathsAndFlags','TestNativeSQLiteTempVFSRegistrationOwnership']});
- assert.deepEqual(testArguments('tmp.mod'),['test','-json','-modfile=tmp.mod','-tags=nativeprobe_sqlite_identity','-count=3','-timeout=10m','-run=^TestNativeSQLiteTemp','./internal/nativefs/rootlease','./internal/nativefs/windowsprobe']);
+test('manifest is exactly the seven TEMP tests with fixed command',()=>{
+ assert.deepEqual(EXPECTED_TESTS,{'agent/internal/nativefs/rootlease':['TestNativeSQLiteTempSpillUsesOwnedScratch'],'agent/internal/nativefs/windowsprobe':['TestNativeSQLiteTempVFSRejectsPathsAndFlags','TestNativeSQLiteTempVFSRegistrationOwnership','TestNativeSQLiteTempScratchOffsetIO','TestNativeSQLiteTempScratchOwnership','TestNativeSQLiteTempScratchFailures','TestNativeSQLiteTempScratchParentMutation']});
+ assert.deepEqual(testArguments('tmp.mod'),['test','-json','-modfile=tmp.mod','-tags=nativeprobe_sqlite_identity','-count=3','-timeout=10m','-run=^('+Object.values(EXPECTED_TESTS).flat().join('|')+')$','./internal/nativefs/rootlease','./internal/nativefs/windowsprobe']);
 });
 test('real events counted once with LF/CRLF and output ignored',()=>{for(const sep of ['\n','\r\n'])validate([{Action:'build-output',ImportPath:'a',Output:'build'},...events()],sep);});
 test('zero missing skipped failed extra wrong-package and build-fail evidence refuse',()=>{
@@ -89,4 +90,23 @@ test('failure after claiming exclusive modfile still cleans owned entry',async t
   await createOwnedFile(file,content,claim);throw Error('controlled failure after exclusive ownership');
  },command:async args=>{assert.equal(args[0],'env');return JSON.stringify({GOVERSION:'go1.26.4',GOMODCACHE:path.join(dir,'cache')});},log:()=>{}}),/controlled failure/);
  assert.deepEqual(await readdir(staging),[]);
+});
+
+test('exact anchored command matches only this manifest, never the independent experiment',()=>{
+ const names=Object.values(EXPECTED_TESTS).flat(),other=Object.values(OTHER_TESTS).flat();
+ assert.equal(names.length,7);
+ const text=testArguments('x.mod').find(a=>a.startsWith('-run=')).slice(5);
+ assert.ok(text.startsWith('^(')&&text.endsWith(')$'));assert.ok(!text.includes('?!'));
+ const regex=new RegExp(text);
+ for(const name of names){assert.ok(regex.test(name));for(const extra of ['Before'+name,name+'After',name+'Extra'])assert.equal(regex.test(extra),false,extra);}
+ for(const name of other)assert.equal(regex.test(name),false,name);
+});
+
+test('every new adapter contract must run/pass three times without missing or skipped evidence',()=>{
+ const names=['TestNativeSQLiteTempScratchOffsetIO','TestNativeSQLiteTempScratchOwnership','TestNativeSQLiteTempScratchFailures','TestNativeSQLiteTempScratchParentMutation'];
+ for(const name of names){
+  assert.ok(EXPECTED_TESTS['agent/internal/nativefs/windowsprobe'].includes(name));
+  assert.throws(()=>validate(events().filter(e=>e.Test!==name)));
+  for(const action of ['fail','skip'])assert.throws(()=>validate(events().map(e=>e.Test===name&&e.Action==='pass'?{...e,Action:action}:e)));
+ }
 });
