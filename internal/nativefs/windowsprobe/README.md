@@ -217,3 +217,12 @@ that GetFileType cannot classify. Only bounded object type labels are read, neve
 object paths. Event/File controls validate this interpretation. These are live
 value observations after PSS, not snapshot object identities. Neither the exact
 total-count assertion nor the disk-handle-set assertion is relaxed.
+
+The first junction experiment (1981604) confirmed that even the existing
+SHARE_READ guard permits WRITE_ATTRIBUTES-based reparse mutation. The full-path
+metadata positive control reached the intended outside sentinel. The held-root
+relative open instead failed with a resolution error that the original test's
+explicit refusal list did not recognize. The follow-up logs the exact NTSTATUS
+and additionally accepts only STATUS_REPARSE_POINT_NOT_RESOLVED; unknown errors
+and any successful relative open still fail. This measures a specific rejection
+behavior, not immutable reparse metadata or a universal race-free guarantee.

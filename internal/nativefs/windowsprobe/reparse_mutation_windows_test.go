@@ -193,9 +193,14 @@ func TestNativeReparseMutationQualification(t *testing.T) {
 				handles = append(handles, leaf)
 			}
 			if err != nil {
+				var status windows.NTStatus
+				if errors.As(err, &status) {
+					t.Logf("held-root raw-open NTSTATUS=%#08x", uint32(status))
+				}
 				if !errors.Is(err, windows.STATUS_OBJECT_NAME_NOT_FOUND) &&
 					!errors.Is(err, windows.STATUS_OBJECT_PATH_NOT_FOUND) &&
 					!errors.Is(err, windows.STATUS_REPARSE_POINT_ENCOUNTERED) &&
+					!errors.Is(err, windows.STATUS_REPARSE_POINT_NOT_RESOLVED) &&
 					!errors.Is(err, windows.STATUS_DIRECTORY_IS_A_REPARSE_POINT) {
 					t.Fatalf("unqualified raw-open error (not containment proof): %v", err)
 				}
