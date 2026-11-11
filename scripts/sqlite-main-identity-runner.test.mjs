@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, symlink, realpath } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { validateInputs, copyModule, testArguments, runExperiment, PIN, PATCH_RELATIVE, createEventValidator, EXPECTED_TESTS } from './sqlite-main-identity-runner.mjs';
@@ -8,7 +8,7 @@ import { validateInputs, copyModule, testArguments, runExperiment, PIN, PATCH_RE
 const mod = 'module agent\n\ngo 1.26.4\nrequire (\n modernc.org/sqlite v1.58.0\n)\n';
 const sum = 'modernc.org/sqlite v1.58.0 h1:38u40/bwkfM7f0Myhosl+SEMltSDxnGdQf8o6Kjmys0=\nmodernc.org/sqlite v1.58.0/go.mod h1:rsD2CckafgObKC4DhBlGBf+RiHxkc3hINGt1Xw32tVY=\n';
 const patch = '//go:build windows && nativeprobe_sqlite_identity\n\npackage sqlite\n';
-async function fixture(t) { const dir = await mkdtemp(path.join(os.tmpdir(), 'sqlite-runner-test-')); t.after(() => rm(dir, {recursive:true,force:true})); return dir; }
+async function fixture(t) { const dir = await realpath(await mkdtemp(path.join(os.tmpdir(), 'sqlite-runner-test-'))); t.after(() => rm(dir, {recursive:true,force:true})); return dir; }
 
 test('fixed source pins and exact experimental patch gate are required', () => {
  assert.doesNotThrow(() => validateInputs(mod, sum, patch));
@@ -44,11 +44,15 @@ test('non-Windows invocation fails explicitly before executing commands', async 
  assert.equal(called,false);
 });
 
-async function stagedRun(t, {failTest=false, wrongDownload=false, noEvents=false}={}) {
+async function stagedRun(t, {failTest=false, wrongDownload=false, noEvents=false, aliasRepo=false}={}) {
  const dir=await fixture(t), repo=path.join(dir,'repo'), cache=path.join(dir,'cache'), module=path.join(cache,'modernc.org','sqlite@v1.58.0'), staging=path.join(dir,'staging');
  await mkdir(module,{recursive:true}); await mkdir(staging); await mkdir(path.join(repo,path.dirname(PATCH_RELATIVE)),{recursive:true});
  await writeFile(path.join(repo,'go.mod'),mod); await writeFile(path.join(repo,'go.sum'),sum); await writeFile(path.join(repo,PATCH_RELATIVE),patch);
  await writeFile(path.join(module,'go.mod'),'module modernc.org/sqlite\n'); await writeFile(path.join(module,'LICENSE'),'official fixture license'); await writeFile(path.join(module,'sqlite.go'),'package sqlite\n'); await mkdir(path.join(module,'lib')); await writeFile(path.join(module,'lib','source.go'),'package sqlite3\n');
+ // All expected paths derive from the canonical fixture root, including cache,
+ // downloaded module and staging. Never compare a short temp alias to cwd.
+ const repoInput = aliasRepo ? path.join(dir,'repo-alias') : repo;
+ if(aliasRepo) await symlink(repo,repoInput,process.platform==='win32'?'junction':'dir');
  const calls=[], logs=[];
  const command=async(args, options)=>{
   calls.push(args);
@@ -71,7 +75,7 @@ async function stagedRun(t, {failTest=false, wrongDownload=false, noEvents=false
   }
   throw new Error('unexpected command '+args.join(' '));
  };
- const action=runExperiment({platform:'win32', repo, tempRoot:staging, command, log:line=>logs.push(line)});
+ const action=runExperiment({platform:'win32', repo:repoInput, tempRoot:staging, command, log:line=>logs.push(line)});
  if(failTest||wrongDownload||noEvents) await assert.rejects(action,wrongDownload?/version|download/i:noEvents?/manifest|missing|pass/i:/native test failed/); else {
   await action;
   assert.ok(logs.some(s=>s.includes('modernc.org/sqlite v1.58.0')));
@@ -133,4 +137,11 @@ test('exit-zero command with no native events fails and still cleans temporary c
 test('Go 1.26 build-output uses ImportPath, contributes no passes, and build-fail still refuses',()=>{
  assert.doesNotThrow(()=>verifyEvents([{Action:'build-output',ImportPath:'modernc.org/sqlite',Output:'compiler note\n'},...validEvents()]));
  assert.throws(()=>verifyEvents([{Action:'build-fail',ImportPath:'modernc.org/sqlite'},...validEvents()]));
+});
+
+// Regression provenance: 7f8023c / Actions 43000609464 / job 130455510016.
+// Four Windows stagedRun assertions compared RUNNER~1 to runneradmin. That job
+// failed in Node setup and never reached native Go tests; it is NOT native RED.
+test('repository alias is canonicalized before every Go command without weakening cwd equality',async t=>{
+ await stagedRun(t,{aliasRepo:true});
 });
