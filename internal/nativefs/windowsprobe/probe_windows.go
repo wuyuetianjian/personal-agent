@@ -227,7 +227,7 @@ func acquireIOGuard(parent windows.Handle, name string, expected snapshot) (wind
 		return 0, snapshot{}, err
 	}
 	actual, err := inspect(h)
-	if err == nil && !unchanged(expected, actual) {
+	if err == nil && !sameQualifiedGuard(expected, actual) {
 		err = fmt.Errorf("metadata-to-io changed (%s): %w", snapshotChanges(expected, actual), errUnsafe)
 	}
 	if err == nil {
@@ -374,7 +374,7 @@ func (r *Root) Read(ctx context.Context, components []string) ([]byte, error) {
 			if e != nil {
 				return nil, e
 			}
-			if !unchanged(g.s, now) {
+			if !sameQualifiedGuard(g.s, now) {
 				return nil, errUnsafe
 			}
 			if e = exactName(g.h, g.name); e != nil {

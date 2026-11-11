@@ -164,3 +164,14 @@ func TestNativeFileMutationMetadataToIOStillRefuses(t *testing.T) {
 		t.Fatal("file mutation passed IO guard consistency check")
 	}
 }
+
+func TestNativeQualifiedGuardTypeSwitchRefusal(t *testing.T) {
+	directory := directoryGuardSnapshot()
+	file := directory
+	file.Standard.Directory = 0
+	file.Basic.Attributes = windows.FILE_ATTRIBUTE_NORMAL
+	file.Tag.Attributes = windows.FILE_ATTRIBUTE_NORMAL
+	if sameQualifiedGuard(directory, file) || sameQualifiedGuard(file, directory) {
+		t.Fatal("qualification switched to the actual type instead of enforcing expected type")
+	}
+}

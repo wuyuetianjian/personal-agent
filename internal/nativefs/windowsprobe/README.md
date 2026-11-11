@@ -31,7 +31,7 @@ reparse tags, case-sensitive directories, nonexact normalized long names,
 remote/non-NTFS storage, different volumes, and observed file link counts other
 than one. Metadata-only handles do not participate in ordinary I/O sharing
 checks. A separate FILE_READ_DATA/FILE_LIST_DIRECTORY I/O guard must match the
-metadata object's full ID and metadata before traversal or reading; directory
+metadata object's full ID and applicable consistency checks before traversal or reading; directory
 metadata and I/O guards remain retained throughout the read. All native acquisition uses FILE_OPEN with
 no backup intent, inheritance, or sharing relaxation. Errors return no bytes.
 
@@ -226,3 +226,21 @@ explicit refusal list did not recognize. The follow-up logs the exact NTSTATUS
 and additionally accepts only STATUS_REPARSE_POINT_NOT_RESOLVED; unknown errors
 and any successful relative open still fail. This measures a specific rejection
 behavior, not immutable reparse metadata or a universal race-free guarantee.
+
+## Directory traversal versus observation consistency
+
+Native diagnostics reproduced initial-root refusal when an unrelated change in
+a shared temporary ancestor changed only Write/Change time, not directory ID,
+Creation, attributes, type or tag. Traversal now compares qualified directory
+identity/safety state separately from mutable content-associated metadata. It
+keeps Creation and all attributes/tag checks, current inspection and exact names.
+File metadata-to-I/O and before/after read checks remain strict, as does the final
+ObserveEntries endpoint comparison. Directory sharing policy is unchanged.
+
+This explicitly gives up extra time/allocation-based mutation detection for
+ancestor traversal; it does not prove absence of changes that are later restored.
+The test-first revision 2e34ba2 failed the new positive directory predicate and
+sibling-mutation acquisition expectations on native Windows. Controlled fixtures
+set LastWrite explicitly after actual sibling changes because natural NTFS time
+updates were not consistently visible; no retry or timing tolerance hides this.
+The implementation requires new exact-head native evidence before qualification.
