@@ -21,28 +21,44 @@ import (
 
 const rootTokenMarker = "WINDOWSPROBE_ROOT_TOKEN_HELPER"
 
+// Consume ownership before closing; unknown close outcomes are never retried.
+func directFixtureCloseToken(t *testing.T, label string, token *windows.Token) {
+	t.Helper()
+	owned := *token
+	*token = 0
+	if owned == 0 {
+		return
+	}
+	if err := owned.Close(); err != nil {
+		t.Errorf("%s token close: %v", label, err)
+	}
+}
+
 // This test does not elevate, alter the host token, or change machine policy.
 // A restricted administrator token is explicitly NOT a standard-user proof.
 func TestNativeOpenLocalRootReducedToken(t *testing.T) {
 	var current windows.Token
+	defer directFixtureCloseToken(t, "current", &current)
 	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY|windows.TOKEN_DUPLICATE|windows.TOKEN_ASSIGN_PRIMARY, &current); err != nil {
 		t.Fatal(err)
 	}
-	defer current.Close()
 	var child windows.Token
+	defer directFixtureCloseToken(t, "child", &child)
 	label := ""
 	linked, err := current.GetLinkedToken()
+	defer directFixtureCloseToken(t, "linked", &linked)
 	t.Logf("token diagnostic: GetLinkedToken error=%v", err)
 	if err == nil {
 		elevated, queryErr := rootTokenElevation(linked)
 		if queryErr != nil {
-			linked.Close()
+			directFixtureCloseToken(t, "linked", &linked)
 			t.Fatal(queryErr)
 		}
 		if !elevated {
 			child, label = linked, "linked-non-elevated"
+			linked = 0 // ownership transferred
 		} else {
-			linked.Close()
+			directFixtureCloseToken(t, "linked", &linked)
 		}
 	}
 	if child == 0 {
@@ -65,7 +81,6 @@ func TestNativeOpenLocalRootReducedToken(t *testing.T) {
 		}
 		label = "restricted-not-standard-user"
 	}
-	defer child.Close()
 	rootTokenDiagnostics(t, "parent", current)
 	rootTokenDiagnostics(t, "selected-child", child)
 	parentAuth, parentErr := rootTokenAuthID(current)
@@ -121,10 +136,10 @@ func TestNativeOpenLocalRootRestrictedTokenHelper(t *testing.T) {
 		t.Fatal("invalid helper marker")
 	}
 	var token windows.Token
+	defer directFixtureCloseToken(t, "helper", &token)
 	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY, &token); err != nil {
 		t.Fatal(err)
 	}
-	defer token.Close()
 	rootTokenDiagnostics(t, "running-child", token)
 	if err := rootTokenLeastPrivilege(token); err != nil {
 		t.Fatal(err)
@@ -139,6 +154,7 @@ func TestNativeOpenLocalRootRestrictedTokenHelper(t *testing.T) {
 	if dir == "" {
 		t.Fatal("missing fixture path")
 	}
+	baseline := captureHandleInventory(t)
 	root, err := OpenLocalRoot(dir)
 	if err != nil {
 		if label == "restricted-not-standard-user" {
@@ -146,10 +162,26 @@ func TestNativeOpenLocalRootRestrictedTokenHelper(t *testing.T) {
 		}
 		t.Fatalf("qualified %s OpenLocalRoot: %v", label, err)
 	}
-	defer root.Close()
+	defer func() {
+		if e := root.Close(); e != nil {
+			t.Error(e)
+		}
+	}()
 	data, err := root.Read(context.Background(), []string{"token-proof.txt"})
 	if err != nil || string(data) != "root-token-fixture\n" {
 		t.Fatalf("qualified token read: data=%q error=%v", data, err)
+	}
+	live := captureHandleInventory(t)
+	if baseline.files[root.h] || !live.files[root.h] {
+		t.Fatal("public root disk handle positive control failed")
+	}
+	if e := root.Close(); e != nil {
+		t.Fatalf("public root close: %v", e)
+	}
+	after := captureHandleInventory(t)
+	if !sameDiskHandles(baseline, after) {
+		logHandleDelta(t, baseline, after)
+		t.Fatal("public root disk handles did not recover baseline")
 	}
 	t.Log("ROOT_TOKEN_READ_OK:" + label)
 }

@@ -18,20 +18,7 @@ import (
 
 const directRootTokenMarker = "WINDOWSPROBE_DIRECT_ROOT_TOKEN_HELPER"
 
-// Consume ownership before closing; unknown close outcomes are never retried.
-func directFixtureCloseToken(t *testing.T, label string, token *windows.Token) {
-	t.Helper()
-	owned := *token
-	*token = 0
-	if owned == 0 {
-		return
-	}
-	if err := owned.Close(); err != nil {
-		t.Errorf("%s token close: %v", label, err)
-	}
-}
-
-// Independent experiment. Original QueryDosDevice qualification is unchanged.
+// Tagged qualification of the same public foundation route as the ordinary suite.
 func TestNativeDirectLinkRootReducedToken(t *testing.T) {
 	var current windows.Token
 	defer directFixtureCloseToken(t, "current", &current)
@@ -151,7 +138,7 @@ func TestNativeDirectLinkRootRestrictedTokenHelper(t *testing.T) {
 		t.Fatal("missing fixture path")
 	}
 	baseline := captureHandleInventory(t)
-	root, err := openLocalRootDirectExperiment(dir)
+	root, err := OpenLocalRoot(dir)
 	if err != nil {
 		if label == "restricted-not-standard-user" {
 			rootTokenNamespaceDiagnostics(t, dir)

@@ -1,5 +1,3 @@
-//go:build nativeprobe_sqlite_identity
-
 package windowsprobe
 
 import (
@@ -47,8 +45,9 @@ func TestDirectLinkProtocol(t *testing.T) {
 	for _, stage := range []string{"ok", "context", "open", "open-owned-error", "zero", "rights", "inherit", "query", "decode", "close", "path"} {
 		t.Run(stage, func(t *testing.T) {
 			fault := errors.New("fault")
-			closed, target := 0, 0
+			closed, target, nativeCalls := 0, 0, 0
 			ops := directLinkOps{context: func() error {
+				nativeCalls++
 				if stage == "context" {
 					return fault
 				}
@@ -106,6 +105,9 @@ func TestDirectLinkProtocol(t *testing.T) {
 			if stage == "path" || stage == "context" || stage == "open" || stage == "zero" {
 				expected = 0
 			}
+			if stage == "path" && nativeCalls != 0 {
+				t.Fatal("invalid path reached native context")
+			}
 			if closed != expected {
 				t.Fatalf("close=%d expected=%d", closed, expected)
 			}
@@ -121,5 +123,16 @@ func TestDirectLinkHandleQualification(t *testing.T) {
 		if e := qualifyDirectLinkHandle(c.access, c.length, c.flags); (e == nil) != c.ok {
 			t.Fatalf("%+v err=%v", c, e)
 		}
+	}
+}
+
+// A failed validation and uncertain close must both survive wrapping/joining.
+func TestDirectLinkErrorPreservation(t *testing.T) {
+	validation, cleanup := errors.New("qualification fault"), errors.New("close fault")
+	closes, targets := 0, 0
+	ops := directLinkOps{context: func() error { return nil }, open: func(string) (uintptr, error) { return 9, nil }, qualify: func(uintptr) error { return validation }, close: func(uintptr) error { closes++; return cleanup }}
+	err := withDirectLinkAnchor(`D:\fixture`, ops, func(string, []string) error { targets++; return nil })
+	if !errors.Is(err, validation) || !errors.Is(err, cleanup) || closes != 1 || targets != 0 {
+		t.Fatalf("err=%v closes=%d targets=%d", err, closes, targets)
 	}
 }

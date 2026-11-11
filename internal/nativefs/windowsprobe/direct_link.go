@@ -1,5 +1,3 @@
-//go:build nativeprobe_sqlite_identity
-
 package windowsprobe
 
 import (
@@ -7,7 +5,7 @@ import (
 	"unicode/utf16"
 )
 
-// Private experimental resolver protocol; no production acquisition calls this.
+// Private resolver protocol for the disconnected Windows foundation.
 type directLinkOps struct {
 	context func() error
 	open    func(string) (uintptr, error)

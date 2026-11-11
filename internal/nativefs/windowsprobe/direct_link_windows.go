@@ -1,17 +1,18 @@
-//go:build windows && nativeprobe_sqlite_identity
+//go:build windows
 
 package windowsprobe
 
 import (
 	"errors"
+	"fmt"
 	"golang.org/x/sys/windows"
 	"runtime"
 	"unsafe"
 )
 
-// openLocalRootDirectExperiment is not a production fallback. No impersonation,
+// openLocalRootFromDirectLink is the sole foundation lookup, not a retry. No impersonation,
 // elevation, explicit global namespace lookup or target-chain resolution occurs.
-func openLocalRootDirectExperiment(path string) (root *Root, err error) {
+func openLocalRootFromDirectLink(path string) (root *Root, err error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	dll := windows.NewLazySystemDLL("ntdll.dll")
@@ -90,5 +91,8 @@ func openLocalRootDirectExperiment(path string) (root *Root, err error) {
 		root, e = openQualifiedAnchor(anchor, parts)
 		return e
 	})
+	if err != nil {
+		err = fmt.Errorf("windowsprobe: direct-link root acquisition: %w", err)
+	}
 	return
 }

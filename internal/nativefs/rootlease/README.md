@@ -218,3 +218,16 @@ or retry that API's failure. Its actual root acquisition and bounded read remain
 pending native qualification; neither metadata lookup nor a restricted admin token
 constitutes standard-user or production qualification. The isolated job checks
 this experiment separately and retains the original acquisition failure.
+
+At `8b59ac3`, the separately selected direct-link qualification completed three
+actual restricted-child root acquisitions, bounded reads and explicit cleanup/PSS
+checks. The ordinary QueryDosDevice route still failed in that historical run.
+The foundation now uses direct-link lookup unconditionally through `OpenLocalRoot`;
+there is no denial-triggered retry or privilege change. Its qualified anchor and
+component traversal body is unchanged. Pure protocol tests now run without the
+experimental tag, and both ordinary and tagged gates require the public entry's
+new native result rather than treating the earlier private-entry result as proof.
+Any thread impersonation or uncertain token query is refused, and native causes
+remain wrapped rather than flattened into a Win32 error. This integration is still
+disconnected from application commands, and remains pending public-entry native
+qualification, actual standard-user testing and the other storage/sandbox gates.

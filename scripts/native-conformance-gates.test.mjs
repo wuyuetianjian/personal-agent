@@ -103,10 +103,11 @@ test('macOS foundation does not require Windows scratch tests', () => {
  const result=runGate(macFoundation,'foundation-tests.json',events);
  assert.equal(result.status,0,result.detail);
 });
+const publicRootTests=['TestNativeOpenLocalRootReducedToken','TestDirectLinkDecoder','TestDirectLinkProtocol','TestDirectLinkHandleQualification','TestDirectLinkErrorPreservation'];
 function isolatedEvents() {
  const events=[];
  for(const Package of ['agent/internal/nativefs/windowsprobe','agent/internal/nativefs/rootlease']) events.push({Package,Action:'pass'});
- for(let i=0;i<3;i++)for(const Test of scratchTests)events.push({Package:'agent/internal/nativefs/windowsprobe',Test,Action:'run'},{Package:'agent/internal/nativefs/windowsprobe',Test,Action:'pass'});
+ for(let i=0;i<3;i++)for(const Test of [...scratchTests,...publicRootTests])events.push({Package:'agent/internal/nativefs/windowsprobe',Test,Action:'run'},{Package:'agent/internal/nativefs/windowsprobe',Test,Action:'pass'});
  return events;
 }
 test('isolated scratch gate requires three real repetitions per test and both package completions',()=>{
@@ -132,9 +133,9 @@ test('isolated validator is LF/CRLF stable and consumes its own JSON test stream
  assert.match(workflow,/steps\.isolated_foundation\.outcome != 'skipped'/);
 });
 
-const directTests=['TestDirectLinkDecoder','TestDirectLinkProtocol','TestDirectLinkHandleQualification','TestNativeDirectLinkRootReducedToken','TestNativeDirectLinkRootRestrictedTokenHelper'];
+const directTests=['TestDirectLinkDecoder','TestDirectLinkProtocol','TestDirectLinkHandleQualification','TestDirectLinkErrorPreservation','TestNativeDirectLinkRootReducedToken','TestNativeDirectLinkRootRestrictedTokenHelper'];
 function directEvents(){const Package='agent/internal/nativefs/windowsprobe',events=[];for(let i=0;i<3;i++)for(const Test of directTests)events.push({Package,Test,Action:'run'},{Package,Test,Action:'pass'});events.push({Package,Action:'pass'});return events;}
-test('direct-link gate requires its exact five tests three times and no failed or skipped evidence',()=>{
+test('direct-link gate requires its exact six tests three times and no failed or skipped evidence',()=>{
  const script=gate('Require direct-link native evidence without skips'),valid=directEvents();
  assert.equal(runGate(script,'direct-link-tests.json',valid).status,0);
  for(const name of directTests){
@@ -168,3 +169,29 @@ function verifyDirectWorkflow(workflowText) {
  const name='Require direct-link native evidence without skips';assert.equal(gate(name,workflowText),gate(name));
 }
 for(const [format,workflowText] of [['LF',workflow.replace(/\r\n/g,'\n')],['CRLF',workflow.replace(/\r?\n/g,'\r\n')]])test('full direct-link workflow preserves gates and artifact paths with '+format,()=>verifyDirectWorkflow(workflowText));
+
+test('ordinary Windows foundation requires all direct resolver pure contracts',()=>{
+ const valid=eventsFor(windowsFoundation,true);
+ for(const name of publicRootTests.slice(1)){
+  assert.ok(windowsFoundation.includes("'"+name+"'"));
+  assert.notEqual(runGate(windowsFoundation,'foundation-tests.json',valid.filter(e=>e.Test!==name)).status,0);
+ }
+ assert.notEqual(runGate(windowsFoundation,'foundation-tests.json',[...valid,{Action:'build-fail',ImportPath:'bad'}]).status,0);
+});
+test('ordinary isolated public root and pure contracts each require three real runs and passes',()=>{
+ const script=gate('Require isolated scratch evidence without skips'),valid=isolatedEvents();
+ assert.equal(runGate(script,'isolated-foundation-tests.json',valid).status,0);
+ for(const name of publicRootTests){
+  assert.ok(script.includes("'"+name+"'"));
+  for(const Action of ['run','pass']){
+   const index=valid.findIndex(e=>e.Test===name&&e.Action===Action);
+   assert.notEqual(runGate(script,'isolated-foundation-tests.json',valid.filter((e,i)=>i!==index)).status,0);
+   assert.notEqual(runGate(script,'isolated-foundation-tests.json',[...valid,valid[index]]).status,0);
+  }
+  assert.notEqual(runGate(script,'isolated-foundation-tests.json',valid.filter(e=>e.Test!==name)).status,0);
+  for(const Action of ['fail','skip'])assert.notEqual(runGate(script,'isolated-foundation-tests.json',valid.map(e=>e.Test===name&&e.Action==='pass'?{...e,Action}:e)).status,0);
+ }
+ assert.notEqual(runGate(script,'isolated-foundation-tests.json',[...valid,{Action:'build-fail',ImportPath:'bad'}]).status,0);
+ assert.doesNotMatch(workflow,/original ReducedToken failure remains unchanged/);
+ assert.match(script,/ordinary public entry.*passed/i);
+});

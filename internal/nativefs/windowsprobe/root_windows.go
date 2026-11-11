@@ -15,37 +15,12 @@ import (
 // forwarded paths, network roots and ancestor reparse points are not followed.
 // This is acquisition, not approval or a persistent identity. Device names are
 // nonpersistent; authority comes from the qualified handles retained here.
+// The caller must not be impersonating on its current OS thread. Any thread
+// token or uncertain token query is refused, without changing security context.
+// Errors retain underlying native NTSTATUS/Win32 causes and cleanup failures;
+// callers must not assume every denied lookup is a Win32 ERROR_ACCESS_DENIED.
 func OpenLocalRoot(path string) (*Root, error) {
-	drive, components, err := parseLocalRootPath(path)
-	if err != nil {
-		return nil, err
-	}
-	device, err := windows.UTF16PtrFromString(drive)
-	if err != nil {
-		return nil, err
-	}
-	var targets [32768]uint16
-	n, err := windows.QueryDosDevice(device, &targets[0], uint32(len(targets)))
-	if err != nil {
-		return nil, fmt.Errorf("windowsprobe: query drive mapping: %w", err)
-	}
-	if n == 0 || n > uint32(len(targets)) {
-		return nil, errUnsafe
-	}
-	// Only the first string is the current mapping; later strings may describe
-	// undeleted prior mappings. Do not try later mappings when the first refuses.
-	end := 0
-	for end < int(n) && targets[end] != 0 {
-		end++
-	}
-	if end == 0 || end == int(n) {
-		return nil, errUnsafe
-	}
-	anchor, err := physicalVolumeRoot(windows.UTF16ToString(targets[:end]))
-	if err != nil {
-		return nil, err
-	}
-	return openQualifiedAnchor(anchor, components)
+	return openLocalRootFromDirectLink(path)
 }
 
 // Shared acquisition body; caller has already qualified the transient locator.
