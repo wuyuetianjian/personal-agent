@@ -55,8 +55,10 @@ driver and private connection wrapper. Only this wrapper may expose journal
 capture. The constructor must reject caller URIs and construct its own fixed
 private-cache/win32 URI from a strictly validated absolute DOS filename; it is
 not a replacement for production storage.OpenSQLite or its hooks/extensions.
-Factory, validator and child-only shared-default control start as explicit
-refusal stubs. Their native RED is distinct from later journal-behavior RED.
+Factory, validator and child-harness shared-default control initially used
+explicit refusal stubs. Five positive factory contracts failed three times at
+fd7eacc in run 43008362582. Factory validation and journal behavior are separate
+qualification stages; constructor-blocked WAL tests do not prove journal RED.
 
 Tests include an isolated child with global shared-cache default enabled. With
 read_uncommitted enabled, controlled private connections must see committed data,
