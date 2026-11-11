@@ -4,6 +4,7 @@ package windowsprobe
 
 import (
 	"errors"
+	"fmt"
 
 	"golang.org/x/sys/windows"
 )
@@ -66,10 +67,10 @@ func (r *Root) openDirectoryNamespace(components []string) (*Root, error) {
 		name string
 	}
 	observations := make([]observation, 0, len(components))
-	for _, name := range components {
+	for index, name := range components {
 		metadata, err := openRelative(parent, name, false)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("directory component %d metadata open: %w", index, err)
 		}
 		s, err := inspect(metadata)
 		if err == nil && (s.Standard.Directory == 0 || s.ID.Volume != r.id.Volume) {
@@ -88,7 +89,7 @@ func (r *Root) openDirectoryNamespace(components []string) (*Root, error) {
 			handles = append(handles, io)
 		}
 		if err = errors.Join(err, closeErr); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("directory component %d qualify/io guard: %w", index, err)
 		}
 		observations = append(observations, observation{io, qualified, name})
 		parent = io

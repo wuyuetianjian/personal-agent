@@ -4,6 +4,7 @@ package windowsprobe
 
 import (
 	"errors"
+	"fmt"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -26,7 +27,7 @@ func OpenLocalRoot(path string) (*Root, error) {
 	var targets [32768]uint16
 	n, err := windows.QueryDosDevice(device, &targets[0], uint32(len(targets)))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("windowsprobe: query drive mapping: %w", err)
 	}
 	if n == 0 || n > uint32(len(targets)) {
 		return nil, errUnsafe
@@ -61,7 +62,7 @@ func OpenLocalRoot(path string) (*Root, error) {
 		&oa, &io, nil, 0, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE,
 		windows.FILE_OPEN, windows.FILE_OPEN_REPARSE_POINT|windows.FILE_OPEN_NO_RECALL|windows.FILE_SYNCHRONOUS_IO_NONALERT, 0, 0)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("windowsprobe: open volume root: %w", err)
 	}
 	root, err := NewRoot(handle)
 	if closeErr := windows.CloseHandle(handle); closeErr != nil {
@@ -71,7 +72,7 @@ func OpenLocalRoot(path string) (*Root, error) {
 		if root != nil {
 			err = errors.Join(err, root.Close())
 		}
-		return nil, err
+		return nil, fmt.Errorf("windowsprobe: qualify volume root: %w", err)
 	}
 	if len(components) == 0 {
 		return root, nil
@@ -84,7 +85,7 @@ func OpenLocalRoot(path string) (*Root, error) {
 		if selected != nil {
 			err = errors.Join(err, selected.Close())
 		}
-		return nil, err
+		return nil, fmt.Errorf("windowsprobe: acquire root ancestry: %w", err)
 	}
 	// Only initial host root selection starts a new relative-depth budget.
 	// Keep all initial ancestors. A later OpenDirectory never resets depth:
