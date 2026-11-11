@@ -75,9 +75,9 @@ func TestNativeDurableParentQualification(t *testing.T) {
 				}
 				// A list-only participating handle has neither write nor append access.
 				status, iosb := durableParentFlush(t, guard)
-				t.Logf("current-token guard share=%#x no-write flush status=%#x iosb=%#x info=%d", share, status, iosb.Status, iosb.Information)
+				t.Logf("current-token guard share=%#x no-write flush status=%#x iosb=%#x info=%d", share, uint32(status), uint32(iosb.Status), iosb.Information)
 				if status != windows.STATUS_ACCESS_DENIED {
-					t.Fatalf("no-write flush: expected ACCESS_DENIED, got %#x", status)
+					t.Fatalf("no-write flush: expected ACCESS_DENIED, got %#x", uint32(status))
 				}
 				writer, err := durableParentOpen(root.h, right.mask, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE)
 				if !shareWrite {
@@ -104,9 +104,9 @@ func TestNativeDurableParentQualification(t *testing.T) {
 						t.Fatalf("granted access=%#x expected=%#x iosb=%+v error=%v", access, expected, io, err)
 					}
 					status, iosb = durableParentFlush(t, writer)
-					t.Logf("current-token NTFS access=%#x share=%#x flush status=%#x iosb=%#x info=%d", access, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, status, iosb.Status, iosb.Information)
+					t.Logf("current-token NTFS access=%#x share=%#x flush status=%#x iosb=%#x info=%d", access, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, uint32(status), uint32(iosb.Status), iosb.Information)
 					if status != 0 || iosb.Status != 0 {
-						t.Fatalf("normal flush not qualified: status=%#x iosb=%#x", status, iosb.Status)
+						t.Fatalf("normal flush not qualified: status=%#x iosb=%#x", uint32(status), uint32(iosb.Status))
 					}
 				}
 				// No SHARE_DELETE is granted by either case. This controlled negative

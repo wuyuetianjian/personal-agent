@@ -88,6 +88,9 @@ jobs:
             assert(events.some(e => e.Package === pkg && !e.Test && e.Action === 'pass'), `${pkg} did not finish`);
             for (const test of tests) assert(events.some(e => e.Package === pkg && e.Test === test && e.Action === 'pass'), `${pkg}/${test} did not pass`);
           }
+          const leaseTests = ['TestRegistryRandomEpochAndIndependentReferences', 'TestRegistryPendingAndUnknownAuthorityNeverReadOrReopen', 'TestRegistryActivationCopiesExactImmutableBinding', 'TestRegistryAbortClosesExactlyOnce', 'TestRegistryOpeningReservationSurvivesCancellation', 'TestRegistryCloseWaitsForReadAndRefusesNewWork', 'TestRegistryCloseDuringAcquireWaitsAndClosesReturnedBackend', 'TestRegistryOpenFailureReleasesCapacity', 'TestRegistryEntropyFailureNeverOpens', 'TestRegistryLeaseCollisionRetriesAreBoundedAndNeverOverwrite', 'TestRegistryAbortedReferenceNeverReissued', 'TestRegistryOpenErrorWithOwnerClosesExactlyOnce', 'TestRegistryConcurrentAbortWaitsForOwnedCleanup', 'TestRegistryShutdownReportsFailedOpeningCleanup'];
+          if (process.platform === 'win32') leaseTests.push('TestNativeRegistryCurrentTokenLifecycle');
+          for (const test of leaseTests) assert(events.some(e => e.Package === 'agent/internal/nativefs/rootlease' && e.Test === test && e.Action === 'pass'), `rootlease/${test} did not pass`);
           const passed = events.filter(e => e.Test && e.Action === 'pass').length;
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Native refusal contracts: ${passed} tests/subtests passed, zero skipped. This does not qualify enabled native adapters.\n`);
           JS
@@ -124,6 +127,9 @@ jobs:
             const tests = name === native ? required[name] : name === 'windowsprobe' ? ['TestComponents', 'TestDirectoryRecordsObservedNamesAndIDs', 'TestDirectoryRecordsOnlyDots', 'TestDirectoryRecordsMalformed', 'TestDirectoryRecordsUnsafeNamesAndAttributes', 'TestDirectoryRecordsRawRecordBudget', 'TestDirectoryQueryCompletion', 'TestParseLocalRootPath', 'TestParseLocalRootPathRejectsAliases', 'TestRootPathDepthAndToolPolicy', 'TestPhysicalVolumeRoot'] : ['TestComponents'];
             for (const test of tests) assert(events.some(e => e.Package === pkg && e.Test === test && e.Action === 'pass'), `${pkg}/${test} did not pass`);
           }
+          const leaseTests = ['TestRegistryRandomEpochAndIndependentReferences', 'TestRegistryPendingAndUnknownAuthorityNeverReadOrReopen', 'TestRegistryActivationCopiesExactImmutableBinding', 'TestRegistryAbortClosesExactlyOnce', 'TestRegistryOpeningReservationSurvivesCancellation', 'TestRegistryCloseWaitsForReadAndRefusesNewWork', 'TestRegistryCloseDuringAcquireWaitsAndClosesReturnedBackend', 'TestRegistryOpenFailureReleasesCapacity', 'TestRegistryEntropyFailureNeverOpens', 'TestRegistryLeaseCollisionRetriesAreBoundedAndNeverOverwrite', 'TestRegistryAbortedReferenceNeverReissued', 'TestRegistryOpenErrorWithOwnerClosesExactlyOnce', 'TestRegistryConcurrentAbortWaitsForOwnedCleanup', 'TestRegistryShutdownReportsFailedOpeningCleanup'];
+          if (process.platform === 'win32') leaseTests.push('TestNativeRegistryCurrentTokenLifecycle');
+          for (const test of leaseTests) assert(events.some(e => e.Package === 'agent/internal/nativefs/rootlease' && e.Test === test && e.Action === 'pass'), `rootlease/${test} did not pass`);
           const passed = events.filter(e => e.Test && e.Action === 'pass').length;
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Disconnected foundation experiments: ${passed} tests/subtests passed, zero skipped. This is not production adapter qualification; see docs/release/native-foundation.md.\n`);
           JS
@@ -182,4 +188,4 @@ jobs:
       - name: Record exact source
         run: git rev-parse HEAD
       - name: Run isolated native foundation evidence
-        run: go test -v -count=3 -timeout=5m ./internal/nativefs/windowsprobe
+        run: go test -v -count=3 -timeout=5m ./internal/nativefs/windowsprobe ./internal/nativefs/rootlease
