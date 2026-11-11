@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: native-conformance-${{ github.ref }}
+  group: native-conformance-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:

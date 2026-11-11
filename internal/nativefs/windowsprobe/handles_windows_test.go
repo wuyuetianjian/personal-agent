@@ -93,7 +93,7 @@ func captureHandleInventory(t *testing.T) handleInventory {
 		name := make([]byte, len(units))
 		for j, u := range units {
 			if u < 0x20 || u > 0x7e {
-				t.Fatalf("invalid object type code unit %#x", u)
+				t.Fatalf("invalid object type code unit %#x at %d: flags=%#x bytes=%d units=%#v", u, j, entry.Flags, entry.TypeNameLength, units)
 			}
 			name[j] = byte(u)
 		}
