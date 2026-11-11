@@ -282,12 +282,21 @@ func TestNativeObserveEntriesHandleRelease(t *testing.T) {
 		rejectObservation(t, api, context.Background(), []string{"Bad"})
 	}
 	exercise()
+	captureHandleInventory(t) // warm the diagnostic API, not the measured operations
+	beforeTypes := captureHandleInventory(t)
 	count()
 	before := count()
 	for i := 0; i < 64; i++ {
 		exercise()
 	}
-	if after := count(); after != before {
+	after := count()
+	afterTypes := captureHandleInventory(t)
+	logHandleDelta(t, beforeTypes, afterTypes)
+	if !sameFileHandles(beforeTypes, afterTypes) {
+		t.Errorf("observation changed exact File handle set")
+	}
+	// Keep the original total-count failure until the diagnostic run supplies evidence.
+	if after != before {
 		t.Fatalf("observation leaked handles: before=%d after=%d", before, after)
 	}
 	for _, name := range []string{"Listed", "Bad"} {

@@ -163,3 +163,23 @@ jobs:
       - name: Check TypeScript types
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: pnpm typecheck
+
+  windows-handle-evidence:
+    name: Windows isolated foundation evidence
+    runs-on: windows-2025
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Record exact source
+        run: git rev-parse HEAD
+      - name: Run isolated native foundation evidence
+        run: go test -v -count=3 -timeout=5m ./internal/nativefs/windowsprobe
