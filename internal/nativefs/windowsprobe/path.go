@@ -11,11 +11,17 @@ import (
 var errUnsafe = errors.New("windowsprobe: unsupported or unsafe object")
 
 func validateComponents(parts []string) error {
+	return validateNames(parts, true)
+}
+
+// validateNames shares lexical checks while keeping tool-relative protected
+// names separate from the user-selected root namespace.
+func validateNames(parts []string, protected bool) error {
 	if len(parts) == 0 || len(parts) > 32 {
 		return errUnsafe
 	}
 	for _, s := range parts {
-		if s == "" || !utf8.ValidString(s) || len(utf16.Encode([]rune(s))) > 255 || strings.HasPrefix(s, ".") || strings.HasSuffix(s, ".") || strings.HasSuffix(s, " ") || strings.ContainsAny(s, `/\:<>"|?*`) {
+		if s == "" || !utf8.ValidString(s) || len(utf16.Encode([]rune(s))) > 255 || s == "." || s == ".." || (protected && strings.HasPrefix(s, ".")) || strings.HasSuffix(s, ".") || strings.HasSuffix(s, " ") || strings.ContainsAny(s, `/\:<>"|?*`) {
 			return errUnsafe
 		}
 		for _, r := range s {
@@ -24,7 +30,7 @@ func validateComponents(parts []string) error {
 			}
 		}
 		upper := strings.ToUpper(s)
-		if upper == "DATA" || upper == "NODE_MODULES" {
+		if protected && (upper == "DATA" || upper == "NODE_MODULES") {
 			return errUnsafe
 		}
 		base := strings.SplitN(upper, ".", 2)[0]
