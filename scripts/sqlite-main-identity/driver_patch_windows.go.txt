@@ -4,12 +4,51 @@
 // Not a production interface, DB exclusion proof, or WAL/SHM protection.
 package sqlite
 
-import "errors"
+import (
+	"errors"
+	"unsafe"
 
-// ExperimentalDuplicateMainFileHandle will return an independently owned,
-// non-inheritable FILE_READ_ATTRIBUTES|SYNCHRONIZE duplicate of SQLite's actual
-// main handle. Call only within sql.Conn.Raw. The caller owns only the duplicate.
-// RED phase: refuse until native tests demonstrate the missing implementation.
+	"golang.org/x/sys/windows"
+	sqlite3 "modernc.org/sqlite/lib"
+)
+
+// ExperimentalDuplicateMainFileHandle returns an independently owned,
+// non-inheritable metadata-only duplicate of SQLite's actual main handle.
+// Call only within sql.Conn.Raw. The caller must close only the duplicate.
 func (c *conn) ExperimentalDuplicateMainFileHandle() (uintptr, error) {
- return 0, errors.New("sqlite: experimental main identity not implemented")
+	if c == nil {
+		return 0, errors.New("sqlite: experimental main identity: nil connection")
+	}
+	c.Lock()
+	defer c.Unlock()
+	if c.db == 0 || c.tls == nil || c.inMemory {
+		return 0, errors.New("sqlite: experimental main identity: closed or in-memory connection")
+	}
+	size := int(unsafe.Sizeof(uintptr(0)))
+	slot := c.tls.Alloc(size)
+	defer c.tls.Free(size)
+	*(*uintptr)(unsafe.Pointer(slot)) = 0
+	if err := c.fileControl("main", sqlite3.SQLITE_FCNTL_WIN32_GET_HANDLE, slot); err != nil {
+		return 0, err
+	}
+	original := windows.Handle(*(*uintptr)(unsafe.Pointer(slot)))
+	if original == 0 || original == windows.InvalidHandle {
+		return 0, errors.New("sqlite: experimental main identity: invalid native handle")
+	}
+	var duplicate windows.Handle
+	// Deliberately no DUPLICATE_SAME_ACCESS or DUPLICATE_CLOSE_SOURCE: SQLite's
+	// write-capable original remains owned by SQLite. No inherited authority.
+	err := windows.DuplicateHandle(windows.CurrentProcess(), original,
+		windows.CurrentProcess(), &duplicate,
+		windows.FILE_READ_ATTRIBUTES|windows.SYNCHRONIZE, false, 0)
+	if err != nil {
+		if duplicate != 0 && duplicate != windows.InvalidHandle {
+			err = errors.Join(err, windows.CloseHandle(duplicate))
+		}
+		return 0, err
+	}
+	if duplicate == 0 || duplicate == windows.InvalidHandle {
+		return 0, errors.New("sqlite: experimental main identity: invalid duplicate")
+	}
+	return uintptr(duplicate), nil
 }

@@ -29,8 +29,9 @@
 // qualification; open-reparse metadata is classified before any data open.
 //
 // Metadata-only handles retain object lifetime but do not prevent rename.
-// After metadata inspection, FILE_READ_DATA/FILE_LIST_DIRECTORY guards deny
-// ordinary write/delete sharing. Each guard must match the metadata handle's
+// After metadata inspection, file I/O guards deny ordinary write/delete sharing.
+// Directory traversal guards allow write sharing but still deny delete sharing;
+// they receive no write access. Each guard must match the metadata handle's
 // full volume serial plus 128-bit file ID before traversal or reading.
 // Metadata and qualified I/O parent/leaf handles remain open throughout. Pre/post checks are not a
 // filesystem snapshot, a global-hardlink exclusion, or proof that mappings,

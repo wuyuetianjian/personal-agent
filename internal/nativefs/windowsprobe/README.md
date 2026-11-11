@@ -261,3 +261,25 @@ mutation primitive, qualify standard-user operation, or implement Replace/Undo.
 Test-first f5c4636 failed native directory writer opens with sharing violation
 while file-writer and directory DELETE/rename refusal tests passed. The new
 implementation still needs its exact-head native GREEN result.
+
+## Explicit main-object identity experiment
+
+Only the `nativeprobe_sqlite_identity` build exposes `ExperimentalReadExcluding`.
+Its caller supplies 1..16 currently owned protected file handles, never a saved
+path or stored identity. The method owns metadata-only, non-inheritable copies
+throughout the shared read path, rejects invalid/directory inputs, and refuses a
+matching full volume/file ID before the leaf I/O open and again before reading.
+Failure to close a protected duplicate also returns no content. This does not
+strengthen the shared read path's existing temporary-handle cleanup behavior.
+Ordinary `Read` supplies no exclusions;
+this experiment does not silently change its existing contract.
+
+The rootlease experiment obtains a duplicate of SQLite's actual main handle
+inside the same borrowed SQL connection's Raw callback. The driver extension
+exists only in a checksummed temporary module copy used by a dedicated test job.
+It is not a production driver fork or complete database protection: WAL, SHM,
+journals, attached/temporary databases, directory ancestry and other connection
+lifetimes remain outside this slice. Production commands remain disconnected.
+The initial missing behavior failed explicitly at f513613 in run 43002158984;
+require native evidence for the implementation's exact commit before claiming
+these targeted tests passed.

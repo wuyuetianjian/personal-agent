@@ -18,6 +18,8 @@ const Limit = 256 * 1024
 
 var ErrTooLarge = errors.New("windowsprobe: file exceeds 256 KiB")
 
+var errProtected = errors.New("windowsprobe: protected object")
+
 // Root is an experimental authority over an already-open directory object, not
 // an authorization of its pathname. It serializes reads, derivation and Close.
 type Root struct {
@@ -266,6 +268,13 @@ func unchanged(a, b snapshot) bool {
 // data only after identity and metadata revalidation. It does not provide a
 // snapshot or hard cancellation of synchronous filesystem/filter calls.
 func (r *Root) Read(ctx context.Context, components []string) ([]byte, error) {
+	return r.read(ctx, components, nil)
+}
+
+// read shares the ordinary read path with the explicit, build-tagged experiment.
+// Exclusions are object identities pinned by live metadata-only duplicates for
+// this call, not pathnames, persisted IDs, or complete private-storage policy.
+func (r *Root) read(ctx context.Context, components []string, excluded map[idInfo]struct{}) ([]byte, error) {
 	if err := validateComponents(components); err != nil {
 		return nil, err
 	}
@@ -334,6 +343,11 @@ func (r *Root) Read(ctx context.Context, components []string) ([]byte, error) {
 		if s.Standard.Directory != 0 {
 			return nil, errUnsafe
 		}
+		// Refuse before any I/O reopen: the protected owner may hold a writer,
+		// and a sharing error must not obscure this explicit object exclusion.
+		if _, protected := excluded[s.ID]; protected {
+			return nil, errProtected
+		}
 		if s.Standard.Size > Limit {
 			return nil, ErrTooLarge
 		}
@@ -345,6 +359,10 @@ func (r *Root) Read(ctx context.Context, components []string) ([]byte, error) {
 			return nil, err
 		}
 		handles = append(handles, data)
+		// Recheck the actual identity-qualified I/O object before its first byte.
+		if _, protected := excluded[before.ID]; protected {
+			return nil, errProtected
+		}
 		result := make([]byte, 0, int(s.Standard.Size))
 		chunk := make([]byte, 32768)
 		for len(result) <= Limit {

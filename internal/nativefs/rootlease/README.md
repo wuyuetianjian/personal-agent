@@ -31,8 +31,10 @@ An additional `nativeprobe_sqlite_identity` test build exercises a real SQLite
 main-file owner through this private registry's test-only backend. A dedicated
 runner creates a temporary copy of the exact checksummed SQLite module plus a
 reviewable experiment-only driver patch; it never edits the module cache or
-production go.mod. The initial patch/guard intentionally refuse until native
-RED tests establish the missing behavior. Compilation is not runtime evidence.
+production go.mod. The initial patch/guard refused; run 43002158984 at f513613 established five
+positive tests failing three times on Windows because implementation was absent.
+The implementation must pass that same manifest on the target kernel.
+Compilation is not runtime evidence.
 
 Each read borrows the actual SQL connection and obtains an owned metadata-only
 handle duplicate inside Raw; no saved path is reopened to manufacture identity.
