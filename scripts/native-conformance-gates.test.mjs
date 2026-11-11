@@ -6,7 +6,8 @@ import { spawnSync } from 'node:child_process';
 import { test } from 'node:test';
 
 const workflow = readFileSync(new URL('../.github/workflows/native-conformance.yml', import.meta.url), 'utf8');
-function gate(name) {
+function gate(name, workflowText = workflow) {
+  const workflow = workflowText.replace(/\r\n/g, '\n');
   const start = workflow.indexOf(`      - name: ${name}\n`);
   assert(start >= 0, `missing workflow gate ${name}`);
   const end = workflow.indexOf('\n      - name:', start + 1);
@@ -73,4 +74,11 @@ test('foundation gate requires its own lease events', () => {
 test('foundation gate rejects actual test failures and skips', () => {
   const events = eventsFor(foundation, true);
   for (const action of ['fail', 'skip']) assert.notEqual(runGate(foundation, 'foundation-tests.json', [...events, { Action: action }]).status, 0);
+});
+
+test('workflow extraction accepts LF and CRLF checkouts identically', () => {
+  for (const name of ['Require all native contract tests without skips', 'Require complete foundation tests without skips']) {
+    const lf = workflow.replace(/\r\n/g, '\n');
+    assert.equal(gate(name, lf.replace(/\n/g, '\r\n')), gate(name, lf));
+  }
 });
