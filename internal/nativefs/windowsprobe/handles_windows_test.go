@@ -89,6 +89,15 @@ func captureHandleInventory(t *testing.T) handleInventory {
 			t.Fatalf("PSS missing/invalid type information: handle=%#x flags=%#x typeLength=%d", entry.Handle, entry.Flags, entry.TypeNameLength)
 		}
 		units := unsafe.Slice(entry.TypeName, int(entry.TypeNameLength)/2)
+		// The native PSS result includes a single terminator in TypeNameLength
+		// on the qualified runner ("File\x00", 10 bytes). Allow that suffix only;
+		// embedded NULs and repeated terminators remain malformed.
+		if units[len(units)-1] == 0 {
+			units = units[:len(units)-1]
+		}
+		if len(units) == 0 {
+			t.Fatal("empty PSS object type name")
+		}
 		// Kernel object type names are ASCII. Do not silently repair malformed UTF-16.
 		name := make([]byte, len(units))
 		for j, u := range units {
