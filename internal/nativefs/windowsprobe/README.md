@@ -193,3 +193,13 @@ privileged retry, or host security-setting change. Test-first run
 [42986302018](https://github.com/wuyuetianjian/personal-agent/actions/runs/42986302018)
 confirmed the reduced child launches and reaches the still-refusing acquisition
 stub; the implemented constructor must pass the subsequent native gate.
+
+## Parent flush qualification experiment
+
+The test-only `TestNativeDurableParentQualification` compares directory sharing
+and minimum write/append rights against normal NTFS flush. It does not change
+the reusable directory/leaf guard policies, implement Replace/Undo, or establish
+power-loss durability. The current-token result is not reduced-token or standard
+user evidence. Reparse mutation and reduced-token qualification must precede
+any reusable directory sharing relaxation. Names and file contents are checked
+after fixture handles close; flush itself may persist already-dirty metadata.

@@ -31,6 +31,7 @@ func TestNativeOpenLocalRootReducedToken(t *testing.T) {
 	var child windows.Token
 	label := ""
 	linked, err := current.GetLinkedToken()
+	t.Logf("token diagnostic: GetLinkedToken error=%v", err)
 	if err == nil {
 		elevated, queryErr := rootTokenElevation(linked)
 		if queryErr != nil {
@@ -64,6 +65,11 @@ func TestNativeOpenLocalRootReducedToken(t *testing.T) {
 		label = "restricted-not-standard-user"
 	}
 	defer child.Close()
+	rootTokenDiagnostics(t, "parent", current)
+	rootTokenDiagnostics(t, "selected-child", child)
+	parentAuth, parentErr := rootTokenAuthID(current)
+	childAuth, childErr := rootTokenAuthID(child)
+	t.Logf("token diagnostic: parent/selected-child authentication ID equal=%v parent_error=%v child_error=%v", parentErr == nil && childErr == nil && parentAuth == childAuth, parentErr, childErr)
 	if err := rootTokenLeastPrivilege(child); err != nil {
 		t.Fatalf("%s token qualification: %v", label, err)
 	}
@@ -118,6 +124,7 @@ func TestNativeOpenLocalRootRestrictedTokenHelper(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer token.Close()
+	rootTokenDiagnostics(t, "running-child", token)
 	if err := rootTokenLeastPrivilege(token); err != nil {
 		t.Fatal(err)
 	}
@@ -133,6 +140,9 @@ func TestNativeOpenLocalRootRestrictedTokenHelper(t *testing.T) {
 	}
 	root, err := OpenLocalRoot(dir)
 	if err != nil {
+		if label == "restricted-not-standard-user" {
+			rootTokenNamespaceDiagnostics(t, dir)
+		}
 		t.Fatalf("qualified %s OpenLocalRoot: %v", label, err)
 	}
 	defer root.Close()
@@ -191,4 +201,133 @@ func rootTokenLeastPrivilege(token windows.Token) error {
 	}
 	runtime.KeepAlive(buf)
 	return nil
+}
+
+// Diagnostics are observations only: their failures neither skip nor relax the
+// original qualification assertion. Never print raw SID, user or device names.
+func rootTokenInfo(token windows.Token, class uint32) ([]byte, error) {
+	var size uint32
+	err := windows.GetTokenInformation(token, class, nil, 0, &size)
+	if err != windows.ERROR_INSUFFICIENT_BUFFER || size == 0 || size > 65536 {
+		return nil, fmt.Errorf("token class %d sizing: size=%d error=%v", class, size, err)
+	}
+	b := make([]byte, size)
+	if err := windows.GetTokenInformation(token, class, &b[0], uint32(len(b)), &size); err != nil {
+		return nil, err
+	}
+	if size == 0 || size > uint32(len(b)) {
+		return nil, fmt.Errorf("invalid token result size")
+	}
+	return b[:size], nil
+}
+
+func rootTokenAuthID(token windows.Token) (windows.LUID, error) {
+	b, err := rootTokenInfo(token, windows.TokenStatistics)
+	// TOKEN_STATISTICS starts with TokenId followed by AuthenticationId.
+	if err != nil {
+		return windows.LUID{}, err
+	}
+	if len(b) < 2*int(unsafe.Sizeof(windows.LUID{})) {
+		return windows.LUID{}, fmt.Errorf("short token statistics")
+	}
+	id := *(*windows.LUID)(unsafe.Pointer(&b[unsafe.Sizeof(windows.LUID{})]))
+	runtime.KeepAlive(b)
+	return id, nil
+}
+
+func rootTokenDiagnostics(t *testing.T, label string, token windows.Token) {
+	t.Helper()
+	for _, class := range []uint32{windows.TokenOwner, windows.TokenElevationType, windows.TokenRestrictedSids} {
+		b, err := rootTokenInfo(token, class)
+		if err != nil {
+			t.Logf("token diagnostic %s class=%d: %v", label, class, err)
+			continue
+		}
+		switch class {
+		case windows.TokenOwner:
+			if len(b) >= int(unsafe.Sizeof(uintptr(0))) {
+				sid := *(**windows.SID)(unsafe.Pointer(&b[0]))
+				t.Logf("token diagnostic %s owner_is_admin=%v", label, sid != nil && sid.IsWellKnown(windows.WinBuiltinAdministratorsSid))
+			} else {
+				t.Logf("token diagnostic %s short owner result", label)
+			}
+		case windows.TokenElevationType, windows.TokenRestrictedSids:
+			if len(b) >= 4 {
+				t.Logf("token diagnostic %s class=%d value=%d (18=elevationType,11=restrictedSIDCount)", label, class, *(*uint32)(unsafe.Pointer(&b[0])))
+			} else {
+				t.Logf("token diagnostic %s short class=%d result", label, class)
+			}
+		}
+		runtime.KeepAlive(b)
+	}
+	groups, err := token.GetTokenGroups()
+	if err != nil {
+		t.Logf("token diagnostic %s groups: %v", label, err)
+		return
+	}
+	logonPresent, logonEnabled, adminDenyOnly := false, false, false
+	for _, g := range groups.AllGroups() {
+		if g.Attributes&windows.SE_GROUP_LOGON_ID == windows.SE_GROUP_LOGON_ID {
+			logonPresent = true
+			logonEnabled = logonEnabled || g.Attributes&windows.SE_GROUP_ENABLED != 0
+		}
+		if g.Sid.IsWellKnown(windows.WinBuiltinAdministratorsSid) {
+			adminDenyOnly = g.Attributes&windows.SE_GROUP_USE_FOR_DENY_ONLY != 0
+		}
+	}
+	t.Logf("token diagnostic %s logon_sid_present=%v logon_sid_enabled=%v admin_deny_only=%v", label, logonPresent, logonEnabled, adminDenyOnly)
+}
+
+func rootTokenNamespaceDiagnostics(t *testing.T, fixture string) {
+	t.Helper()
+	// Inspect ONLY the same local DOS-device context. No GLOBAL?? fallback,
+	// device anchor transfer, ACL modification, impersonation or retry of Read.
+	if len(fixture) < 3 || fixture[1] != ':' || fixture[2] != '\\' {
+		t.Log("namespace diagnostic: fixture is not drive absolute")
+		return
+	}
+	dll := windows.NewLazySystemDLL("ntdll.dll")
+	openDir := dll.NewProc("NtOpenDirectoryObject")
+	openLink := dll.NewProc("NtOpenSymbolicLinkObject")
+	queryLink := dll.NewProc("NtQuerySymbolicLinkObject")
+	for _, p := range []*windows.LazyProc{openDir, openLink, queryLink} {
+		if err := p.Find(); err != nil {
+			t.Logf("namespace diagnostic API unavailable: %v", err)
+			return
+		}
+	}
+	name, err := windows.NewNTUnicodeString(`\??`)
+	if err != nil {
+		t.Logf("namespace diagnostic name: %v", err)
+		return
+	}
+	oa := windows.OBJECT_ATTRIBUTES{Length: uint32(unsafe.Sizeof(windows.OBJECT_ATTRIBUTES{})), ObjectName: name, Attributes: windows.OBJ_CASE_INSENSITIVE}
+	var directory windows.Handle
+	status, _, _ := openDir.Call(uintptr(unsafe.Pointer(&directory)), 1 /* DIRECTORY_QUERY */, uintptr(unsafe.Pointer(&oa)))
+	runtime.KeepAlive(name)
+	t.Logf("namespace diagnostic local directory query-open NTSTATUS=0x%08x", uint32(status))
+	if uint32(status) != 0 {
+		return
+	}
+	defer windows.CloseHandle(directory)
+	drive, err := windows.NewNTUnicodeString(fixture[:2])
+	if err != nil {
+		t.Logf("namespace diagnostic drive: %v", err)
+		return
+	}
+	oa.RootDirectory, oa.ObjectName = directory, drive
+	var link windows.Handle
+	status, _, _ = openLink.Call(uintptr(unsafe.Pointer(&link)), 1 /* SYMBOLIC_LINK_QUERY */, uintptr(unsafe.Pointer(&oa)))
+	runtime.KeepAlive(drive)
+	t.Logf("namespace diagnostic local drive link query-open NTSTATUS=0x%08x", uint32(status))
+	if uint32(status) != 0 {
+		return
+	}
+	defer windows.CloseHandle(link)
+	buf := make([]uint16, 32767)
+	target := windows.NTUnicodeString{MaximumLength: uint16(len(buf) * 2), Buffer: &buf[0]}
+	var returned uint32
+	status, _, _ = queryLink.Call(uintptr(link), uintptr(unsafe.Pointer(&target)), uintptr(unsafe.Pointer(&returned)))
+	runtime.KeepAlive(buf)
+	t.Logf("namespace diagnostic local drive link query NTSTATUS=0x%08x returned_bytes=%d", uint32(status), returned)
 }
