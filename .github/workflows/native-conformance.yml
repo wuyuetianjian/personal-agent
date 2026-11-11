@@ -244,3 +244,31 @@ jobs:
         run: node --test scripts/sqlite-main-identity-runner.test.mjs
       - name: Run fixed-source SQLite main-object experiment
         run: node scripts/sqlite-main-identity-runner.mjs
+
+  windows-sqlite-temp-vfs-evidence:
+    name: Windows experimental stock SQLite TEMP-only VFS evidence
+    runs-on: windows-2025
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26.4'
+          cache: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Record exact source and TEMP-only scope
+        run: |
+          git rev-parse HEAD
+          echo 'Stock unpatched modernc SQLite TEMP-only VFS experiment. Not main/WAL/SHM DB exclusion or production qualification.'
+      - name: Test stock TEMP experiment runner
+        run: node --test scripts/sqlite-temp-vfs-runner.test.mjs
+      - name: Run stock TEMP VFS experiment with exact event manifest
+        run: node scripts/sqlite-temp-vfs-runner.mjs

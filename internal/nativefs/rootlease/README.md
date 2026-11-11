@@ -97,3 +97,24 @@ opens with different lock windows. No external private-layout getter or global
 syscall interception is introduced. Production remains disabled pending complete
 controlled storage I/O and native qualification, not merely a larger list of
 currently observed identities.
+
+## Stock-driver anonymous TEMP VFS experiment
+
+A separate explicit-tag experiment registers a non-default VFS through SQLite's
+public ABI. It owns its file prefix and never converts a stock winFile layout.
+Its main database is memory-only; named paths, main/WAL/SHM files and dynamic
+extension loading have no filesystem fallback. Initially every xOpen refuses.
+A valid behavioral RED must show the real SQL TEMP workload reaching an anonymous
+exact-flags TEMP_DB refusal, not an earlier connection or pragma failure.
+
+The positive contract requires deterministic row payloads, host-side forward and
+reverse verification, actual kernel read/write bytes and complete cleanup. This
+is a future temporary-file consumer, not a complete persistent-storage VFS or a
+production file capability. Registration lifetime includes physical connections
+with zero open files; actual driver close errors retain ownership rather than
+trusting database/sql pool close results alone.
+
+This foreign ABI uses pinned-version function slots and foreign allocations.
+Explicit tagged go vet reports unsafe-pointer diagnostics at those conversions;
+compilation is not a clean tagged-vet result. These accesses require independent
+ABI/lifetime review and native evidence. No production vet gate is disabled.

@@ -332,7 +332,7 @@ func TestNativeStorageScratchExistingCollisions(t *testing.T) {
 			h, io, err := scratchCreate(root.h, "victim")
 			var status windows.NTStatus
 			isNTStatus := errors.As(err, &status)
-			t.Logf("collision kind=%s NTSTATUS=0x%08x typed=%v expected=0x%08x IOSB.Status=0x%08x IOSB.Information=%d", kind, uint32(status), isNTStatus, uint32(expected), io.Status, io.Information)
+			t.Logf("collision kind=%s NTSTATUS=0x%08x typed=%v expected=0x%08x IOSB.Status=0x%08x IOSB.Information=%d", kind, uint32(status), isNTStatus, uint32(expected), uint32(io.Status), io.Information)
 			if h != 0 {
 				defer scratchClose(t, &h)
 				actual, observeErr := scratchNTName(h)
