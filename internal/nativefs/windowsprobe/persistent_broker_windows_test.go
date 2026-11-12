@@ -21,7 +21,9 @@ var persistentNames = []string{"store.db", "store.db-wal", "store.db-shm"}
 
 func persistentFixture(t *testing.T) (string, *Root) {
 	t.Helper()
-	dir := t.TempDir()
+	// Go temp paths can contain 8.3 ancestor aliases. Reuse the established
+	// handle-derived canonical fixture path; production exactName stays strict.
+	dir := localRootPath(t)
 	for i, n := range append(append([]string{}, persistentNames...), "neighbor.txt") {
 		if err := os.WriteFile(filepath.Join(dir, n), bytes.Repeat([]byte{byte(i + 1)}, 128+i), 0600); err != nil {
 			t.Fatal(err)
@@ -36,6 +38,7 @@ func persistentFixture(t *testing.T) (string, *Root) {
 			t.Error(err)
 		}
 	})
+	t.Log("persistent fixture: canonical long-name OpenLocalRoot qualified; entering broker contract")
 	return dir, root
 }
 func persistentNew(t *testing.T, r *Root, h persistentHooks) *persistentBroker {
