@@ -1,0 +1,79 @@
+//go:build windows && nativeprobe_sqlite_persistent && nativeprobe_sqlite_main_read && nativeprobe_sqlite_existing_wal && nativeprobe_sqlite_private_shm && nativeprobe_sqlite_shm_resources && nativeprobe_sqlite_shm_slots && nativeprobe_sqlite_private_sql
+
+package sqlite3
+
+import (
+	"fmt"
+	"modernc.org/libc"
+	"sync"
+	"sync/atomic"
+	"unsafe"
+)
+
+type ExperimentalPrivateSQLAuthority interface {
+	ExperimentalSQLAdmissionAuthority
+	ExperimentalSHMSlotAuthority
+	ExperimentalPrivateSQLStorageWitness
+}
+
+var experimentalPrivateSQLMu sync.Mutex
+var experimentalPrivateSQLRefusals = map[uintptr]*atomic.Uint64{}
+
+func ExperimentalPrivateSQLSessionOpenRefusals(v uintptr) uint64 {
+	experimentalPrivateSQLMu.Lock()
+	p := experimentalPrivateSQLRefusals[v]
+	experimentalPrivateSQLMu.Unlock()
+	if p == nil {
+		return 0
+	}
+	return p.Load()
+}
+func ExperimentalPrivateSQLSessionRegister(a ExperimentalPrivateSQLAuthority, canonical string) (uintptr, string, error) {
+	if a == nil || canonical == "" {
+		return 0, "", fmt.Errorf("missing private SQL authority")
+	}
+	admission := &experimentalSQLAdmissionBinding{authority: a, canonical: canonical}
+	v, e := experimentalMainReadRegisterPrepared(a, canonical, __ccgo_fp(experimentalPrivateSQLSessionOpen), func(v uintptr) {
+		p := (*Tsqlite3_vfs)(unsafe.Pointer(v))
+		p.FxAccess = __ccgo_fp(experimentalSQLAdmissionAccess)
+		p.FxFullPathname = __ccgo_fp(experimentalSQLAdmissionFullPath)
+		experimentalSQLAdmissionMu.Lock()
+		experimentalSQLAdmissionBindings[v] = admission
+		experimentalSQLAdmissionMu.Unlock()
+		experimentalExistingWALMu.Lock()
+		experimentalExistingWALPending[v] = &atomic.Uint64{}
+		experimentalExistingWALMu.Unlock()
+		experimentalSHMResourceMu.Lock()
+		experimentalSHMResourceBindings[v] = &experimentalSHMResourceBinding{authority: a}
+		experimentalSHMResourceMu.Unlock()
+		experimentalSHMSlotMu.Lock()
+		experimentalSHMSlotBindings[v] = &experimentalSHMSlotBinding{authority: a}
+		experimentalSHMSlotMu.Unlock()
+		experimentalPrivateSQLMu.Lock()
+		experimentalPrivateSQLRefusals[v] = &atomic.Uint64{}
+		experimentalPrivateSQLMu.Unlock()
+	})
+	if e != nil {
+		admission.disabled.Store(true)
+		return 0, "", e
+	}
+	return v, libc.GoString((*Tsqlite3_vfs)(unsafe.Pointer(v)).FzName), nil
+}
+func experimentalPrivateSQLSessionOpen(tls *libc.TLS, v, name, file uintptr, flags int32, out uintptr) int32 {
+	if out != 0 {
+		*(*int32)(unsafe.Pointer(out)) = 0
+	}
+	if file != 0 {
+		(*Tsqlite3_file)(unsafe.Pointer(file)).FpMethods = 0
+	}
+	b := experimentalSQLAdmissionLookup(v)
+	if b != nil && name != 0 && file != 0 && out != 0 && libc.GoString(name) == b.canonical && flags == SQLITE_OPEN_READONLY|SQLITE_OPEN_URI|SQLITE_OPEN_MAIN_DB && experimentalSQLAdmissionURI(tls, v, name) {
+		experimentalPrivateSQLMu.Lock()
+		p := experimentalPrivateSQLRefusals[v]
+		experimentalPrivateSQLMu.Unlock()
+		if p != nil {
+			p.Add(1)
+		}
+	}
+	return SQLITE_CANTOPEN
+}

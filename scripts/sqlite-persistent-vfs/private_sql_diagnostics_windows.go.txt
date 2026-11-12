@@ -1,0 +1,122 @@
+//go:build windows && (amd64 || arm64) && nativeprobe_sqlite_persistent && nativeprobe_sqlite_main_read && nativeprobe_sqlite_shm_resources && nativeprobe_sqlite_shm_slots && nativeprobe_sqlite_private_sql
+
+package sqlite3
+
+import (
+	"fmt"
+	"modernc.org/libc"
+	"sync/atomic"
+	"unsafe"
+)
+
+// Values only. This is a point-in-time observation, not a history or a grant.
+type ExperimentalPrivateSQLState struct {
+	Backfill              uint32
+	ReadmarkCeiling       uint32
+	SuitableReadmarks     int32
+	WALPresent            bool
+	NormalMode            bool
+	HeapMode              bool
+	SHMUnreliable         bool
+	WALReadOnly           bool
+	SHMReadOnly           bool
+	ReaderIndex           int32
+	IndexPages            int32
+	SnapshotFrames        uint32
+	PrivateMainLive       bool
+	LivePageZeroMatches   bool
+	LiveReaderSlotMatches bool
+}
+
+// Implemented only by the trusted experimental host. Arguments are ephemeral
+// matching inputs, never public snapshot fields or log data. The host must hold
+// a real session/core pin, validate the key, and serialize against cleanup.
+// No callback may reenter SQL, acquire the main file mutex, or retain the inputs.
+type ExperimentalPrivateSQLStorageWitness interface {
+	ObserveSHM(ExperimentalSHMResourceKey, int32, uintptr, int32) (bool, bool)
+}
+
+// Only the experimental driver shim calls this with its live internal db/TLS.
+// It must already exclude Rows.Next/Close, statement work and connection close.
+// No stock structure is modified and no SQLite operation is executed here.
+func ExperimentalPrivateSQLSnapshot(tls *libc.TLS, db uintptr) (state ExperimentalPrivateSQLState, err error) {
+	state.ReaderIndex = -1
+	defer func() {
+		if recover() != nil {
+			state = ExperimentalPrivateSQLState{ReaderIndex: -1}
+			err = fmt.Errorf("private SQL observation failed")
+		}
+	}()
+	if tls == nil || db == 0 {
+		return state, fmt.Errorf("missing live SQLite connection")
+	}
+	mutex := Xsqlite3_db_mutex(tls, db)
+	Xsqlite3_mutex_enter(tls, mutex)
+	defer Xsqlite3_mutex_leave(tls, mutex)
+	d := (*Tsqlite3)(unsafe.Pointer(db))
+	if d.FnDb < 1 || d.FaDb == 0 {
+		return state, fmt.Errorf("missing main database")
+	}
+	main := (*TDb)(unsafe.Pointer(d.FaDb))
+	if main.FpBt == 0 {
+		return state, fmt.Errorf("missing main btree")
+	}
+	pager := _sqlite3BtreePager(tls, main.FpBt)
+	if pager == 0 {
+		return state, fmt.Errorf("missing main pager")
+	}
+	p := (*TPager)(unsafe.Pointer(pager))
+	if p.FpWal == 0 {
+		return state, fmt.Errorf("main WAL is not open")
+	}
+	w := (*TWal)(unsafe.Pointer(p.FpWal))
+	f := experimentalMainReadLookup(w.FpDbFd)
+	if f == nil {
+		return state, fmt.Errorf("not a private main file")
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !experimentalMainReadCurrent(w.FpDbFd, f) || f.closed || f.role != experimentalRoleMain || !f.binding.healthy() || w.FpDbFd != p.Ffd {
+		return state, fmt.Errorf("private main is not live")
+	}
+	a, ok := f.binding.authority.(ExperimentalPrivateSQLStorageWitness)
+	if !ok {
+		return state, fmt.Errorf("missing trusted diagnostic authority")
+	}
+	state = ExperimentalPrivateSQLState{
+		WALPresent: true, NormalMode: int32(w.FexclusiveMode) == WAL_NORMAL_MODE,
+		HeapMode:      int32(w.FexclusiveMode) == WAL_HEAPMEMORY_MODE,
+		SHMUnreliable: w.FbShmUnreliable != 0, WALReadOnly: int32(w.FreadOnly)&WAL_RDONLY != 0,
+		SHMReadOnly: int32(w.FreadOnly)&WAL_SHM_RDONLY != 0, ReaderIndex: int32(w.FreadLock),
+		IndexPages: w.FnWiData, SnapshotFrames: w.Fhdr.FmxFrame, PrivateMainLive: true,
+	}
+	var page0 uintptr
+	if w.FnWiData > 0 && w.FapWiData != 0 {
+		page0 = *(*uintptr)(unsafe.Pointer(w.FapWiData))
+	}
+	// ReaderIndex is the original WAL readmark index (0..4), not byte offset.
+	// The trusted adapter maps it to logical SHM slot 3+ReaderIndex.
+	validReader := state.ReaderIndex >= 0 && state.ReaderIndex < SQLITE_SHM_NLOCK-3
+	matchPage, matchSlot := a.ObserveSHM(ExperimentalSHMResourceKey{w.FpDbFd, f.generation}, 0, page0, state.ReaderIndex)
+	state.LivePageZeroMatches = page0 != 0 && matchPage
+	state.LiveReaderSlotMatches = validReader && matchSlot
+	if state.LivePageZeroMatches {
+		// Each load is atomic, not a coherent snapshot of concurrent writer updates.
+		info := (*TWalCkptInfo)(unsafe.Pointer(page0 + 2*unsafe.Sizeof(TWalIndexHdr{})))
+		state.Backfill = atomic.LoadUint32(&info.FnBackfill)
+		state.ReadmarkCeiling = w.Fhdr.FmxFrame
+		if w.FpSnapshot != 0 {
+			limit := (*TWalIndexHdr)(unsafe.Pointer(w.FpSnapshot)).FmxFrame
+			if limit < state.ReadmarkCeiling {
+				state.ReadmarkCeiling = limit
+			}
+		}
+		for i := 1; i < SQLITE_SHM_NLOCK-3; i++ {
+			mark := atomic.LoadUint32(&info.FaReadMark[i])
+			if mark <= state.ReadmarkCeiling {
+				state.SuitableReadmarks++
+			}
+		}
+	}
+	return state, nil
+}

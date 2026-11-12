@@ -1,0 +1,46 @@
+//go:build windows && (amd64 || arm64) && nativeprobe_sqlite_persistent && nativeprobe_sqlite_main_read && nativeprobe_sqlite_shm_resources && nativeprobe_sqlite_shm_slots && nativeprobe_sqlite_private_sql
+
+package sqlite
+
+import (
+	"database/sql"
+	"fmt"
+	sqlite3 "modernc.org/sqlite/lib"
+)
+
+// ExperimentalPrivateSQLDiagnostics observes a paused private SQL execution.
+// The experimental session must hold its real core pin and serialize this with
+// Rows.Next/Close, Stmt use/Close and session shutdown. Conn.Raw serializes driver
+// access; it does not replace that session-level lifetime contract. No internal
+// db/TLS/file/view pointer leaves this function, including on error.
+func ExperimentalPrivateSQLDiagnostics(c *sql.Conn) (state sqlite3.ExperimentalPrivateSQLState, err error) {
+	state.ReaderIndex = -1
+	if c == nil {
+		return state, fmt.Errorf("missing SQL connection")
+	}
+	defer func() {
+		if recover() != nil {
+			state = sqlite3.ExperimentalPrivateSQLState{ReaderIndex: -1}
+			err = fmt.Errorf("private SQL diagnostics failed")
+		}
+	}()
+	err = c.Raw(func(driverConn any) error {
+		dc, ok := driverConn.(*conn)
+		if !ok {
+			return fmt.Errorf("unexpected SQL driver")
+		}
+		dc.Lock()
+		defer dc.Unlock()
+		if dc.db == 0 || dc.tls == nil {
+			return fmt.Errorf("SQL connection is closed")
+		}
+		var e error
+		state, e = sqlite3.ExperimentalPrivateSQLSnapshot(dc.tls, dc.db)
+		return e
+	})
+	if err != nil {
+		state = sqlite3.ExperimentalPrivateSQLState{ReaderIndex: -1}
+		return state, fmt.Errorf("private SQL diagnostics unavailable")
+	}
+	return state, nil
+}

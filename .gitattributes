@@ -10,3 +10,6 @@ scripts/sqlite-persistent-vfs/existing_wal_bridge_windows.go.txt text eol=lf
 scripts/sqlite-persistent-vfs/private_sql_admission_windows.go.txt text eol=lf
 scripts/sqlite-persistent-vfs/private_shm_resources_windows.go.txt text eol=lf
 scripts/sqlite-persistent-vfs/private_shm_slots_windows.go.txt text eol=lf
+scripts/sqlite-persistent-vfs/private_sql_session_windows.go.txt text eol=lf
+scripts/sqlite-persistent-vfs/private_sql_diagnostics_windows.go.txt text eol=lf
+scripts/sqlite-persistent-vfs/private_sql_driver_diagnostics_windows.go.txt text eol=lf
