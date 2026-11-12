@@ -34,7 +34,7 @@ const WAL_MANIFEST = 'scripts/sqlite-persistent-vfs/generator/wal-manifest.json'
 const WAL_LINKED_NAME = 'lib/nativeprobe_sqlite_wal_generated_windows.go';
 const DEFAULT_REPO = fileURLToPath(new URL('../', import.meta.url));
 
-export const PATCH_SHA256 = '4a2ab121f04adf95a5b81a7a5182318906344100abc2cb0491d67c2b5908d4ee';
+export const PATCH_SHA256 = '97b09763a6c6a3cabf11468134a65713b8215112d425b5aaca74332cd5ad85f1';
 export function validateInputs(mod, sum, patch, basePatch, mainPatch, walPatch, accessPatch, admissionPatch, resourcePatch) {
   validateResourceInputs(mod,sum,resourcePatch,basePatch,mainPatch,walPatch,accessPatch,admissionPatch);
   if (createHash('sha256').update(patch).digest('hex') !== PATCH_SHA256) throw new Error('private patch SHA mismatch');

@@ -82,23 +82,35 @@ func experimentalSHMSlotLock(tls *libc.TLS, file uintptr, offset, count, flags i
 	})
 }
 func experimentalSHMSlotBarrier(tls *libc.TLS, file uintptr) {
-	rc := experimentalMainReadWithRole(file, experimentalRoleMain, func() int32 {
-		f := experimentalMainReadLookup(file)
+	// Capture only inside Borrow. Revoke is an arbitrary adapter callback and
+	// must run once, after the borrowed resource/refcount and file mutex unwind.
+	var cause error
+	var f *experimentalMainReadFile
+	rc := experimentalMainReadWithRole(file, experimentalRoleMain, func() (rc int32) {
+		rc = SQLITE_IOERR_SHMLOCK
+		// Resolve under WithRole's live-file serialization, not a pre-lock capture.
+		f = experimentalMainReadLookup(file)
+		defer func() {
+			if p := recover(); p != nil {
+				cause = experimentalMainReadPanic("slot barrier panic", p)
+			}
+		}()
 		b := experimentalSHMSlotBindingFor(uintptr(unsafe.Pointer(&f.binding.vfs)))
 		if b == nil {
-			return SQLITE_IOERR_SHMLOCK
+			cause = fmt.Errorf("foreign slot barrier binding")
+			return
 		}
 		b.barriers.Add(1)
-		if e := b.authority.BarrierSHM(ExperimentalSHMResourceKey{file, f.generation}); e != nil {
-			f.binding.poison(e)
-			return SQLITE_IOERR_SHMLOCK
+		cause = b.authority.BarrierSHM(ExperimentalSHMResourceKey{file, f.generation})
+		if cause == nil {
+			rc = SQLITE_OK
 		}
-		return SQLITE_OK
+		return
 	})
-	// Void callback failures must not disappear behind a later success.
-	if rc != SQLITE_OK {
-		if f := experimentalMainReadLookup(file); f != nil {
-			f.binding.poison(fmt.Errorf("SHM barrier refused rc=%d", rc))
+	if rc != SQLITE_OK && f != nil {
+		if cause == nil {
+			cause = fmt.Errorf("SHM barrier refused rc=%d", rc)
 		}
+		f.binding.poison(cause)
 	}
 }

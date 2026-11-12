@@ -23,7 +23,8 @@ const shmSlotChildEnv = "AGENT_PRIVATE_SHM_SLOT_FIXTURE"
 
 type shmSlotAuthority struct {
 	*shmResourceTestAuthority
-	slots *persistentSHMSlotHost
+	slots    *persistentSHMSlotHost
+	onRevoke func(error)
 }
 
 func (a *shmSlotAuthority) LockSHM(k sqlite3.ExperimentalSHMResourceKey, o, n, f int32) (bool, error) {
@@ -39,6 +40,9 @@ func (a *shmSlotAuthority) DetachSHM(k sqlite3.ExperimentalSHMResourceKey, d boo
 	return a.shmResourceTestAuthority.DetachSHM(k, d)
 }
 func (a *shmSlotAuthority) Revoke(e error) {
+	if a.onRevoke != nil {
+		a.onRevoke(e)
+	}
 	a.slots.mu.Lock()
 	a.slots.last = errors.Join(a.slots.last, e)
 	a.slots.mu.Unlock()
@@ -91,7 +95,7 @@ func newSHMSlotFixture(t *testing.T) *shmSlotFixture {
 	if !errors.Is(busy, windows.ERROR_LOCK_VIOLATION) || cleanup != nil {
 		t.Fatalf("native slot qualification conflict=%v cleanup=%v", busy, cleanup)
 	}
-	authority := &shmSlotAuthority{b.a, newPersistentSHMSlotHost(b.a.host)}
+	authority := &shmSlotAuthority{shmResourceTestAuthority: b.a, slots: newPersistentSHMSlotHost(b.a.host)}
 	v, e := sqlite3.ExperimentalSHMSlotsRegister(authority, filepath.Join(b.dir, "store.db"))
 	shmResourceCheck(t, e)
 	b.v = v
@@ -185,13 +189,16 @@ func TestPrivateSHMSlotIndependentConnections(t *testing.T) {
 	f.requireReady(t)
 	c, e := f.a.c.owner.newConnection(context.Background())
 	shmResourceCheck(t, e)
-	a := &shmSlotAuthority{&shmResourceTestAuthority{&existingWALAuthority{c: c, root: f.a.root}, f.a.host}, f.a.slots}
+	a := &shmSlotAuthority{shmResourceTestAuthority: &shmResourceTestAuthority{&existingWALAuthority{c: c, root: f.a.root}, f.a.host}, slots: f.a.slots}
 	v, e := sqlite3.ExperimentalSHMSlotsRegister(a, filepath.Join(f.base.dir, "store.db"))
 	shmResourceCheck(t, e)
 	b := existingWALOpen(t, v, filepath.Join(f.base.dir, "store.db"), 0x101, true)
 	if p, rc := shmResourceMap(t, b, 0); p == 0 || rc != sqlite3.SQLITE_READONLY {
 		t.Fatal("second mapping failed")
 	}
+	shmSlotWant(t, shmSlotCall(t, f.file, 3, 1, 10), sqlite3.SQLITE_OK)
+	shmSlotWant(t, shmSlotCall(t, b, 3, 1, 6), sqlite3.SQLITE_BUSY)
+	shmSlotWant(t, shmSlotCall(t, f.file, 3, 1, 9), sqlite3.SQLITE_OK)
 	shmSlotWant(t, shmSlotCall(t, f.file, 3, 1, 6), sqlite3.SQLITE_OK)
 	shmSlotWant(t, shmSlotCall(t, b, 3, 1, 6), sqlite3.SQLITE_OK)
 	f.file.close(t)
@@ -230,6 +237,23 @@ func TestPrivateSHMSlotExactRangeLedger(t *testing.T) {
 		shmSlotWant(t, shmSlotCall(t, f.file, r[0], r[1], 10), sqlite3.SQLITE_OK)
 		shmSlotWant(t, shmSlotCall(t, f.file, r[0], r[1], 9), sqlite3.SQLITE_OK)
 	}
+	shmSlotWant(t, shmSlotCall(t, f.file, 4, 4, 10), sqlite3.SQLITE_OK)
+	partialBefore := f.a.slots.nativeUnlocks
+	shmSlotWant(t, shmSlotCall(t, f.file, 4, 1, 9), sqlite3.SQLITE_IOERR_SHMLOCK)
+	if f.a.slots.nativeUnlocks != partialBefore {
+		t.Fatal("partial range reached native unlock")
+	}
+	partialProbe := shmSlotHandle(t, f.base)
+	for _, offset := range []int32{4, 7} {
+		e := shmSlotNative(partialProbe, offset, 1, false, false)
+		if e == nil {
+			shmResourceCheck(t, shmSlotNative(partialProbe, offset, 1, false, true))
+		}
+		if !errors.Is(e, windows.ERROR_LOCK_VIOLATION) {
+			t.Fatal("partial rejection changed original multi-range")
+		}
+	}
+	shmSlotWant(t, shmSlotCall(t, f.file, 4, 4, 9), sqlite3.SQLITE_OK)
 	shmSlotWant(t, shmSlotCall(t, f.file, 4, 1, 10), sqlite3.SQLITE_OK)
 	shmSlotWant(t, shmSlotCall(t, f.file, 5, 1, 10), sqlite3.SQLITE_OK)
 	before := f.a.slots.nativeUnlocks
@@ -257,6 +281,13 @@ func TestPrivateSHMBarrierVisibility(t *testing.T) {
 	}
 	f := newSHMSlotFixture(t)
 	f.requireReady(t)
+	fresh := newSHMSlotFixture(t)
+	beforeFresh := fresh.a.slots.barriers
+	shmSlotBarrier(t, fresh.file)
+	if fresh.a.slots.barriers != beforeFresh+1 || fresh.a.slots.last != nil {
+		t.Fatal("mapped pre-lock barrier failed")
+	}
+	fresh.requireReady(t)
 	path := filepath.Join(f.base.dir, "store.db-shm")
 	t.Cleanup(func() {
 		if e := shmSlotRunChild(t, shmSlotChildRequest{Mode: "write", Path: path}); e != nil {
@@ -321,11 +352,14 @@ func TestPrivateSHMSlotDetachAndFaultRetention(t *testing.T) {
 	f.a.slots.afterDrainStart = nil
 	shmResourceCheck(t, shmSlotNative(probe, 4, 4, true, false))
 	shmResourceCheck(t, shmSlotNative(probe, 4, 4, true, true))
-	shmResourceCheck(t, shmSlotRunChild(t, shmSlotChildRequest{Mode: "retained"}))
+	for _, fault := range []string{"unlock", "unlock-panic", "close", "close-panic", "barrier", "barrier-panic", "lock-error", "lock-panic"} {
+		shmResourceCheck(t, shmSlotRunChild(t, shmSlotChildRequest{Mode: "retained", Fault: fault}))
+	}
 }
 
 type shmSlotChildRequest struct {
 	Mode, Path string
+	Fault      string
 	Busy       bool
 	Exclusive  bool
 	Value      byte
@@ -361,7 +395,7 @@ func shmSlotChild(t *testing.T) bool {
 	var r shmSlotChildRequest
 	shmResourceCheck(t, json.Unmarshal([]byte(raw), &r))
 	if r.Mode == "retained" {
-		shmSlotRetainedChild(t)
+		shmSlotRetainedChild(t, r.Fault)
 		return true
 	}
 	if r.Mode == "probe" {
@@ -409,13 +443,80 @@ func shmSlotChild(t *testing.T) bool {
 	fmt.Println("SHM_SLOT_CHILD_OK " + r.Mode)
 	return true
 }
-func shmSlotRetainedChild(t *testing.T) {
+func shmSlotRetainedChild(t *testing.T, kind string) {
 	f := newSHMSlotFixture(t)
 	f.requireReady(t)
 	shmSlotWant(t, shmSlotCall(t, f.file, 3, 1, 10), sqlite3.SQLITE_OK)
-	fault := errors.New("slot unlock uncertain")
+	fault := errors.New("slot uncertain " + kind)
 	attempts := 0
-	f.a.slots.unlock = func(windows.Handle, int32, int32) error { attempts++; return fault }
+	revokes := 0
+	f.a.onRevoke = func(e error) {
+		revokes++
+		if strings.HasPrefix(kind, "barrier") {
+			f.a.c.owner.mu.Lock()
+			borrowed := false
+			for r := range f.a.c.owner.resources {
+				borrowed = borrowed || r.refs != 0
+			}
+			f.a.c.owner.mu.Unlock()
+			f.a.host.mu.Lock()
+			busy := f.a.host.busy
+			f.a.host.mu.Unlock()
+			if borrowed || busy {
+				t.Error("barrier Revoke ran inside Borrow/native reservation")
+			}
+		}
+	}
+	switch kind {
+	case "unlock", "unlock-panic":
+		f.a.slots.unlock = func(windows.Handle, int32, int32) error {
+			attempts++
+			if kind == "unlock-panic" {
+				panic(fault)
+			}
+			return fault
+		}
+	case "close", "close-panic":
+		f.a.slots.closeHandle = func(windows.Handle) error {
+			attempts++
+			if kind == "close-panic" {
+				panic(fault)
+			}
+			return fault
+		}
+	case "barrier", "barrier-panic":
+		f.a.slots.barrierHook = func() error {
+			attempts++
+			if kind == "barrier-panic" {
+				panic(fault)
+			}
+			return fault
+		}
+		shmSlotBarrier(t, f.file)
+		if attempts != 1 || revokes != 1 || !errors.Is(f.a.slots.last, fault) {
+			fmt.Println("barrier cause not latched once", attempts, revokes)
+			os.Exit(2)
+		}
+		if rc := shmSlotCall(t, f.file, 4, 1, 10); rc == sqlite3.SQLITE_OK || rc == sqlite3.SQLITE_BUSY {
+			fmt.Println("barrier fault allowed later work", rc)
+			os.Exit(2)
+		}
+	case "lock-error", "lock-panic":
+		f.a.slots.lockNative = func(windows.Handle, int32, int32, bool) error {
+			attempts++
+			if kind == "lock-panic" {
+				panic(fault)
+			}
+			return fault
+		}
+		if rc := shmSlotCall(t, f.file, 4, 1, 10); rc != sqlite3.SQLITE_IOERR_SHMLOCK {
+			fmt.Println("native slot failure misclassified", rc)
+			os.Exit(2)
+		}
+	default:
+		fmt.Println("unknown fault", kind)
+		os.Exit(2)
+	}
 	slot := f.file.methods().FxClose
 	closeFn := *(*func(*libc.TLS, uintptr) int32)(unsafe.Pointer(&slot))
 	first := closeFn(f.file.tls, f.file.file)
@@ -458,9 +559,42 @@ func shmSlotRetainedChild(t *testing.T) {
 		cleanup = shmSlotNative(probe, 3, 1, false, true)
 	}
 	cleanup = errors.Join(cleanup, windows.CloseHandle(probe))
-	if !errors.Is(conflict, windows.ERROR_LOCK_VIOLATION) || cleanup != nil {
-		fmt.Println("uncertain slot lost real lock", conflict, cleanup)
+	wantBusy := kind != "close" && kind != "close-panic"
+	if (wantBusy && !errors.Is(conflict, windows.ERROR_LOCK_VIOLATION)) || (!wantBusy && conflict != nil) || cleanup != nil {
+		fmt.Println("uncertain slot holdings differ", conflict, cleanup)
 		os.Exit(2)
+	}
+	if f.a.host.node == nil || f.a.host.node.views[0] == nil || f.a.host.node.views[0].base == 0 || !f.a.host.node.dms {
+		fmt.Println("slot failure dropped mapping or DMS")
+		os.Exit(2)
+	}
+	if string(unsafe.Slice((*byte)(unsafe.Pointer(f.pointer)), 12)) != "first-region" {
+		fmt.Println("slot failure lost pointer contents")
+		os.Exit(2)
+	}
+	rawClose := make(chan error, 1)
+	go func() { rawClose <- f.a.c.owner.close() }()
+	deadline := time.After(5 * time.Second)
+	for {
+		f.a.c.owner.mu.Lock()
+		started := f.a.c.owner.closing
+		f.a.c.owner.mu.Unlock()
+		if started {
+			break
+		}
+		select {
+		case <-deadline:
+			fmt.Println("raw owner close never started")
+			os.Exit(2)
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	select {
+	case e := <-rawClose:
+		fmt.Println("slot failure lost B pin", e)
+		os.Exit(2)
+	case <-time.After(50 * time.Millisecond):
 	}
 	if t.Failed() {
 		fmt.Println("slot retained prior failure")

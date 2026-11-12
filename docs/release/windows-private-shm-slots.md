@@ -111,3 +111,34 @@ LOCK/UNLOCK branches; generated Go omitting assertions is not broader permission
 
 Native contention returns busy=true,nil to the bridge, producing SQLite BUSY
 without poisoning or converting through Go-error Borrow handling to generic IOERR.
+
+## GREEN candidate, native validation pending
+
+C operations reserve the existing B.busy state after validating the actual
+attachment under B.mu. Thus the B reservation counts every C in-flight operation;
+no second C lock is held over B/broker/native work. A lock admitted before draining
+may finish, but detach waits for its reservation. Detach marks B draining before
+the test hook, waits for tickets and busy, performs C cleanup under its own B.busy
+reservation, then clears busy before the adapter invokes B.detach. Cleanup failure
+returns without invoking B.detach and propagates terminal state to both hosts.
+
+Every attachment lazily opens an independent qualified readonly handle via the
+existing metadata-to-data transaction (without DMS acquisition or mappings).
+The exact-range ledger records attempted uncertain operations and never retries
+those identifiers. Legal no-op unlock and repeated shared acquire do not invoke
+native APIs. Duplicate/overlapping exclusive acquisition reports BUSY. Unexpected
+native errors/panics retain the grant and mapping lifetime; they are not BUSY.
+
+Barrier works on a mapped attachment before its first slot lease exists. It uses
+an actual sequentially consistent atomic RMW, separate from counters. The bridge
+captures a failure/panic cause inside Borrow, then calls Revoke once after Borrow
+and file mutex unwind. The adapter propagates terminal state to both hosts.
+
+The added normal-exit child matrix covers unlock/close error and panic, unexpected
+lock error/panic, and barrier error/panic. It verifies saved close results, no
+repeated native attempt, retained mapping bytes/DMS, explicit host terminal result,
+and blocked underlying owner close. For close uncertainty the exact slots already
+unlocked must remain free; other uncertainty cases must preserve the held slot.
+Barrier children verify Revoke observes no outstanding Borrow refs/B reservation
+and the original fault is still recoverable with errors.Is. These tests remain
+synthetic direct-method contracts, not real SQL or production qualification.
