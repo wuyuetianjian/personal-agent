@@ -1,0 +1,108 @@
+//go:build windows && nativeprobe_sqlite_persistent && nativeprobe_sqlite_main_read && nativeprobe_sqlite_access
+
+// Independent experimental metadata VFS. Not integrated into main-read VFS.
+package sqlite3
+
+import (
+	"fmt"
+	"modernc.org/libc"
+	"sync"
+	"sync/atomic"
+	"unsafe"
+)
+
+type ExperimentalAccessAuthority interface {
+	Observe(string, int32) (bool, error)
+}
+type experimentalAccessBinding struct {
+	vfs       Tsqlite3_vfs
+	authority ExperimentalAccessAuthority
+	hits      atomic.Uint64
+}
+
+var experimentalAccessMu sync.Mutex
+var experimentalAccessBindings = map[uintptr]*experimentalAccessBinding{}
+var experimentalAccessSequence atomic.Uint64
+
+func ExperimentalAccessRegister(a ExperimentalAccessAuthority, canonical string) (uintptr, error) {
+	if a == nil || canonical == "" {
+		return 0, fmt.Errorf("missing access binding")
+	}
+	tls := libc.NewTLS()
+	defer tls.Close()
+	if rc := Xsqlite3_initialize(tls); rc != SQLITE_OK {
+		return 0, fmt.Errorf("initialize %d", rc)
+	}
+	stock := Xsqlite3_vfs_find(tls, 0)
+	if stock == 0 {
+		return 0, fmt.Errorf("missing stock")
+	}
+	name, e := libc.CString(fmt.Sprintf("agent-access-%d", experimentalAccessSequence.Add(1)))
+	if e != nil {
+		return 0, e
+	}
+	b := &experimentalAccessBinding{authority: a}
+	b.vfs = *(*Tsqlite3_vfs)(unsafe.Pointer(stock))
+	b.vfs.FpNext = 0
+	b.vfs.FpAppData = 0
+	b.vfs.FzName = name
+	b.vfs.FxOpen = __ccgo_fp(persistentOpen)
+	b.vfs.FxDelete = __ccgo_fp(persistentDelete)
+	b.vfs.FxAccess = __ccgo_fp(experimentalAccess)
+	b.vfs.FxFullPathname = __ccgo_fp(persistentFullPath)
+	b.vfs.FxDlOpen = __ccgo_fp(persistentDlOpen)
+	b.vfs.FxDlError = __ccgo_fp(persistentDlError)
+	b.vfs.FxDlSym = __ccgo_fp(persistentDlSym)
+	b.vfs.FxDlClose = __ccgo_fp(persistentDlClose)
+	b.vfs.FxSetSystemCall = 0
+	b.vfs.FxGetSystemCall = 0
+	b.vfs.FxNextSystemCall = 0
+	p := uintptr(unsafe.Pointer(&b.vfs))
+	experimentalAccessMu.Lock()
+	experimentalAccessBindings[p] = b
+	experimentalAccessMu.Unlock()
+	if rc := Xsqlite3_vfs_register(tls, p, 0); rc != SQLITE_OK {
+		return 0, fmt.Errorf("register %d", rc)
+	}
+	if Xsqlite3_vfs_find(tls, 0) != stock {
+		return 0, fmt.Errorf("default changed")
+	}
+	return p, nil
+}
+func ExperimentalAccessHits(v uintptr) uint64 {
+	experimentalAccessMu.Lock()
+	b := experimentalAccessBindings[v]
+	experimentalAccessMu.Unlock()
+	if b == nil {
+		return 0
+	}
+	return b.hits.Load()
+}
+func experimentalAccess(tls *libc.TLS, v, name uintptr, flags int32, out uintptr) (rc int32) {
+	rc = SQLITE_IOERR_ACCESS
+	if out == 0 {
+		return
+	}
+	*(*int32)(unsafe.Pointer(out)) = 0
+	defer func() {
+		if recover() != nil {
+			*(*int32)(unsafe.Pointer(out)) = 0
+			rc = SQLITE_IOERR_ACCESS
+		}
+	}()
+	experimentalAccessMu.Lock()
+	b := experimentalAccessBindings[v]
+	experimentalAccessMu.Unlock()
+	if b == nil || name == 0 {
+		return
+	}
+	b.hits.Add(1)
+	yes, e := b.authority.Observe(libc.GoString(name), flags)
+	if e != nil {
+		return
+	}
+	if yes {
+		*(*int32)(unsafe.Pointer(out)) = 1
+	}
+	return SQLITE_OK
+}
