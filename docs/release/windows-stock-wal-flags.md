@@ -1,16 +1,19 @@
-# Stock WAL flags diagnostic (native test-first RED)
+# Stock WAL flags diagnostic (experimental forwarding candidate)
 
 This is a nondefault **stock protocol diagnostic**, not the private persistent
 VFS, an authority layer or a WAL implementation. No production graph changes.
 It uses one independent fixed-module overlay, no main/access/generated overlay.
 Existing accepted modes and manifests remain unchanged.
 
-Initial native RED: registration and real FxOpen dispatch work, but the callback
+Verified native RED at da722f8 / run 43230357732 / job 131223728858:
+registration and real FxOpen dispatch worked, but the then-stub callback
 records a non-forwarded CANTOPEN result. DIAGNOSTIC_OPEN_EXPECTED_RED is permitted
 only after actual dispatch and independent stock fixture controls. It establishes
-missing forwarding, not observed WAL flags. The future GREEN change must forward
-to the captured stock xOpen and record actual flags/output/rc; it must not convert
-flags, synthesize outFlags or mutate the default VFS.
+missing forwarding, not observed WAL flags. The current forwarding candidate captures the original stock xOpen at
+registration and passes the original stock VFS context plus unchanged name/file/
+flags/output pointers. It records real rc/outFlags only after that call returns.
+It does not convert flags, synthesize outFlags or mutate the default VFS. Native
+GREEN observations are still pending.
 
 Two exact top-level contracts, three repetitions each:
 - TestStockWALFlagsReadonlyMain

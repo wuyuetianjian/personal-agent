@@ -18,7 +18,7 @@ export const PATCH_RELATIVE = 'scripts/sqlite-persistent-vfs/stock_wal_flags_win
 const PATCH_NAME = 'lib/nativeprobe_sqlite_wal_flags_windows.go';
 const DEFAULT_REPO = fileURLToPath(new URL('../', import.meta.url));
 
-export const PATCH_SHA256 = 'fed3f9e75920d0fd092e23f0242f421ff9eb7138573e4c481f1d1001041d1435';
+export const PATCH_SHA256 = 'bf5dbb5cf50540e07f81e3650311e5eec4ddb1299761e6e34efdb91f0b205c24';
 export function validateInputs(mod, sum, patch) {
   if (createHash('sha256').update(patch).digest('hex') !== PATCH_SHA256) throw new Error('private patch SHA mismatch');
   // This experiment supports the repository's current no-replace module form.

@@ -17,10 +17,11 @@ type ExperimentalWALFlagEvent struct {
 	Forwarded         bool
 }
 type experimentalWALFlagBinding struct {
-	vfs    Tsqlite3_vfs
-	stock  uintptr
-	mu     sync.Mutex
-	events []ExperimentalWALFlagEvent
+	vfs       Tsqlite3_vfs
+	stock     uintptr
+	stockOpen uintptr
+	mu        sync.Mutex
+	events    []ExperimentalWALFlagEvent
 }
 
 var experimentalWALFlagMu sync.Mutex
@@ -44,6 +45,11 @@ func ExperimentalWALFlagsRegister() (uintptr, string, error) {
 	}
 	b := &experimentalWALFlagBinding{stock: stock}
 	b.vfs = *(*Tsqlite3_vfs)(unsafe.Pointer(stock))
+	b.stockOpen = b.vfs.FxOpen
+	if b.stockOpen == 0 {
+		libc.Xfree(tls, z)
+		return 0, "", fmt.Errorf("stock xOpen missing")
+	}
 	b.vfs.FpNext = 0
 	b.vfs.FzName = z
 	b.vfs.FxOpen = __ccgo_fp(experimentalWALFlagsOpen)
@@ -71,23 +77,30 @@ func ExperimentalWALFlagsEvents(v uintptr) []ExperimentalWALFlagEvent {
 	return append([]ExperimentalWALFlagEvent(nil), b.events...)
 }
 func experimentalWALFlagsOpen(tls *libc.TLS, v, name, file uintptr, flags int32, out uintptr) int32 {
-	if out != 0 {
-		*(*int32)(unsafe.Pointer(out)) = 0
-	}
 	experimentalWALFlagMu.Lock()
 	b := experimentalWALFlagBindings[v]
 	experimentalWALFlagMu.Unlock()
 	if b == nil {
+		if out != 0 {
+			*(*int32)(unsafe.Pointer(out)) = 0
+		}
 		return SQLITE_CANTOPEN
 	}
-	// Test-first refusal: native RED must reach this actual diagnostic xOpen.
-	// No stock forwarder or WAL observation has been implemented yet.
-	event := ExperimentalWALFlagEvent{Input: flags, RC: SQLITE_CANTOPEN}
+	event := ExperimentalWALFlagEvent{Input: flags}
 	if name != 0 {
 		event.Name = libc.GoString(name)
+	}
+	// Capture the original entry at registration, rather than re-reading a table
+	// which may now contain this wrapper. Forward all filename/flags/output/file
+	// pointers unchanged. The stock VFS pointer is its original callback context.
+	fn := *(*func(*libc.TLS, uintptr, uintptr, uintptr, int32, uintptr) int32)(unsafe.Pointer(&b.stockOpen))
+	event.RC = fn(tls, b.stock, name, file, flags, out)
+	event.Forwarded = true
+	if out != 0 {
+		event.Output = *(*int32)(unsafe.Pointer(out))
 	}
 	b.mu.Lock()
 	b.events = append(b.events, event)
 	b.mu.Unlock()
-	return SQLITE_CANTOPEN
+	return event.RC
 }
