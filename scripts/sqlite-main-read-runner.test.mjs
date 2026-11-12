@@ -81,3 +81,14 @@ test('valid build-output cannot satisfy main method test and truncated streams r
  const partial=createEventValidator();partial.feed(Buffer.from('{"Action":"pass"}'));assert.throws(()=>partial.finish());
  const completeRun=createEventValidator();complete(completeRun);assert.throws(()=>completeRun.feed(line({Action:'output',Package:pkg,Output:'late'})));
 });
+test('linked output must match reviewed hash, mode and Windows-only package',async()=>{
+ const {createHash}=await import('node:crypto');
+ const {validateGenerated}=await import('./sqlite-main-read-runner.mjs');
+ const bytes=Buffer.from('//go:build windows && (amd64 || arm64) && nativeprobe_sqlite_persistent && nativeprobe_sqlite_main_read\n\npackage sqlite3\n');
+ const make=b=>({Version:'modernc.org/sqlite@v1.58.0-linked-main-v1',OutputSHA256:createHash('sha256').update(b).digest('hex')});
+ validateGenerated(bytes,make(bytes));
+ assert.throws(()=>validateGenerated(Buffer.concat([bytes,Buffer.from('x')]),make(bytes)));
+ assert.throws(()=>validateGenerated(bytes,{...make(bytes),Version:'unreviewed'}));
+ const wrong=Buffer.from('package sqlite3\n');assert.throws(()=>validateGenerated(wrong,make(wrong)));
+ assert.throws(()=>validateGenerated(bytes,{Version:make(bytes).Version,OutputSHA256:'bad'}));
+});

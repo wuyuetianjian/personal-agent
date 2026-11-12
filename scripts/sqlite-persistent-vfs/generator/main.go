@@ -32,6 +32,7 @@ type manifest struct {
 	Roots        []string
 	Functions    []function
 	OutputSHA256 string
+	Linked       *linkedDetails `json:",omitempty"`
 }
 
 var pins = map[string]string{
@@ -234,6 +235,7 @@ func inventory(root string) (manifest, []byte, error) {
 }
 func run(args []string) error {
 	f := flag.NewFlagSet("generator", flag.ContinueOnError)
+	linked := f.Bool("linked", false, "generate linked main-only helpers, no registration")
 	source := f.String("source", "", "verified official module directory")
 	approved := f.String("manifest", "", "reviewed manifest JSON")
 	cacheRoot := f.String("cache-root", "", "actual GOMODCACHE from the verified runner")
@@ -245,7 +247,11 @@ func run(args []string) error {
 	if f.NArg() != 0 || *source == "" {
 		return errors.New("explicit source required; no positional arguments")
 	}
-	actual, output, e := inventory(*source)
+	buildInventory := inventory
+	if *linked {
+		buildInventory = linkedInventory
+	}
+	actual, output, e := buildInventory(*source)
 	if e != nil {
 		return e
 	}
@@ -273,7 +279,7 @@ func run(args []string) error {
 	if e = dec.Decode(new(any)); e != io.EOF {
 		return errors.New("manifest trailing data")
 	}
-	if want.Version != actual.Version || !reflect.DeepEqual(want.Inputs, actual.Inputs) || !reflect.DeepEqual(want.Roots, actual.Roots) || want.OutputSHA256 != actual.OutputSHA256 || len(want.Functions) != len(actual.Functions) {
+	if want.Version != actual.Version || !reflect.DeepEqual(want.Inputs, actual.Inputs) || !reflect.DeepEqual(want.Roots, actual.Roots) || want.OutputSHA256 != actual.OutputSHA256 || !reflect.DeepEqual(want.Linked, actual.Linked) || len(want.Functions) != len(actual.Functions) {
 		return errors.New("manifest identity/closure/output mismatch")
 	}
 	for i := range want.Functions {

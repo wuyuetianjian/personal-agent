@@ -1,9 +1,10 @@
 //go:build windows && nativeprobe_sqlite_persistent && nativeprobe_sqlite_main_read
 
-// Experimental RED interface only. No accepted opens or synthesized winFile.
+// Disconnected main-only native method bridge. No SQL/WAL/SHM qualification.
 package sqlite3
 
 import (
+	"errors"
 	"fmt"
 	"modernc.org/libc"
 	"sync"
@@ -15,6 +16,7 @@ import (
 // trusted callbacks must not reenter the bridge. Handles may not escape Borrow.
 type ExperimentalMainReadAuthority interface {
 	OpenMain() (ExperimentalMainReadLease, error)
+	Revoke(error)
 }
 type ExperimentalMainReadLease interface {
 	Borrow(func(uintptr) int32) (int32, error)
@@ -25,6 +27,9 @@ type experimentalMainReadBinding struct {
 	authority ExperimentalMainReadAuthority
 	canonical string
 	refusals  atomic.Uint64
+	hits      atomic.Uint64
+	mu        sync.Mutex
+	terminal  error
 }
 
 var experimentalMainReadMu sync.Mutex
@@ -46,7 +51,7 @@ func ExperimentalMainReadRegister(a ExperimentalMainReadAuthority, canonical str
 	if stock == 0 {
 		return 0, fmt.Errorf("missing stock VFS")
 	}
-	name, err := libc.CString(fmt.Sprintf("agent-main-read-red-%d", experimentalMainReadSequence.Add(1)))
+	name, err := libc.CString(fmt.Sprintf("agent-main-read-%d", experimentalMainReadSequence.Add(1)))
 	if err != nil {
 		return 0, err
 	}
@@ -89,19 +94,313 @@ func ExperimentalMainReadRefusals(vfs uintptr) uint64 {
 	}
 	return 0
 }
-func experimentalMainReadOpen(tls *libc.TLS, vfs, name, file uintptr, flags int32, out uintptr) int32 {
+func ExperimentalMainReadHits(vfs uintptr) uint64 {
+	if b := experimentalMainReadBindingFor(vfs); b != nil {
+		return b.hits.Load()
+	}
+	return 0
+}
+func (b *experimentalMainReadBinding) healthy() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.terminal == nil
+}
+func (b *experimentalMainReadBinding) poison(e error) {
+	if e == nil {
+		return
+	}
+	b.mu.Lock()
+	b.terminal = errors.Join(b.terminal, e)
+	b.mu.Unlock()
+	// All Borrow frames have unwound before this can acquire the host writer gate.
+	func() { defer func() { _ = recover() }(); b.authority.Revoke(e) }()
+}
+
+type experimentalMainReadFile struct {
+	mu         sync.Mutex
+	binding    *experimentalMainReadBinding
+	generation uint64
+	lease      ExperimentalMainReadLease
+	closed     bool
+	result     int32
+}
+
+var experimentalMainReadFiles = map[uintptr]*experimentalMainReadFile{}
+var experimentalMainReadGeneration atomic.Uint64
+
+// Tombstones retain close results. Generations reject queued callbacks targeting
+// retired records; they cannot identify an illegal callback first arriving only
+// after SQLite freed/reused the same address. SQLite's file-lifetime ABI applies.
+func experimentalMainReadLookup(file uintptr) *experimentalMainReadFile {
+	experimentalMainReadMu.Lock()
+	defer experimentalMainReadMu.Unlock()
+	return experimentalMainReadFiles[file]
+}
+func experimentalMainReadCurrent(file uintptr, f *experimentalMainReadFile) bool {
+	experimentalMainReadMu.Lock()
+	defer experimentalMainReadMu.Unlock()
+	now := experimentalMainReadFiles[file]
+	return now == f && now.generation == f.generation
+}
+func experimentalMainReadOpen(tls *libc.TLS, vfs, name, file uintptr, flags int32, out uintptr) (rc int32) {
+	rc = SQLITE_CANTOPEN
 	if out != 0 {
 		*(*int32)(unsafe.Pointer(out)) = 0
 	}
-	if file != 0 {
-		(*Tsqlite3_file)(unsafe.Pointer(file)).FpMethods = 0
-	}
 	b := experimentalMainReadBindingFor(vfs)
-	if b == nil || name == 0 || file == 0 || libc.GoString(name) != b.canonical || flags != SQLITE_OPEN_READONLY|SQLITE_OPEN_MAIN_DB {
-		return SQLITE_CANTOPEN
+	if b == nil {
+		return
 	}
-	b.refusals.Add(1) // exact-bound actual VFS call reached the refusing constructor
-	return SQLITE_CANTOPEN
+	if name == 0 || file == 0 || libc.GoString(name) != b.canonical || flags != SQLITE_OPEN_READONLY|SQLITE_OPEN_MAIN_DB {
+		b.refusals.Add(1)
+		return
+	}
+	b.hits.Add(1)
+	if old := experimentalMainReadLookup(file); old != nil {
+		old.mu.Lock()
+		live := !old.closed
+		old.mu.Unlock()
+		if live {
+			b.refusals.Add(1)
+			return
+		}
+	}
+	var lease ExperimentalMainReadLease
+	published := false
+	defer func() {
+		if p := recover(); p != nil {
+			b.poison(experimentalMainReadPanic("main open panic", p))
+			rc = SQLITE_CANTOPEN
+		}
+		if !published {
+			if lease != nil {
+				e := experimentalMainReadLeaseClose(lease)
+				b.poison(e)
+			}
+			(*Tsqlite3_file)(unsafe.Pointer(file)).FpMethods = 0
+			if out != 0 {
+				*(*int32)(unsafe.Pointer(out)) = 0
+			}
+			b.refusals.Add(1)
+		}
+	}()
+	if !b.healthy() {
+		return
+	}
+
+	var e error
+	lease, e = b.authority.OpenMain()
+	if e != nil || lease == nil {
+		return
+	}
+	if rc = _paWinOpenBound(tls, vfs, name, file, flags, out); rc != SQLITE_OK {
+		return
+	}
+	if !b.healthy() {
+		rc = SQLITE_CANTOPEN
+		return
+	}
+	f := &experimentalMainReadFile{binding: b, generation: experimentalMainReadGeneration.Add(1), lease: lease}
+	experimentalMainReadMu.Lock()
+	experimentalMainReadFiles[file] = f
+	experimentalMainReadMu.Unlock()
+	(*Tsqlite3_file)(unsafe.Pointer(file)).FpMethods = uintptr(unsafe.Pointer(&experimentalMainReadMethods))
+	published = true
+	return SQLITE_OK
+}
+func experimentalMainReadPanic(where string, p any) error {
+	if e, ok := p.(error); ok {
+		return fmt.Errorf("%s: %w", where, e)
+	}
+	return fmt.Errorf("%s: %v", where, p)
+}
+func experimentalMainReadNoMapping(file uintptr) bool {
+	p := (*TwinFile)(unsafe.Pointer(file))
+	return p.FmmapSize == 0 && p.FmmapSizeMax == 0 && p.FpMapRegion == 0 && p.FhMap == 0 && p.FnFetchOut == 0
+}
+func experimentalMainReadLeaseClose(l ExperimentalMainReadLease) (e error) {
+	defer func() {
+		if p := recover(); p != nil {
+			e = experimentalMainReadPanic("main lease close panic", p)
+		}
+	}()
+	return l.Close()
+}
+
+// Serializes each real TwinFile's mutable lock state. No raw handle is stored
+// between callbacks and no registry lock remains held during host callbacks.
+func experimentalMainReadWith(file uintptr, fn func() int32) (rc int32) {
+	rc = SQLITE_IOERR
+	f := experimentalMainReadLookup(file)
+	if f == nil {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !experimentalMainReadCurrent(file, f) || f.closed || !f.binding.healthy() || !experimentalMainReadNoMapping(file) {
+		return
+	}
+	var fault error
+	func() {
+		defer func() {
+			if p := recover(); p != nil {
+				fault = experimentalMainReadPanic("main callback panic", p)
+				rc = SQLITE_IOERR
+			}
+		}()
+		var e error
+		rc, e = f.lease.Borrow(func(h uintptr) int32 {
+			p := (*TwinFile)(unsafe.Pointer(file))
+			p.Fh = h
+			defer func() { p.Fh = ^uintptr(0) }()
+			rc := fn()
+			if !experimentalMainReadNoMapping(file) {
+				return SQLITE_IOERR
+			}
+			return rc
+		})
+		if e != nil {
+			rc = SQLITE_IOERR
+		}
+	}()
+	// Do not poison for SQLite SHORT_READ/BUSY or an ordinary admission error.
+	if fault != nil {
+		f.binding.poison(fault)
+	}
+	return
+}
+func experimentalMainReadClose(tls *libc.TLS, file uintptr) int32 {
+	f := experimentalMainReadLookup(file)
+	if f == nil {
+		return SQLITE_IOERR_CLOSE
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !experimentalMainReadCurrent(file, f) {
+		return SQLITE_IOERR_CLOSE
+	}
+	if f.closed {
+		return f.result
+	}
+	f.closed = true
+	l := f.lease
+	f.lease = nil
+	p := (*TwinFile)(unsafe.Pointer(file))
+	p.Fh = ^uintptr(0)
+	p.FpMethod = 0
+	f.result = SQLITE_OK
+	if e := experimentalMainReadLeaseClose(l); e != nil {
+		f.result = SQLITE_IOERR_CLOSE
+		f.binding.poison(e)
+	}
+	return f.result
+}
+
+var experimentalMainReadMethods = Tsqlite3_io_methods{
+	FiVersion: 3,
+	FxClose:   __ccgo_fp(experimentalMainReadClose), FxRead: __ccgo_fp(experimentalMainReadRead),
+	FxWrite: __ccgo_fp(experimentalMainReadWrite), FxTruncate: __ccgo_fp(experimentalMainReadTruncate), FxSync: __ccgo_fp(experimentalMainReadSync),
+	FxFileSize: __ccgo_fp(experimentalMainReadSize), FxLock: __ccgo_fp(experimentalMainReadLock), FxUnlock: __ccgo_fp(experimentalMainReadUnlock), FxCheckReservedLock: __ccgo_fp(experimentalMainReadReserved),
+	FxFileControl: __ccgo_fp(experimentalMainReadControl), FxSectorSize: __ccgo_fp(experimentalMainReadSector), FxDeviceCharacteristics: __ccgo_fp(experimentalMainReadDevice),
+	FxShmMap: __ccgo_fp(experimentalMainReadShmMap), FxShmLock: __ccgo_fp(experimentalMainReadShmLock), FxShmBarrier: __ccgo_fp(experimentalMainReadBarrier), FxShmUnmap: __ccgo_fp(experimentalMainReadShmUnmap),
+	FxFetch: __ccgo_fp(experimentalMainReadFetch), FxUnfetch: __ccgo_fp(experimentalMainReadUnfetch),
+}
+
+func experimentalMainReadRead(tls *libc.TLS, file, buf uintptr, n int32, off int64) int32 {
+	if buf == 0 || n < 0 || off < 0 || off > int64(^uint64(0)>>1)-int64(n) {
+		return SQLITE_IOERR_READ
+	}
+	rc := experimentalMainReadWith(file, func() int32 { return _paWinRead(tls, file, buf, n, off) })
+	if rc != SQLITE_OK && rc != SQLITE_IOERR_SHORT_READ {
+		libc.Xmemset(tls, buf, 0, uint64(n))
+	}
+	return rc
+}
+func experimentalMainReadSize(tls *libc.TLS, file, out uintptr) int32 {
+	if out == 0 {
+		return SQLITE_IOERR_FSTAT
+	}
+	*(*int64)(unsafe.Pointer(out)) = 0
+	return experimentalMainReadWith(file, func() int32 { return _paWinFileSize(tls, file, out) })
+}
+func experimentalMainReadLock(tls *libc.TLS, file uintptr, kind int32) int32 {
+	if kind != SQLITE_LOCK_SHARED {
+		return SQLITE_READONLY
+	}
+	return experimentalMainReadWith(file, func() int32 { return _paWinLock(tls, file, kind) })
+}
+func experimentalMainReadUnlock(tls *libc.TLS, file uintptr, kind int32) int32 {
+	if kind != SQLITE_LOCK_NONE && kind != SQLITE_LOCK_SHARED {
+		return SQLITE_IOERR_UNLOCK
+	}
+	return experimentalMainReadWith(file, func() int32 { return _paWinUnlock(tls, file, kind) })
+}
+func experimentalMainReadReserved(tls *libc.TLS, file, out uintptr) int32 {
+	if out == 0 {
+		return SQLITE_IOERR_CHECKRESERVEDLOCK
+	}
+	*(*int32)(unsafe.Pointer(out)) = 0
+	return experimentalMainReadWith(file, func() int32 { return _paWinCheckReservedLock(tls, file, out) })
+}
+func experimentalMainReadWrite(tls *libc.TLS, file, buf uintptr, n int32, off int64) int32 {
+	return SQLITE_READONLY
+}
+func experimentalMainReadTruncate(tls *libc.TLS, file uintptr, n int64) int32 { return SQLITE_READONLY }
+func experimentalMainReadSync(tls *libc.TLS, file uintptr, flags int32) int32 { return SQLITE_READONLY }
+func experimentalMainReadControl(tls *libc.TLS, file uintptr, op int32, arg uintptr) int32 {
+	if arg == 0 {
+		return SQLITE_NOTFOUND
+	}
+	return experimentalMainReadWith(file, func() int32 {
+		p := (*TwinFile)(unsafe.Pointer(file))
+		switch op {
+		case SQLITE_FCNTL_LOCKSTATE:
+			*(*int32)(unsafe.Pointer(arg)) = int32(p.Flocktype)
+		case SQLITE_FCNTL_LAST_ERRNO:
+			*(*int32)(unsafe.Pointer(arg)) = int32(p.FlastErrno)
+		case SQLITE_FCNTL_MMAP_SIZE:
+			*(*int64)(unsafe.Pointer(arg)) = 0 // mapping remains disabled, including positive requests
+		default:
+			return SQLITE_NOTFOUND
+		}
+		return SQLITE_OK
+	})
+}
+func experimentalMainReadSector(tls *libc.TLS, file uintptr) int32 { return 4096 }
+func experimentalMainReadDevice(tls *libc.TLS, file uintptr) int32 { return 0 } // no unqualified capability bits
+func experimentalMainReadShmMap(tls *libc.TLS, file uintptr, page, size, extend int32, out uintptr) int32 {
+	if out != 0 {
+		*(*uintptr)(unsafe.Pointer(out)) = 0
+	}
+	return SQLITE_IOERR_SHMMAP
+}
+func experimentalMainReadShmLock(tls *libc.TLS, file uintptr, offset, n, flags int32) int32 {
+	return SQLITE_IOERR_SHMLOCK
+}
+func experimentalMainReadBarrier(tls *libc.TLS, file uintptr) {} // no SHM can ever be published
+func experimentalMainReadShmUnmap(tls *libc.TLS, file uintptr, del int32) int32 {
+	return experimentalMainReadWith(file, func() int32 {
+		if (*TwinFile)(unsafe.Pointer(file)).FpShm != 0 {
+			return SQLITE_IOERR_SHMMAP
+		}
+		return SQLITE_OK
+	})
+}
+func experimentalMainReadFetch(tls *libc.TLS, file uintptr, off int64, n int32, out uintptr) int32 {
+	if out == 0 {
+		return SQLITE_IOERR_MMAP
+	}
+	*(*uintptr)(unsafe.Pointer(out)) = 0
+	return experimentalMainReadWith(file, func() int32 { return SQLITE_OK }) // ordinary read fallback
+}
+func experimentalMainReadUnfetch(tls *libc.TLS, file uintptr, off int64, ptr uintptr) int32 {
+	return experimentalMainReadWith(file, func() int32 {
+		p := (*TwinFile)(unsafe.Pointer(file))
+		if ptr != 0 || p.FpMapRegion != 0 || p.FhMap != 0 || p.FnFetchOut != 0 {
+			return SQLITE_IOERR_MMAP
+		}
+		return SQLITE_OK
+	})
 }
 func experimentalMainReadFullPath(tls *libc.TLS, vfs, name uintptr, n int32, out uintptr) int32 {
 	b := experimentalMainReadBindingFor(vfs)

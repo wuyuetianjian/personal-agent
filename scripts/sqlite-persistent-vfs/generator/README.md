@@ -1,4 +1,8 @@
-# AST inventory and review-only variants
+# AST inventory and private main-only variants
+
+The original mode below remains review-only. The separately pinned `-linked`
+mode is documented in [LINKED.md](LINKED.md); it emits real main-only helpers
+for the explicit experimental bridge, not a registered or production VFS.
 
 This tool is implemented; an accepting VFS is **not**. It emits a `.go.txt`
 review artifact without a package/import block or registration. It must NOT be

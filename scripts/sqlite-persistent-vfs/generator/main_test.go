@@ -161,7 +161,7 @@ func TestActualGitAutocrlfCheckoutPreservesGeneratorBytes(t *testing.T) {
 		t.Fatal(e)
 	}
 	original := map[string][]byte{}
-	for _, name := range []string{"main.go", "manifest.json"} {
+	for _, name := range []string{"main.go", "manifest.json", "linked.go", "linked-manifest.json"} {
 		b, e := os.ReadFile(name)
 		if e != nil {
 			t.Fatal(e)

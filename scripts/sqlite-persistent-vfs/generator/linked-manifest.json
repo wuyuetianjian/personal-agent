@@ -1,0 +1,1009 @@
+{
+  "Version": "modernc.org/sqlite@v1.58.0-linked-main-v1",
+  "Inputs": {
+    "LICENSE": "c6fe05491a60ae13bcd223088d2705e36dede24e5587226231d2459ada5c4822",
+    "lib/sqlite.go": "8210957d4836c361efb18808fb6fd4dc5f2a7ca362fd83881d6018e9913ee4d6",
+    "lib/sqlite_g_0000000000060000.go": "8416138b3519a8ad4a2e4a76928c34781333915f09ef5d5444eb75d5cc4eabe7",
+    "lib/sqlite_windows.go": "414fac0347bda229e81decf8b765a276dc59f382cde33542f7246862e7022d98",
+    "sqlite.go": "52fefb00e9f7a9a1bad23b034b57ce47b156bf29bebe7c2aef01083f5880759e"
+  },
+  "Roots": [
+    "_winOpen",
+    "_winRead",
+    "_winFileSize",
+    "_winLock",
+    "_winUnlock",
+    "_winCheckReservedLock"
+  ],
+  "Functions": [
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winOpen",
+      "SHA256": "066772f8b7d7afb5dc7a984fdfaac7cc95bf1319a4edf8724c01249e2ef12d73",
+      "VariantSHA256": "d75194b124686588d12397b7ccb4fbe12c46b05dbd01f2aea2eaefacd98a4489",
+      "Calls": {
+        "_winAccess": 2,
+        "_winConvertFromUtf8Filename": 1,
+        "_winGetTempname": 1,
+        "_winIsDir": 1,
+        "_winLogErrorAtLine": 1,
+        "_winLogIoerr": 1,
+        "_winOpen": 1,
+        "_winRetryIoerr": 2
+      },
+      "Refs": {
+        "_winAccess": 2,
+        "_winConvertFromUtf8Filename": 1,
+        "_winGetTempname": 1,
+        "_winIoMethod": 1,
+        "_winIsDir": 1,
+        "_winLogErrorAtLine": 1,
+        "_winLogIoerr": 1,
+        "_winOpen": 2,
+        "_winRetryIoerr": 2
+      },
+      "Syscalls": {
+        "4": 1,
+        "5": 1
+      },
+      "Renames": null
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winCheckReservedLock",
+      "SHA256": "235aaf97a85b23b5fe8687652f9e22cad4069427f0aad435b94b5b68820a1199",
+      "VariantSHA256": "9f95ef1d2954f7fc2345c0f23cdf1a7024e5b1700803f69ce14300360b0a174b",
+      "Calls": {
+        "_winLockFile": 1,
+        "_winUnlockFile": 1
+      },
+      "Refs": {
+        "_winCheckReservedLock": 1,
+        "_winLockFile": 1,
+        "_winUnlockFile": 1
+      },
+      "Syscalls": {},
+      "Renames": {
+        "_winCheckReservedLock": 1,
+        "_winLockFile": 1,
+        "_winUnlockFile": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_g_0000000000060000.go",
+      "Name": "_winFileSize",
+      "SHA256": "d4633bbe563a9ea2a2219deaecef5fb7926bc9c35605a57a0f129101517db80d",
+      "VariantSHA256": "66b7f6dd54a14c3f4f543d8680b69ef4038a4fa16cc086862a28ec359d898b53",
+      "Calls": {
+        "_winLogErrorAtLine": 1
+      },
+      "Refs": {
+        "_winFileSize": 1,
+        "_winLogErrorAtLine": 1
+      },
+      "Syscalls": {
+        "23": 1,
+        "26": 1
+      },
+      "Renames": {
+        "_winFileSize": 1,
+        "_winLogErrorAtLine": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winGetLastErrorMsg",
+      "SHA256": "3eb6d56cf2c3d41023e6338891195804b1554be02d663a40eff5c12327e40b0b",
+      "VariantSHA256": "442e215177d4ec8eb918b62530d0b66f5e6af44818d3b90293d6183413743847",
+      "Calls": {
+        "_winMbcsToUtf8": 1,
+        "_winUnicodeToUtf8": 1
+      },
+      "Refs": {
+        "_winGetLastErrorMsg": 1,
+        "_winMbcsToUtf8": 1,
+        "_winUnicodeToUtf8": 1
+      },
+      "Syscalls": {
+        "0": 1,
+        "14": 1,
+        "15": 1,
+        "46": 2
+      },
+      "Renames": {
+        "_winGetLastErrorMsg": 1,
+        "_winMbcsToUtf8": 1,
+        "_winUnicodeToUtf8": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winGetReadLock",
+      "SHA256": "e023ab9ecfd2ee6cef8be74e03b39a1cea2a2fdb038b73482d5a198fe104c92e",
+      "VariantSHA256": "fd32e88a075246efb0a537752f01cfc48f5d7c35b15339a72d12f34a6c3d5c6a",
+      "Calls": {
+        "_winLockFile": 2
+      },
+      "Refs": {
+        "_winGetReadLock": 1,
+        "_winLockFile": 2
+      },
+      "Syscalls": {
+        "26": 1
+      },
+      "Renames": {
+        "_winGetReadLock": 1,
+        "_winLockFile": 2
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winLock",
+      "SHA256": "63c5ec624bdbf2d7a827991cfdb552a72e8900cae26c062a4037e5ae88e15e78",
+      "VariantSHA256": "a514dba0a647a7a8810e8eeb224545b983e4ca945841bfea8907482e20183296",
+      "Calls": {
+        "_winGetReadLock": 2,
+        "_winLockFile": 3,
+        "_winUnlockFile": 1,
+        "_winUnlockReadLock": 1
+      },
+      "Refs": {
+        "_winGetReadLock": 2,
+        "_winLock": 1,
+        "_winLockFile": 3,
+        "_winUnlockFile": 1,
+        "_winUnlockReadLock": 1
+      },
+      "Syscalls": {
+        "26": 4
+      },
+      "Renames": {
+        "_winGetReadLock": 2,
+        "_winLock": 1,
+        "_winLockFile": 3,
+        "_winUnlockFile": 1,
+        "_winUnlockReadLock": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winLockFile",
+      "SHA256": "95ba15ebd236114f7e6639803a24f78b11cab0d06a65684578da3d484db8d7ce",
+      "VariantSHA256": "e08d819539b9c3148c0b6b5dabcefe5a0ae6edd1bf66271a5dacc730f888873f",
+      "Calls": {},
+      "Refs": {
+        "_winLockFile": 1
+      },
+      "Syscalls": {
+        "47": 1,
+        "48": 1
+      },
+      "Renames": {
+        "_winLockFile": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_g_0000000000060000.go",
+      "Name": "_winLogErrorAtLine",
+      "SHA256": "003a89ed893ae6b3774c6e0410d11fa6a3b6d7ee80afd7368300403b97ebc1cd",
+      "VariantSHA256": "efc47254727f147204442eac1aa41a272717d8d74087917cb6e998ff594ce564",
+      "Calls": {
+        "_winGetLastErrorMsg": 1
+      },
+      "Refs": {
+        "_winGetLastErrorMsg": 1,
+        "_winLogErrorAtLine": 1
+      },
+      "Syscalls": {},
+      "Renames": {
+        "_winGetLastErrorMsg": 1,
+        "_winLogErrorAtLine": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_g_0000000000060000.go",
+      "Name": "_winLogIoerr",
+      "SHA256": "54add7e4ab4dba46929a462ab29f98edc5ab16557d03462920da2ff9a0c6ae57",
+      "VariantSHA256": "840f24449c909491c9cc70b7fdc245dc9f836a2385d70d05bac3aec69af5cd43",
+      "Calls": {},
+      "Refs": {
+        "_winIoerrRetryDelay": 1,
+        "_winLogIoerr": 1
+      },
+      "Syscalls": {},
+      "Renames": {
+        "_winLogIoerr": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winMbcsToUnicode",
+      "SHA256": "f8607701f9fd69adbcda27096077a25d99e51b5cb9923b37424cf939caec7478",
+      "VariantSHA256": "b18b997ddbf7db5fb8aab7c8f42d5efe281f3e61bbcc5c1d42692d23bfbe80aa",
+      "Calls": {},
+      "Refs": {
+        "_winMbcsToUnicode": 1
+      },
+      "Syscalls": {
+        "50": 2
+      },
+      "Renames": {
+        "_winMbcsToUnicode": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_g_0000000000060000.go",
+      "Name": "_winMbcsToUtf8",
+      "SHA256": "3ad508d401fdd70e52c68276d39623c61a9c0fb20e84a7e2d5ff2d0c6b981b42",
+      "VariantSHA256": "c15b0a0d474c64095a27127bc46fe4431c0dffc720cae3a72d1b40c615e3ddae",
+      "Calls": {
+        "_winMbcsToUnicode": 1,
+        "_winUnicodeToUtf8": 1
+      },
+      "Refs": {
+        "_winMbcsToUnicode": 1,
+        "_winMbcsToUtf8": 1,
+        "_winUnicodeToUtf8": 1
+      },
+      "Syscalls": {},
+      "Renames": {
+        "_winMbcsToUnicode": 1,
+        "_winMbcsToUtf8": 1,
+        "_winUnicodeToUtf8": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winRead",
+      "SHA256": "d7a1d378c4b327a4004b101a0365fa82f4f843cb71c695c50638f8b6b20d5061",
+      "VariantSHA256": "51aa6b9103759c0414484c4dc47f2a5210c0668e0bead17f8297d3b62969fc98",
+      "Calls": {
+        "_winLogErrorAtLine": 1,
+        "_winLogIoerr": 1,
+        "_winRetryIoerr": 1
+      },
+      "Refs": {
+        "_winLogErrorAtLine": 1,
+        "_winLogIoerr": 1,
+        "_winRead": 1,
+        "_winRetryIoerr": 1
+      },
+      "Syscalls": {
+        "26": 1,
+        "52": 1
+      },
+      "Renames": {
+        "_winLogErrorAtLine": 1,
+        "_winLogIoerr": 1,
+        "_winRead": 1,
+        "_winRetryIoerr": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_g_0000000000060000.go",
+      "Name": "_winRetryIoerr",
+      "SHA256": "0c75905f8b2d0ec4fa5362c9b8becfb67a08452ebafc2d062c3713b96e52bad0",
+      "VariantSHA256": "475f89e07cfcf645b64ab825918223ad6c03023127a2b673095773e64f6cfe5e",
+      "Calls": {},
+      "Refs": {
+        "_winIoerrRetry": 1,
+        "_winIoerrRetryDelay": 1,
+        "_winRetryIoerr": 1
+      },
+      "Syscalls": {
+        "26": 1
+      },
+      "Renames": {
+        "_winRetryIoerr": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_g_0000000000060000.go",
+      "Name": "_winUnicodeToUtf8",
+      "SHA256": "0105d32f12a3aa0a1821ef9bcd273d79b7de591cde32f9e5ae511cd953a042d6",
+      "VariantSHA256": "d193bb06b40e383cb5908300bb3e0913cd0031510dda0674e5a1aa382d389d28",
+      "Calls": {},
+      "Refs": {
+        "_winUnicodeToUtf8": 1
+      },
+      "Syscalls": {
+        "60": 2
+      },
+      "Renames": {
+        "_winUnicodeToUtf8": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winUnlock",
+      "SHA256": "52734aeb94390e7a0247c21fef434bf37db7a1d4f00132cf3fe2f7149442a573",
+      "VariantSHA256": "1742fbe2c08b24dff8b874603acc1b8ea227623aa329e6bb213be03fd264cf1e",
+      "Calls": {
+        "_winGetReadLock": 1,
+        "_winLogErrorAtLine": 1,
+        "_winUnlockFile": 3,
+        "_winUnlockReadLock": 1
+      },
+      "Refs": {
+        "_winGetReadLock": 1,
+        "_winLogErrorAtLine": 1,
+        "_winUnlock": 1,
+        "_winUnlockFile": 3,
+        "_winUnlockReadLock": 1
+      },
+      "Syscalls": {
+        "26": 1
+      },
+      "Renames": {
+        "_winGetReadLock": 1,
+        "_winLogErrorAtLine": 1,
+        "_winUnlock": 1,
+        "_winUnlockFile": 3,
+        "_winUnlockReadLock": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winUnlockFile",
+      "SHA256": "1c4e4745290956236ea5429880780e636c9d0e2ab66567e1c3dfc733248b2da5",
+      "VariantSHA256": "9861c4bef70e984db665789b4f1dd1597da33d520e3b17d0f66996ab67db6665",
+      "Calls": {},
+      "Refs": {
+        "_winUnlockFile": 1
+      },
+      "Syscalls": {
+        "57": 1,
+        "58": 1
+      },
+      "Renames": {
+        "_winUnlockFile": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winUnlockReadLock",
+      "SHA256": "d193f1007bbf36345b9bcb43e0b64cfef2b297774bee5edbb4b68eb260d67b74",
+      "VariantSHA256": "007621b411b1d925ef992e8b2767cf07e503d7091506d89269e185776438339d",
+      "Calls": {
+        "_winLogErrorAtLine": 1,
+        "_winUnlockFile": 2
+      },
+      "Refs": {
+        "_winLogErrorAtLine": 1,
+        "_winUnlockFile": 2,
+        "_winUnlockReadLock": 1
+      },
+      "Syscalls": {
+        "26": 1
+      },
+      "Renames": {
+        "_winLogErrorAtLine": 1,
+        "_winUnlockFile": 2,
+        "_winUnlockReadLock": 1
+      }
+    }
+  ],
+  "OutputSHA256": "fd2f51a33d9ef4238e212c08bfd44fe6285632e9182c7703b72f47c3f4897dbf",
+  "Linked": {
+    "SyscallTargets": {
+      "0": "libc.XAreFileApisANSI",
+      "14": "libc.XFormatMessageA",
+      "15": "libc.XFormatMessageW",
+      "23": "libc.XGetFileSize",
+      "26": "libc.XGetLastError",
+      "46": "libc.XLocalFree",
+      "47": "libc.XLockFile",
+      "48": "libc.XLockFileEx",
+      "50": "libc.XMultiByteToWideChar",
+      "52": "libc.XReadFile",
+      "55": "libc.XSleep",
+      "57": "libc.XUnlockFile",
+      "58": "libc.XUnlockFileEx",
+      "60": "libc.XWideCharToMultiByte"
+    },
+    "SyscallInitSHA256": "2aa41f6df0151d25ecbd17a73835a1cf647a6892db098e6058b94c57b8399049",
+    "Transforms": {
+      "_winCheckReservedLock": {
+        "rename:_winCheckReservedLock": {
+          "Count": 1,
+          "InputSHA256": "b3f3f1ca15aea57a0dfd42a194813c43a096ee81ce7c265ac15f948bb11ed0cc",
+          "OutputSHA256": "f0b61fd6686ba3334aed2c839a72e76a153374d12074f147ed5c4c2a43bdb999"
+        },
+        "rename:_winLockFile": {
+          "Count": 1,
+          "InputSHA256": "5372e62335df60fbd882a9d21ee7e960b153e859272604b443b61832b5e3d5b3",
+          "OutputSHA256": "8e62ad16c944e8139cc3f376f7395d1db758b32a6d38a41d7bccef621c307cfa"
+        },
+        "rename:_winUnlockFile": {
+          "Count": 1,
+          "InputSHA256": "659d708a17eba9c64ca5fee5abc9f5ecc87fca81ef76291716d5d992ef4a54e7",
+          "OutputSHA256": "cd6bc810e3cf1d3f30d1be5a51a794478fc31d76d0245f4a977ae678c8232576"
+        }
+      },
+      "_winFileSize": {
+        "rename:_winFileSize": {
+          "Count": 1,
+          "InputSHA256": "1d20310931a8c7343def5815683ba504ca47074093b4ed4ba250738aa191718f",
+          "OutputSHA256": "778055f84c7b6e717c363ea1c0a4530251f38833acc82a499284e86252649686"
+        },
+        "rename:_winLogErrorAtLine": {
+          "Count": 1,
+          "InputSHA256": "aaf8f07beabde0fc97c0556b9c4ab703ab62318787bcb84b9e1f02b8d2553370",
+          "OutputSHA256": "c9012f59272dcdec2043e342a2510c15903b2f5789caea9fedb151f774b187c6"
+        },
+        "syscall:23": {
+          "Count": 1,
+          "InputSHA256": "5b2bd645a7a59c3ce0f5bb907e52c9a58326566428407b798886cc3207665aec",
+          "OutputSHA256": "cccfcf02ec7fc27710ccc9f062f31b605204494a3f3c2a77f7dafc8947b1db16"
+        },
+        "syscall:26": {
+          "Count": 1,
+          "InputSHA256": "1c0f8b105e03e33350b734ce42ede1e2525ef7fc4b4151cce98bb23303aa2a7a",
+          "OutputSHA256": "fc7bf366891174f980a61cbb8e74790e4242dbec6a8fa457d65a98a78b947377"
+        }
+      },
+      "_winGetLastErrorMsg": {
+        "rename:_winGetLastErrorMsg": {
+          "Count": 1,
+          "InputSHA256": "b90f81e7cafc60f224c7d466c05b367bde80808b75403f95616714f75cb749d6",
+          "OutputSHA256": "6475e40aac1e91d5ad4e4819ccdac6bd47fd90b8a70c1dc04ea32c101212eb87"
+        },
+        "rename:_winMbcsToUtf8": {
+          "Count": 1,
+          "InputSHA256": "53950a172ffa33533dd476f40d594932322e1a4d88e9df5da32cf11cf42171f4",
+          "OutputSHA256": "40731b429dac9f7c3be1af82a8e0cf577bd66ce30249c27b5daa9ba1db5de53c"
+        },
+        "rename:_winUnicodeToUtf8": {
+          "Count": 1,
+          "InputSHA256": "256754a660e143c9faa1e20363a4768507493e787580138f8089a4a4f98d7019",
+          "OutputSHA256": "6564c97d3d6bfd3a4308534926bbbbf149fc2e9bcaffefb03c87beade16989e2"
+        },
+        "syscall:0": {
+          "Count": 1,
+          "InputSHA256": "6e00f42776a778f857a88a2e82646fedeea29c640b65cefba070f50df77f83fc",
+          "OutputSHA256": "cc0eb91411d98923c3c1268a584ad888c28d9a438e4cc8c2614af5d1ee6e07ad"
+        },
+        "syscall:14": {
+          "Count": 1,
+          "InputSHA256": "42b1c7491c55d269b9143013b9096772db89619318f5e7a4ff231966f93d2d6c",
+          "OutputSHA256": "6e1a74f2bcb4fb21079e32466e5584429791e2ce99efa58ea255b6c861f5c0c6"
+        },
+        "syscall:15": {
+          "Count": 1,
+          "InputSHA256": "d8d821e4098d8122ef9f3df28d9592ebdf45846cdd5e25d5fe3729db0dfa4723",
+          "OutputSHA256": "686899127bcf52be9402ca379cef121d203c0c296411bd949be881128075c40b"
+        },
+        "syscall:46": {
+          "Count": 2,
+          "InputSHA256": "51375bab42a6db12100aa6623ff8a6110a3d3b196b04fceb3f4ff8eebd2d2b55",
+          "OutputSHA256": "12ca42a3c209de5936e751b3e9d13cc5f09c43dc927eaf25ebbf4ac119e521d2"
+        }
+      },
+      "_winGetReadLock": {
+        "rename:_winGetReadLock": {
+          "Count": 1,
+          "InputSHA256": "28f8c7a84ff6f90611100ef451a6c35f4ceabe4b68f0e48e99ecc27dcb39dadf",
+          "OutputSHA256": "ea9218e343f1f7fb8d646d9989afa541d751e3bfba4c0436ebd06e8a92764e65"
+        },
+        "rename:_winLockFile": {
+          "Count": 2,
+          "InputSHA256": "2f0d2a17637faa3c5f6097ee12405c31fa35b17fe7aea8c581cb26dd3bde94f9",
+          "OutputSHA256": "0b1522bef247e9918ec2ba8105655b662e7e8af30b7b69b8d566fde42ec5981e"
+        },
+        "syscall:26": {
+          "Count": 1,
+          "InputSHA256": "1c0f8b105e03e33350b734ce42ede1e2525ef7fc4b4151cce98bb23303aa2a7a",
+          "OutputSHA256": "fc7bf366891174f980a61cbb8e74790e4242dbec6a8fa457d65a98a78b947377"
+        }
+      },
+      "_winLock": {
+        "rename:_winGetReadLock": {
+          "Count": 2,
+          "InputSHA256": "728127c473a841a293c2325d3666a8980fe63dda9f1ee41b6ee77d25b934c118",
+          "OutputSHA256": "7cfa6df95603332e360c27a5ab5f1052e46700256af2f5832e4cf87a56f60241"
+        },
+        "rename:_winLock": {
+          "Count": 1,
+          "InputSHA256": "5178bb3d5ce5d270101c94232b472e8fb5c7bf435b183ef17bc3af74238ccbd3",
+          "OutputSHA256": "a560c9f5555f0c9c509440bc6bcf66a65789bf6023d6831e97a6f63d2fea807c"
+        },
+        "rename:_winLockFile": {
+          "Count": 3,
+          "InputSHA256": "b1c29cdeca6be0314e1559d248842c0591777b8edee9a6650f99a6e566204094",
+          "OutputSHA256": "7020f04579fd38e9104c76c24f9c466d5c7b8deb4c92af94e38ba58fd99037e6"
+        },
+        "rename:_winUnlockFile": {
+          "Count": 1,
+          "InputSHA256": "659d708a17eba9c64ca5fee5abc9f5ecc87fca81ef76291716d5d992ef4a54e7",
+          "OutputSHA256": "cd6bc810e3cf1d3f30d1be5a51a794478fc31d76d0245f4a977ae678c8232576"
+        },
+        "rename:_winUnlockReadLock": {
+          "Count": 1,
+          "InputSHA256": "2baae8c9f25f76ee618740f98e07ecea3de2eb7b0f583fd9df6d5a706f3efd5f",
+          "OutputSHA256": "df71b5ee300c53e91564edfd1a92d4036c90d2451043544551b53f4b4094dc53"
+        },
+        "sleep:55": {
+          "Count": 1,
+          "InputSHA256": "18278c1c029ea4103e046e43dea93f369077f8cf40bb5c7cd645dbcf0247ebd9",
+          "OutputSHA256": "05d5529ca8012398b589f858a62842045d7a24094772514eb32d6b865ae8c9ec"
+        },
+        "syscall:26": {
+          "Count": 4,
+          "InputSHA256": "50c8f9d4e8af22b02417042f9ee8f119d826cb8b16f65b0b110168b09bf6f04f",
+          "OutputSHA256": "9b9b997067c02d3ddd55cf24022550bf784f75225ad094268862b4cdf6a3718f"
+        }
+      },
+      "_winLockFile": {
+        "rename:_winLockFile": {
+          "Count": 1,
+          "InputSHA256": "5372e62335df60fbd882a9d21ee7e960b153e859272604b443b61832b5e3d5b3",
+          "OutputSHA256": "8e62ad16c944e8139cc3f376f7395d1db758b32a6d38a41d7bccef621c307cfa"
+        },
+        "syscall:47": {
+          "Count": 1,
+          "InputSHA256": "7a400109c6b073580f7f29894e18c9107f4ffa85558e905a6f038bb3466e4fe7",
+          "OutputSHA256": "72b0e5ea27e0d1b0445a2665fd86a6f42343017ab74430dffff127c90c21caac"
+        },
+        "syscall:48": {
+          "Count": 1,
+          "InputSHA256": "4ae40d11b9545b857f02b236a2c15a3283658da328f13af403970671060bb605",
+          "OutputSHA256": "eea3e5789b74074428db9d039e26b8cf7335324d2c2330d498692cd2ef30d890"
+        }
+      },
+      "_winLogErrorAtLine": {
+        "rename:_winGetLastErrorMsg": {
+          "Count": 1,
+          "InputSHA256": "b90f81e7cafc60f224c7d466c05b367bde80808b75403f95616714f75cb749d6",
+          "OutputSHA256": "6475e40aac1e91d5ad4e4819ccdac6bd47fd90b8a70c1dc04ea32c101212eb87"
+        },
+        "rename:_winLogErrorAtLine": {
+          "Count": 1,
+          "InputSHA256": "aaf8f07beabde0fc97c0556b9c4ab703ab62318787bcb84b9e1f02b8d2553370",
+          "OutputSHA256": "c9012f59272dcdec2043e342a2510c15903b2f5789caea9fedb151f774b187c6"
+        }
+      },
+      "_winLogIoerr": {
+        "private-config:_winIoerrRetryDelay": {
+          "Count": 1,
+          "InputSHA256": "f616d792da73e65f951d0a18e2d0a1cd144d4189602e69b7bed65a43c984940c",
+          "OutputSHA256": "638ef76e551a1785e85b27f37944d150cff6355785204b1d35a22a2ac67de7f1"
+        },
+        "rename:_winLogIoerr": {
+          "Count": 1,
+          "InputSHA256": "bbb046a493776c7bf85424497b442e93e9217252d3e503373e316e67901e6f29",
+          "OutputSHA256": "0735a095655572934cca4b27d8d116dbd8fe5a312cf84b94f2d64ee6a868d00c"
+        }
+      },
+      "_winMbcsToUnicode": {
+        "rename:_winMbcsToUnicode": {
+          "Count": 1,
+          "InputSHA256": "14ded1819b3326f8897a1a3c117f0d3e50130a8c0ea7b1b863b3bf63bd374943",
+          "OutputSHA256": "2d86bce78082d4c78958d257806a9c980cc806e2f986d7f0b32bb226f4a815e8"
+        },
+        "syscall:50": {
+          "Count": 2,
+          "InputSHA256": "beb8a3fb2462aaac2f6b23323044436e0339ed975e890c86acc64c635c1acc6c",
+          "OutputSHA256": "8a730f597e1f526f3867c1bca1004766e78ef55fc2256572acb8938f7ee12bff"
+        }
+      },
+      "_winMbcsToUtf8": {
+        "rename:_winMbcsToUnicode": {
+          "Count": 1,
+          "InputSHA256": "14ded1819b3326f8897a1a3c117f0d3e50130a8c0ea7b1b863b3bf63bd374943",
+          "OutputSHA256": "2d86bce78082d4c78958d257806a9c980cc806e2f986d7f0b32bb226f4a815e8"
+        },
+        "rename:_winMbcsToUtf8": {
+          "Count": 1,
+          "InputSHA256": "53950a172ffa33533dd476f40d594932322e1a4d88e9df5da32cf11cf42171f4",
+          "OutputSHA256": "40731b429dac9f7c3be1af82a8e0cf577bd66ce30249c27b5daa9ba1db5de53c"
+        },
+        "rename:_winUnicodeToUtf8": {
+          "Count": 1,
+          "InputSHA256": "256754a660e143c9faa1e20363a4768507493e787580138f8089a4a4f98d7019",
+          "OutputSHA256": "6564c97d3d6bfd3a4308534926bbbbf149fc2e9bcaffefb03c87beade16989e2"
+        }
+      },
+      "_winOpen": {
+        "Fh-invalid-keep-bound-drop": {
+          "Count": 2,
+          "InputSHA256": "71fc098a4dc8e3e48a4c257bccd23825ee574974528d57cd0d4847b213c9344a",
+          "OutputSHA256": "8c17cd0b4957274aa03b8adce7fdeebc15b2c3b7e36de980d8df474d6ad37491"
+        },
+        "FhMap": {
+          "Count": 1,
+          "InputSHA256": "51f342b776411644968b78e3da217bf29126f31f3cda0ece51f6820c6f517a90",
+          "OutputSHA256": "51f342b776411644968b78e3da217bf29126f31f3cda0ece51f6820c6f517a90"
+        },
+        "FlastErrno": {
+          "Count": 1,
+          "InputSHA256": "12661d100fecfc87514af0b34ef58e557d04fe90e7abb1d3444a44aa49fb569e",
+          "OutputSHA256": "12661d100fecfc87514af0b34ef58e557d04fe90e7abb1d3444a44aa49fb569e"
+        },
+        "FmmapSize": {
+          "Count": 1,
+          "InputSHA256": "fd2385d3334f8cfd792a557b3592e3f81900323d59a3fc935f574b5b89c2277a",
+          "OutputSHA256": "fd2385d3334f8cfd792a557b3592e3f81900323d59a3fc935f574b5b89c2277a"
+        },
+        "FpMapRegion": {
+          "Count": 1,
+          "InputSHA256": "0b8081ff69d33a125be8dc3e7a43b45f2d4da3282ee4c7e0c3f71b2f560dff13",
+          "OutputSHA256": "0b8081ff69d33a125be8dc3e7a43b45f2d4da3282ee4c7e0c3f71b2f560dff13"
+        },
+        "FpMethods-remove": {
+          "Count": 1,
+          "InputSHA256": "31ad5e120935e320b179dbdcb75cbc551902d8e488cc6f2cb361c4778870c1f2",
+          "OutputSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "FpVfs": {
+          "Count": 1,
+          "InputSHA256": "6769ef1d027cf806fe7c765fa7cfee25e710a5448235b39a4f63a154410894d2",
+          "OutputSHA256": "6769ef1d027cf806fe7c765fa7cfee25e710a5448235b39a4f63a154410894d2"
+        },
+        "FzPath": {
+          "Count": 1,
+          "InputSHA256": "2b4cdc648658ac129a0ea2c7c0a6a474fbaa3f748bf4ac971594bf4f774e5fdf",
+          "OutputSHA256": "2b4cdc648658ac129a0ea2c7c0a6a474fbaa3f748bf4ac971594bf4f774e5fdf"
+        },
+        "PSOW-remove": {
+          "Count": 1,
+          "InputSHA256": "ee003e8b756dbcb9103b0d8ffb222a0eba2042021e27e7a34bc22c203ca6d67d",
+          "OutputSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "complete-stock-open-to-init-only": {
+          "Count": 1,
+          "InputSHA256": "066772f8b7d7afb5dc7a984fdfaac7cc95bf1319a4edf8724c01249e2ef12d73",
+          "OutputSHA256": "d75194b124686588d12397b7ccb4fbe12c46b05dbd01f2aea2eaefacd98a4489"
+        },
+        "memset": {
+          "Count": 1,
+          "InputSHA256": "824f6d08a0121c3cda1e39697e0f7101fd405b57040f0450947b5e16f1f61905",
+          "OutputSHA256": "824f6d08a0121c3cda1e39697e0f7101fd405b57040f0450947b5e16f1f61905"
+        },
+        "mmap-disable": {
+          "Count": 1,
+          "InputSHA256": "d6a4c28a9347bc9d931360b16d2d21eb5d5819e6d5d789c321099b543cfde9d9",
+          "OutputSHA256": "6b9a656405b6bd9532f7261b98681a4a93466c4b41856262d84f18a19ab9b51d"
+        },
+        "readonly": {
+          "Count": 1,
+          "InputSHA256": "54b23fea1d30911c5e036af1fc1c66a677ecd6e48695de6835220b0329942aed",
+          "OutputSHA256": "54b23fea1d30911c5e036af1fc1c66a677ecd6e48695de6835220b0329942aed"
+        }
+      },
+      "_winRead": {
+        "rename:_winLogErrorAtLine": {
+          "Count": 1,
+          "InputSHA256": "aaf8f07beabde0fc97c0556b9c4ab703ab62318787bcb84b9e1f02b8d2553370",
+          "OutputSHA256": "c9012f59272dcdec2043e342a2510c15903b2f5789caea9fedb151f774b187c6"
+        },
+        "rename:_winLogIoerr": {
+          "Count": 1,
+          "InputSHA256": "bbb046a493776c7bf85424497b442e93e9217252d3e503373e316e67901e6f29",
+          "OutputSHA256": "0735a095655572934cca4b27d8d116dbd8fe5a312cf84b94f2d64ee6a868d00c"
+        },
+        "rename:_winRead": {
+          "Count": 1,
+          "InputSHA256": "e6aa266dc7424731f6380aaa6af8fc70760e08fa50b8fda67440b7e826d706fb",
+          "OutputSHA256": "59063e4b0630f7e5ef3f903fa3644d9927f233eefce3f456d848e1e4f392e0c4"
+        },
+        "rename:_winRetryIoerr": {
+          "Count": 1,
+          "InputSHA256": "39c676ad2a860733c526be2635beaf4d326c8a26b062e5280e1292f13ae8deec",
+          "OutputSHA256": "52f66c0ccd9f4266feeaaf01a8f82e8b23c3141b741d8c79a99bd97159f86a5a"
+        },
+        "syscall:26": {
+          "Count": 1,
+          "InputSHA256": "1c0f8b105e03e33350b734ce42ede1e2525ef7fc4b4151cce98bb23303aa2a7a",
+          "OutputSHA256": "fc7bf366891174f980a61cbb8e74790e4242dbec6a8fa457d65a98a78b947377"
+        },
+        "syscall:52": {
+          "Count": 1,
+          "InputSHA256": "c655e341178ac69556c419d6d838afb662fc8a0d7479033014e62c193becd5c9",
+          "OutputSHA256": "b64aaeac330d8b05529a5e6a2ac879628d9b4b5d0c720cf3b737053d6d639723"
+        }
+      },
+      "_winRetryIoerr": {
+        "private-config:_winIoerrRetry": {
+          "Count": 1,
+          "InputSHA256": "1d70f2f0768244c6105e34f6fdb8c3a65c80b0155a0cc0c3374aa26a9fcd5392",
+          "OutputSHA256": "4643111ecc80497de8606c632a52212010b1a9f68227cc83c952e4bab410c6dd"
+        },
+        "private-config:_winIoerrRetryDelay": {
+          "Count": 1,
+          "InputSHA256": "f616d792da73e65f951d0a18e2d0a1cd144d4189602e69b7bed65a43c984940c",
+          "OutputSHA256": "638ef76e551a1785e85b27f37944d150cff6355785204b1d35a22a2ac67de7f1"
+        },
+        "rename:_winRetryIoerr": {
+          "Count": 1,
+          "InputSHA256": "39c676ad2a860733c526be2635beaf4d326c8a26b062e5280e1292f13ae8deec",
+          "OutputSHA256": "52f66c0ccd9f4266feeaaf01a8f82e8b23c3141b741d8c79a99bd97159f86a5a"
+        },
+        "sleep:55": {
+          "Count": 1,
+          "InputSHA256": "18278c1c029ea4103e046e43dea93f369077f8cf40bb5c7cd645dbcf0247ebd9",
+          "OutputSHA256": "05d5529ca8012398b589f858a62842045d7a24094772514eb32d6b865ae8c9ec"
+        },
+        "syscall:26": {
+          "Count": 1,
+          "InputSHA256": "1c0f8b105e03e33350b734ce42ede1e2525ef7fc4b4151cce98bb23303aa2a7a",
+          "OutputSHA256": "fc7bf366891174f980a61cbb8e74790e4242dbec6a8fa457d65a98a78b947377"
+        }
+      },
+      "_winUnicodeToUtf8": {
+        "rename:_winUnicodeToUtf8": {
+          "Count": 1,
+          "InputSHA256": "256754a660e143c9faa1e20363a4768507493e787580138f8089a4a4f98d7019",
+          "OutputSHA256": "6564c97d3d6bfd3a4308534926bbbbf149fc2e9bcaffefb03c87beade16989e2"
+        },
+        "syscall:60": {
+          "Count": 2,
+          "InputSHA256": "a18bf47cb6683070ef8d075c6487b2b90788511aee3336c84c4836213810c650",
+          "OutputSHA256": "7e6e2e6c1dd494d156df277464bfa4b3ce78606af536e0c173d946d1f0f96c5a"
+        }
+      },
+      "_winUnlock": {
+        "rename:_winGetReadLock": {
+          "Count": 1,
+          "InputSHA256": "28f8c7a84ff6f90611100ef451a6c35f4ceabe4b68f0e48e99ecc27dcb39dadf",
+          "OutputSHA256": "ea9218e343f1f7fb8d646d9989afa541d751e3bfba4c0436ebd06e8a92764e65"
+        },
+        "rename:_winLogErrorAtLine": {
+          "Count": 1,
+          "InputSHA256": "aaf8f07beabde0fc97c0556b9c4ab703ab62318787bcb84b9e1f02b8d2553370",
+          "OutputSHA256": "c9012f59272dcdec2043e342a2510c15903b2f5789caea9fedb151f774b187c6"
+        },
+        "rename:_winUnlock": {
+          "Count": 1,
+          "InputSHA256": "9974cbf7d44b6d8e141438b502a078a73b05e5c63a9dfe3497f9008502c7fa5f",
+          "OutputSHA256": "31cfc77fa3142c36d1001e108f8afb99e2c47643aa32f6a10ec27013467099d9"
+        },
+        "rename:_winUnlockFile": {
+          "Count": 3,
+          "InputSHA256": "64aea4c44737cf903a25d7de8f239704a6f4028b5515f50e2a72351fcbc164df",
+          "OutputSHA256": "175b55dec60967af4513899e991084e529331e3cb3d9b3e3c879ba7301450d27"
+        },
+        "rename:_winUnlockReadLock": {
+          "Count": 1,
+          "InputSHA256": "2baae8c9f25f76ee618740f98e07ecea3de2eb7b0f583fd9df6d5a706f3efd5f",
+          "OutputSHA256": "df71b5ee300c53e91564edfd1a92d4036c90d2451043544551b53f4b4094dc53"
+        },
+        "syscall:26": {
+          "Count": 1,
+          "InputSHA256": "1c0f8b105e03e33350b734ce42ede1e2525ef7fc4b4151cce98bb23303aa2a7a",
+          "OutputSHA256": "fc7bf366891174f980a61cbb8e74790e4242dbec6a8fa457d65a98a78b947377"
+        }
+      },
+      "_winUnlockFile": {
+        "rename:_winUnlockFile": {
+          "Count": 1,
+          "InputSHA256": "659d708a17eba9c64ca5fee5abc9f5ecc87fca81ef76291716d5d992ef4a54e7",
+          "OutputSHA256": "cd6bc810e3cf1d3f30d1be5a51a794478fc31d76d0245f4a977ae678c8232576"
+        },
+        "syscall:57": {
+          "Count": 1,
+          "InputSHA256": "0817be4a23c184ae258ab841d8d659eeba7a2d3465d0afb39cb8b47b50d0049e",
+          "OutputSHA256": "f2755b80c8fd2b42a9fa39289edebaf505f82539703525b1ad2d4bdf9c3be4b9"
+        },
+        "syscall:58": {
+          "Count": 1,
+          "InputSHA256": "db1bf583dc5d3295b1b82d3cd05d1355cb42c1c5ebe8225f4948292d74054712",
+          "OutputSHA256": "1efa54ceafcda356b786389599c71774e9e719ff60835728d4e444035092f54a"
+        }
+      },
+      "_winUnlockReadLock": {
+        "rename:_winLogErrorAtLine": {
+          "Count": 1,
+          "InputSHA256": "aaf8f07beabde0fc97c0556b9c4ab703ab62318787bcb84b9e1f02b8d2553370",
+          "OutputSHA256": "c9012f59272dcdec2043e342a2510c15903b2f5789caea9fedb151f774b187c6"
+        },
+        "rename:_winUnlockFile": {
+          "Count": 2,
+          "InputSHA256": "c3940dcaac248a25bb167b08086f1ffc27b1fa1234823cd52509e666cab8112c",
+          "OutputSHA256": "dfd7bdf03434208229dc286f31c96f42b1af922e6777b8e1b03cb5d744126d0e"
+        },
+        "rename:_winUnlockReadLock": {
+          "Count": 1,
+          "InputSHA256": "2baae8c9f25f76ee618740f98e07ecea3de2eb7b0f583fd9df6d5a706f3efd5f",
+          "OutputSHA256": "df71b5ee300c53e91564edfd1a92d4036c90d2451043544551b53f4b4094dc53"
+        },
+        "syscall:26": {
+          "Count": 1,
+          "InputSHA256": "1c0f8b105e03e33350b734ce42ede1e2525ef7fc4b4151cce98bb23303aa2a7a",
+          "OutputSHA256": "fc7bf366891174f980a61cbb8e74790e4242dbec6a8fa457d65a98a78b947377"
+        }
+      }
+    },
+    "Calls": {
+      "(*(*func(*libc.TLS) TBOOL)(unsafe.Pointer(\u0026struct{ uintptr }{__ccgo_fp(libc.XAreFileApisANSI)})))": 1,
+      "(*(*func(*libc.TLS) TDWORD)(unsafe.Pointer(\u0026struct{ uintptr }{__ccgo_fp(libc.XGetLastError)})))": 10,
+      "(*(*func(*libc.TLS, TDWORD, TLPCVOID, TDWORD, TDWORD, TLPSTR, TDWORD, uintptr) TDWORD)(unsafe.Pointer(\u0026struct{ uintptr }{__ccgo_fp(libc.XFormatMessageA)})))": 1,
+      "(*(*func(*libc.TLS, TDWORD, TLPCVOID, TDWORD, TDWORD, TLPWSTR, TDWORD, uintptr) TDWORD)(unsafe.Pointer(\u0026struct{ uintptr }{__ccgo_fp(libc.XFormatMessageW)})))": 1,
+      "(*(*func(*libc.TLS, THANDLE, TDWORD, TDWORD, TDWORD, TDWORD) TBOOL)(unsafe.Pointer(\u0026struct{ uintptr }{__ccgo_fp(libc.XLockFile)})))": 1,
+      "(*(*func(*libc.TLS, THANDLE, TDWORD, TDWORD, TDWORD, TDWORD) TBOOL)(unsafe.Pointer(\u0026struct{ uintptr }{__ccgo_fp(libc.XUnlockFile)})))": 1,
+      "(*(*func(*libc.TLS, THANDLE, TDWORD, TDWORD, TDWORD, TDWORD, TLPOVERLAPPED) TBOOL)(unsafe.Pointer(\u0026struct{ uintptr }{__ccgo_fp(libc.XLockFileEx)})))": 1,
+      "(*(*func(*libc.TLS, THANDLE, TDWORD, TDWORD, TDWORD, TLPOVERLAPPED) TBOOL)(unsafe.Pointer(\u0026struct{ uintptr }{__ccgo_fp(libc.XUnlockFileEx)})))": 1,
+      "(*(*func(*libc.TLS, THANDLE, TLPDWORD) TDWORD)(unsafe.Pointer(\u0026struct{ uintptr }{__ccgo_fp(libc.XGetFileSize)})))": 1,
+      "(*(*func(*libc.TLS, THANDLE, TLPVOID, TDWORD, TLPDWORD, TLPOVERLAPPED) TBOOL)(unsafe.Pointer(\u0026struct{ uintptr }{__ccgo_fp(libc.XReadFile)})))": 1,
+      "(*(*func(*libc.TLS, THLOCAL) THLOCAL)(unsafe.Pointer(\u0026struct{ uintptr }{__ccgo_fp(libc.XLocalFree)})))": 2,
+      "(*(*func(*libc.TLS, TUINT, TDWORD, TLPCSTR, int32, TLPWSTR, int32) int32)(unsafe.Pointer(\u0026struct{ uintptr }{__ccgo_fp(libc.XMultiByteToWideChar)})))": 2,
+      "(*(*func(*libc.TLS, TUINT, TDWORD, TLPCWSTR, int32, TLPSTR, int32, TLPCSTR, TLPBOOL) int32)(unsafe.Pointer(\u0026struct{ uintptr }{__ccgo_fp(libc.XWideCharToMultiByte)})))": 2,
+      "(**TDWORD)": 7,
+      "(**THANDLE)": 4,
+      "(**TLPWSTR)": 3,
+      "(**TOVERLAPPED)": 6,
+      "(**Tsqlite3_int64)": 1,
+      "(**[500]int8)": 5,
+      "(**int32)": 8,
+      "(**uintptr)": 3,
+      "(*Tu8)": 2,
+      "(*TwinFile)": 39,
+      "(*func(*libc.TLS) TBOOL)": 1,
+      "(*func(*libc.TLS) TDWORD)": 10,
+      "(*func(*libc.TLS, TDWORD, TLPCVOID, TDWORD, TDWORD, TLPSTR, TDWORD, uintptr) TDWORD)": 1,
+      "(*func(*libc.TLS, TDWORD, TLPCVOID, TDWORD, TDWORD, TLPWSTR, TDWORD, uintptr) TDWORD)": 1,
+      "(*func(*libc.TLS, THANDLE, TDWORD, TDWORD, TDWORD, TDWORD) TBOOL)": 2,
+      "(*func(*libc.TLS, THANDLE, TDWORD, TDWORD, TDWORD, TDWORD, TLPOVERLAPPED) TBOOL)": 1,
+      "(*func(*libc.TLS, THANDLE, TDWORD, TDWORD, TDWORD, TLPOVERLAPPED) TBOOL)": 1,
+      "(*func(*libc.TLS, THANDLE, TLPDWORD) TDWORD)": 1,
+      "(*func(*libc.TLS, THANDLE, TLPVOID, TDWORD, TLPDWORD, TLPOVERLAPPED) TBOOL)": 1,
+      "(*func(*libc.TLS, THLOCAL) THLOCAL)": 2,
+      "(*func(*libc.TLS, TUINT, TDWORD, TLPCSTR, int32, TLPWSTR, int32) int32)": 2,
+      "(*func(*libc.TLS, TUINT, TDWORD, TLPCWSTR, int32, TLPSTR, int32, TLPCSTR, TLPBOOL) int32)": 2,
+      "(*int32)": 2,
+      "Tu8": 1,
+      "Xsqlite3_free": 4,
+      "Xsqlite3_log": 2,
+      "Xsqlite3_randomness": 1,
+      "Xsqlite3_snprintf": 2,
+      "__ccgo_fp": 25,
+      "__ccgo_up": 37,
+      "_paWinGetLastErrorMsg": 1,
+      "_paWinGetReadLock": 3,
+      "_paWinLockFile": 6,
+      "_paWinLogErrorAtLine": 4,
+      "_paWinLogIoerr": 1,
+      "_paWinMbcsToUnicode": 1,
+      "_paWinMbcsToUtf8": 1,
+      "_paWinRetryIoerr": 1,
+      "_paWinUnicodeToUtf8": 2,
+      "_paWinUnlockFile": 7,
+      "_paWinUnlockReadLock": 2,
+      "_sqlite3BeginBenignMalloc": 2,
+      "_sqlite3EndBenignMalloc": 2,
+      "_sqlite3MallocZero": 2,
+      "int16": 1,
+      "int32": 73,
+      "int64": 5,
+      "libc.BoolInt32": 1,
+      "libc.Int32FromInt32": 50,
+      "libc.Int64FromInt32": 1,
+      "libc.Int64FromUint32": 1,
+      "libc.Uint32FromUint32": 1,
+      "libc.UintptrFromInt32": 6,
+      "libc.VaList": 4,
+      "libc.XSleep": 2,
+      "libc.Xmemcpy": 2,
+      "libc.Xmemset": 5,
+      "tls.Alloc": 8,
+      "tls.Free": 8,
+      "uint32": 99,
+      "uint64": 10,
+      "uint8": 2,
+      "uintptr": 25,
+      "unsafe.Pointer": 68,
+      "unsafe.Sizeof": 1
+    },
+    "ExternalIdentifiers": {
+      "Alloc": 8,
+      "BoolInt32": 1,
+      "CP_ACP": 1,
+      "CP_OEMCP": 1,
+      "CP_UTF8": 2,
+      "EXCLUSIVE_LOCK": 6,
+      "FORMAT_MESSAGE_ALLOCATE_BUFFER": 2,
+      "FORMAT_MESSAGE_FROM_SYSTEM": 2,
+      "FORMAT_MESSAGE_IGNORE_INSERTS": 2,
+      "FOffset": 3,
+      "FOffsetHigh": 3,
+      "F__ccgo0_0": 6,
+      "F__ccgo2_16": 6,
+      "FctrlFlags": 1,
+      "Fh": 3,
+      "FhMap": 1,
+      "FlastErrno": 10,
+      "Flocktype": 7,
+      "FmmapSize": 4,
+      "FmmapSizeMax": 1,
+      "FpMapRegion": 3,
+      "FpVfs": 1,
+      "Free": 8,
+      "FsharedLockByte": 3,
+      "FzPath": 5,
+      "Int32FromInt32": 50,
+      "Int64FromInt32": 1,
+      "Int64FromUint32": 1,
+      "LOCKFILE_EXCLUSIVE_LOCK": 4,
+      "LOCKFILE_FAIL_IMMEDIATELY": 7,
+      "NO_LOCK": 1,
+      "PENDING_LOCK": 2,
+      "Pointer": 68,
+      "RESERVED_LOCK": 6,
+      "SHARED_LOCK": 6,
+      "SHARED_SIZE": 5,
+      "SQLITE_BUSY": 1,
+      "SQLITE_CANTOPEN": 1,
+      "SQLITE_IOERR": 7,
+      "SQLITE_NOTICE": 1,
+      "SQLITE_OK": 9,
+      "SQLITE_OPEN_MAIN_DB": 1,
+      "SQLITE_OPEN_READONLY": 3,
+      "SQLITE_WIN32_IOERR_RETRY": 1,
+      "SQLITE_WIN32_IOERR_RETRY_DELAY": 1,
+      "Sizeof": 1,
+      "TBOOL": 8,
+      "TDWORD": 68,
+      "THANDLE": 10,
+      "THLOCAL": 4,
+      "TLPBOOL": 2,
+      "TLPCSTR": 4,
+      "TLPCVOID": 2,
+      "TLPCWSTR": 3,
+      "TLPDWORD": 2,
+      "TLPHANDLE": 2,
+      "TLPOVERLAPPED": 3,
+      "TLPSTR": 3,
+      "TLPVOID": 1,
+      "TLPWSTR": 10,
+      "TLS": 42,
+      "TOVERLAPPED": 9,
+      "TUINT": 4,
+      "Tsqlite3_int64": 2,
+      "Tu8": 3,
+      "TwinFile": 40,
+      "Uint32FromUint32": 1,
+      "UintptrFromInt32": 6,
+      "VaList": 4,
+      "WINFILE_RDONLY": 2,
+      "XAreFileApisANSI": 1,
+      "XFormatMessageA": 1,
+      "XFormatMessageW": 1,
+      "XGetFileSize": 1,
+      "XGetLastError": 10,
+      "XLocalFree": 2,
+      "XLockFile": 1,
+      "XLockFileEx": 1,
+      "XMultiByteToWideChar": 2,
+      "XReadFile": 1,
+      "XSleep": 2,
+      "XUnlockFile": 1,
+      "XUnlockFileEx": 1,
+      "XWideCharToMultiByte": 2,
+      "Xmemcpy": 2,
+      "Xmemset": 5,
+      "Xsqlite3_free": 4,
+      "Xsqlite3_log": 2,
+      "Xsqlite3_randomness": 1,
+      "Xsqlite3_snprintf": 2,
+      "_": 40,
+      "__ccgo_fp": 25,
+      "__ccgo_ts": 9,
+      "__ccgo_up": 37,
+      "_sqlite3BeginBenignMalloc": 2,
+      "_sqlite3EndBenignMalloc": 2,
+      "_sqlite3MallocZero": 2,
+      "_sqlite3PendingByte": 13,
+      "bool": 2,
+      "int16": 1,
+      "int32": 130,
+      "int64": 5,
+      "int8": 6,
+      "libc": 140,
+      "sqlite3": 1,
+      "uint32": 99,
+      "uint64": 10,
+      "uint8": 2,
+      "uintptr": 86,
+      "unsafe": 69
+    }
+  }
+}

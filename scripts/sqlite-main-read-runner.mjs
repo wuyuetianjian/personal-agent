@@ -17,9 +17,11 @@ export const PIN = Object.freeze({
 export const PATCH_RELATIVE = 'scripts/sqlite-persistent-vfs/main_read_bridge_windows.go.txt';
 const PATCH_NAME = 'lib/nativeprobe_sqlite_main_read_windows.go';
 const BASE_PATCH_NAME = 'lib/nativeprobe_sqlite_persistent_windows.go';
+const LINKED_MANIFEST = 'scripts/sqlite-persistent-vfs/generator/linked-manifest.json';
+const LINKED_NAME = 'lib/nativeprobe_sqlite_main_generated_windows.go';
 const DEFAULT_REPO = fileURLToPath(new URL('../', import.meta.url));
 
-export const PATCH_SHA256 = 'c7229b836020b141ea02d16b7899dc0595adf0ca314ef949eb05d944da0bd8a1';
+export const PATCH_SHA256 = '1dfa21db0e8da93b2b8bff9f52c9766f38c1d776596a504a685cbfcb8b7ee3c7';
 export function validateInputs(mod, sum, patch, basePatch) {
   validateBaseInputs(mod,sum,basePatch);
   if (createHash('sha256').update(patch).digest('hex') !== PATCH_SHA256) throw new Error('private patch SHA mismatch');
@@ -185,8 +187,9 @@ function executeGo(args, options) {
 export async function runExperiment({platform=process.platform,repo=DEFAULT_REPO,tempRoot=os.tmpdir(),command=executeGo,log=console.log}={}) {
   if(platform!=='win32') throw new Error('Windows-only native SQLite experiment; refusing rather than skipping');
   repo=await realpath(repo);
-  const [mod,sum,patch,basePatch]=await Promise.all(['go.mod','go.sum',PATCH_RELATIVE,BASE_PATCH_RELATIVE].map(name=>readFile(path.join(repo,name),'utf8')));
+  const [mod,sum,patch,basePatch,manifestText]=await Promise.all(['go.mod','go.sum',PATCH_RELATIVE,BASE_PATCH_RELATIVE,LINKED_MANIFEST].map(name=>readFile(path.join(repo,name),'utf8')));
   validateInputs(mod,sum,patch,basePatch);
+  const linkedManifest=JSON.parse(manifestText);
   log('Experimental source: '+PIN.module+' '+PIN.version+' sum='+PIN.sum+' goModSum='+PIN.goModSum);
   log('Experimental patch SHA256='+createHash('sha256').update(patch).digest('hex'));
   const options={cwd:repo,env:{...process.env,GOWORK:'off',GOFLAGS:'',GOTOOLCHAIN:'local',GOOS:'windows'}};
@@ -203,7 +206,8 @@ export async function runExperiment({platform=process.platform,repo=DEFAULT_REPO
   const temporary=await mkdtemp(path.join(temporaryParent,'native-sqlite-main-read-'));
   const modfile=path.join(temporary,'experiment.mod'), sumfile=path.join(temporary,'experiment.sum');
   const replacement=path.join(temporary,'sqlite');
-  let replacementOwned=false, failure;
+  const generated=path.join(temporary,'main-generated.go.txt');
+  let replacementOwned=false, generatedOwned=false, failure;
   try {
     if(within(temporary,provisionalCache)) throw new Error('temporary directory overlaps proposed cache');
     await writeFile(modfile,mod); await writeFile(sumfile,sum);
@@ -228,6 +232,16 @@ export async function runExperiment({platform=process.platform,repo=DEFAULT_REPO
     await verifySources(replacement);
     // Re-verify the untouched cache after copying, before installing the patch.
     await command(['mod','verify','-modfile='+modfile],options);
+    await command(['run','-mod=readonly','./scripts/sqlite-persistent-vfs/generator','-linked',
+      '-source',replacement,'-cache-root',cache,'-manifest',path.join(repo,LINKED_MANIFEST),'-out',generated],options);
+    const generatedInfo=await lstat(generated);
+    if(!generatedInfo.isFile()||generatedInfo.isSymbolicLink()) throw new Error('generated output is not a regular owned file');
+    generatedOwned=true;
+    const linked=await readFile(generated);
+    validateGenerated(linked,linkedManifest);
+    await verifySources(replacement);
+    log('Private linked output SHA256='+linkedManifest.OutputSHA256);
+    await writeFile(path.join(replacement,LINKED_NAME),linked,{flag:'wx'});
     await writeFile(path.join(replacement,BASE_PATCH_NAME),basePatch,{flag:'wx'});
     await writeFile(path.join(replacement,PATCH_NAME),patch,{flag:'wx'});
     // Slash-normalized quoted Go string works for spaces and Windows drive paths.
@@ -245,7 +259,7 @@ export async function runExperiment({platform=process.platform,repo=DEFAULT_REPO
     // created unexpectedly inside this directory must never be recursively
     // deleted as though it were our module copy.
     const cleanupErrors=[];
-    for(const owned of [modfile,sumfile,...(replacementOwned?[replacement]:[])]) {
+    for(const owned of [modfile,sumfile,...(generatedOwned?[generated]:[]),...(replacementOwned?[replacement]:[])]) {
       try { await rm(owned,{recursive:owned===replacement,force:true,maxRetries:0}); }
       catch(error) { cleanupErrors.push(error); }
     }
@@ -258,4 +272,13 @@ export async function runExperiment({platform=process.platform,repo=DEFAULT_REPO
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   if(process.argv.length!==2) { console.error('This runner accepts no custom arguments.'); process.exitCode=1; }
   else runExperiment().catch(error=>{console.error(error.stack??String(error));process.exitCode=1;});
+}
+
+export function validateGenerated(bytes, manifest) {
+  if(!manifest || manifest.Version!=='modernc.org/sqlite@v1.58.0-linked-main-v1' ||
+     typeof manifest.OutputSHA256!=='string' || !/^[a-f0-9]{64}$/.test(manifest.OutputSHA256)) throw new Error('unreviewed linked manifest');
+  if(createHash('sha256').update(bytes).digest('hex')!==manifest.OutputSHA256) throw new Error('linked output SHA mismatch');
+  const source=bytes.toString('utf8');
+  if(!/^\/\/go:build windows && \(amd64 \|\| arm64\) && nativeprobe_sqlite_persistent && nativeprobe_sqlite_main_read\n\n/.test(source) ||
+      (source.match(/^\/\/go:build /gm)??[]).length!==1 || !/^package sqlite3$/m.test(source)) throw new Error('linked output build/package boundary mismatch');
 }

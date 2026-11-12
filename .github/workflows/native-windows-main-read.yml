@@ -59,11 +59,11 @@ jobs:
           JS
       - name: Runner contract tests
         run: node --test scripts/sqlite-main-read-runner.test.mjs
-      - name: Real private main method positive contract (intentionally RED)
+      - name: Real private main method positive contract (experimental candidate)
         run: |
           set -o pipefail
           node scripts/sqlite-main-read-runner.mjs | tee main-read-native.json
-      - name: Preserve raw evidence even on expected RED
+      - name: Preserve raw native evidence on every outcome
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

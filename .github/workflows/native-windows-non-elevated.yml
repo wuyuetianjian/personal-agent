@@ -1,0 +1,99 @@
+name: Windows filtered-token qualification (experimental)
+on:
+  push:
+    branches: [test/rebuild-20261110]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-windows-filtered-token-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  qualification:
+    if: ${{ github.ref == 'refs/heads/test/rebuild-20261110' }}
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Validate admission policy and exact event gate
+        shell: bash
+        run: |
+          set -e
+          git rev-parse HEAD
+          go version
+          go test -mod=readonly -count=3 ./scripts/windows-non-elevated-launcher/tokencheck
+          node --test scripts/windows-non-elevated-gate.test.mjs
+          go list -mod=readonly -deps ./cmd/... > token-production-deps.txt
+          go list -mod=readonly -tags=nativeprobe_sqlite_identity,nativeprobe_sqlite_lease,nativeprobe_sqlite_permit,nativeprobe_non_elevated_guard -deps ./cmd/... > token-tagged-deps.txt
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          for (const p of ['token-production-deps.txt','token-tagged-deps.txt']) {
+            const lines=fs.readFileSync(p,'utf8').trim().split(/\r?\n/);
+            assert(lines.length>1);
+            assert(!lines.some(x=>x.startsWith('agent/internal/nativefs/')||x.startsWith('agent/scripts/windows-non-elevated-launcher')));
+          }
+          JS
+      - name: Build trusted guarded executable in existing profile TEMP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = Join-Path $env:USERPROFILE 'AppData\Local\Temp'
+          if (-not (Test-Path -LiteralPath $base -PathType Container)) { throw 'Profile TEMP unavailable; no ACL or account changes permitted' }
+          $stage = Join-Path $base ('personal-agent-filtered-' + [guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          go build -mod=readonly -o (Join-Path $stage 'launcher.exe') ./scripts/windows-non-elevated-launcher
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go test -c -mod=readonly -tags=nativeprobe_sqlite_identity,nativeprobe_sqlite_lease,nativeprobe_sqlite_permit,nativeprobe_non_elevated_guard -o (Join-Path $stage 'probe.test.exe') ./internal/nativefs/windowsprobe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "FILTERED_STAGE_WIN=$stage" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Output 'No UAC, ACL, accounts, integrity labels or privilege grants changed. Existing TEMP access must suffice.'
+      - name: Run actual filtered child and preserve both exit statuses
+        id: native
+        shell: bash
+        run: |
+          set -eu
+          stage="$(cygpath -u "$FILTERED_STAGE_WIN")"
+          export TEMP="$FILTERED_STAGE_WIN"
+          export TMP="$TEMP"
+          set +e
+          "$stage/launcher.exe" -exe "$FILTERED_STAGE_WIN/probe.test.exe" -- -test.v=test2json -test.count=3 -test.timeout=5m '-test.run=^TestPersistent(Lease|Permit)' > filtered-native.raw 2> filtered-launch.stderr
+          launch_status=$?
+          go tool test2json -p agent/internal/nativefs/windowsprobe < filtered-native.raw > filtered-native.json
+          json_status=$?
+          set -e
+          printf 'launcher=%s test2json=%s\n' "$launch_status" "$json_status" | tee filtered-exits.txt
+          cat filtered-native.json
+          cat filtered-launch.stderr >&2
+          if [ "$launch_status" -ne 0 ] || [ "$json_status" -ne 0 ]; then exit 1; fi
+      - name: Require qualified actual child before all 22 native contracts
+        if: ${{ !cancelled() && steps.native.outcome != 'skipped' }}
+        shell: bash
+        run: node scripts/windows-non-elevated-gate.mjs filtered-native.json
+      - name: Preserve qualification or blocked evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: filtered-token-native
+          path: |
+            filtered-native.raw
+            filtered-native.json
+            filtered-launch.stderr
+            filtered-exits.txt
+          if-no-files-found: error
+      - name: Verify unchanged official modules
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          go mod verify
+          git diff --exit-code -- go.mod go.sum
