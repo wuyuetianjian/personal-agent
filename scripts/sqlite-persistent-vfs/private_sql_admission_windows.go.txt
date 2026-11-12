@@ -1,0 +1,117 @@
+//go:build windows && nativeprobe_sqlite_persistent && nativeprobe_sqlite_main_read && nativeprobe_sqlite_existing_wal && nativeprobe_sqlite_private_shm
+
+// Admission test scaffold only: SHM, recovery and production remain disabled.
+package sqlite3
+
+import (
+	"fmt"
+	"modernc.org/libc"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"unsafe"
+)
+
+type ExperimentalSQLAdmissionAuthority interface {
+	ExperimentalExistingWALAuthority
+	Observe(string, int32) (bool, error)
+}
+type ExperimentalSQLAdmissionEvidence struct{ MainURI, Access, WAL, SHM, Unimplemented, JournalRejected uint64 }
+type experimentalSQLAdmissionBinding struct {
+	disabled                                                  atomic.Bool
+	authority                                                 ExperimentalSQLAdmissionAuthority
+	canonical                                                 string
+	mainURI, access, wal, shm, unimplemented, journalRejected atomic.Uint64
+}
+
+var experimentalSQLAdmissionMu sync.Mutex
+var experimentalSQLAdmissionBindings = map[uintptr]*experimentalSQLAdmissionBinding{}
+
+func experimentalSQLAdmissionLookup(v uintptr) *experimentalSQLAdmissionBinding {
+	experimentalSQLAdmissionMu.Lock()
+	defer experimentalSQLAdmissionMu.Unlock()
+	b := experimentalSQLAdmissionBindings[v]
+	if b != nil && b.disabled.Load() {
+		return nil
+	}
+	return b
+}
+func ExperimentalSQLAdmissionRegisterRO(a ExperimentalSQLAdmissionAuthority, canonical string) (uintptr, string, error) {
+	if a == nil || canonical == "" {
+		return 0, "", fmt.Errorf("missing same-owner authority")
+	}
+	b := &experimentalSQLAdmissionBinding{authority: a, canonical: canonical}
+	var candidate uintptr
+	v, e := experimentalMainReadRegisterPrepared(a, canonical, __ccgo_fp(experimentalSQLAdmissionOpen), func(v uintptr) {
+		candidate = v
+		// This callback runs before the single VFS registration, not after publication.
+		p := (*Tsqlite3_vfs)(unsafe.Pointer(v))
+		p.FxAccess = __ccgo_fp(experimentalSQLAdmissionAccess)
+		p.FxFullPathname = __ccgo_fp(experimentalSQLAdmissionFullPath)
+		experimentalSQLAdmissionMu.Lock()
+		experimentalSQLAdmissionBindings[v] = b
+		experimentalSQLAdmissionMu.Unlock()
+	})
+	if e != nil {
+		b.disabled.Store(true)
+		if candidate != 0 {
+			tls := libc.NewTLS()
+			rc := Xsqlite3_vfs_unregister(tls, candidate)
+			tls.Close()
+			if rc != SQLITE_OK {
+				return 0, "", fmt.Errorf("registration failure %v; unregister %d", e, rc)
+			}
+		}
+		return 0, "", e
+	}
+	return v, libc.GoString((*Tsqlite3_vfs)(unsafe.Pointer(v)).FzName), nil
+}
+func ExperimentalSQLAdmissionCounters(v uintptr) ExperimentalSQLAdmissionEvidence {
+	b := experimentalSQLAdmissionLookup(v)
+	if b == nil {
+		return ExperimentalSQLAdmissionEvidence{}
+	}
+	return ExperimentalSQLAdmissionEvidence{b.mainURI.Load(), b.access.Load(), b.wal.Load(), b.shm.Load(), b.unimplemented.Load(), b.journalRejected.Load()}
+}
+func experimentalSQLAdmissionFullPath(tls *libc.TLS, v, name uintptr, n int32, out uintptr) int32 {
+	b := experimentalSQLAdmissionLookup(v)
+	if b == nil || name == 0 || out == 0 || n <= 0 {
+		return SQLITE_CANTOPEN
+	}
+	input := libc.GoString(name)
+	slash := strings.ReplaceAll(b.canonical, `\`, "/")
+	// Only exact spellings of this one known absolute fixture locator. No general
+	// path cleaning, URI decoding, dot traversal, case folding or disk resolution.
+	if input != b.canonical && input != slash && input != "/"+slash {
+		return SQLITE_CANTOPEN
+	}
+	if len(b.canonical) >= int(n) {
+		return SQLITE_CANTOPEN
+	}
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(out)), int(n)), append([]byte(b.canonical), 0))
+	return SQLITE_OK
+}
+func experimentalSQLAdmissionOpen(tls *libc.TLS, v, name, file uintptr, flags int32, out uintptr) int32 {
+	if out != 0 {
+		*(*int32)(unsafe.Pointer(out)) = 0
+	}
+	b := experimentalSQLAdmissionLookup(v)
+	if b == nil || name == 0 || file == 0 {
+		return SQLITE_CANTOPEN
+	}
+	if libc.GoString(name) == b.canonical && flags == SQLITE_OPEN_READONLY|SQLITE_OPEN_URI|SQLITE_OPEN_MAIN_DB {
+		b.mainURI.Add(1)
+		b.unimplemented.Add(1)
+	}
+	// At native RED this is the missing admission path, not a SHM implementation.
+	return SQLITE_CANTOPEN
+}
+func experimentalSQLAdmissionAccess(tls *libc.TLS, v, name uintptr, flags int32, out uintptr) int32 {
+	if out != 0 {
+		*(*int32)(unsafe.Pointer(out)) = 0
+	}
+	if b := experimentalSQLAdmissionLookup(v); b != nil {
+		b.access.Add(1)
+	}
+	return SQLITE_IOERR_ACCESS
+}
