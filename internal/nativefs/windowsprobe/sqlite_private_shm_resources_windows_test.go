@@ -776,7 +776,32 @@ func shmRetainedChild(t *testing.T) bool {
 		os.Exit(2)
 	case <-time.After(50 * time.Millisecond):
 	}
-	got, e := os.ReadFile(filepath.Join(f.dir, "store.db-shm"))
+	var got []byte
+	var e error
+	if kind == "exclusive-unlock" {
+		// The deliberately retained EX DMS lock rejects ReadFile through a newly
+		// opened FILE_OBJECT. Read all bytes through its still-owned exact handle;
+		// do not unlock it, borrow another grant, or weaken the content assertion.
+		if h.node == nil || h.node.h == 0 || h.node.h == windows.InvalidHandle || !h.node.exclusiveDMS {
+			fmt.Println("missing retained EX DMS handle")
+			os.Exit(2)
+		}
+		var position int64
+		position, e = windows.Seek(h.node.h, 0, 0)
+		if e != nil || position != 0 {
+			fmt.Println("retained owner seek failed", position, e)
+			os.Exit(2)
+		}
+		got = make([]byte, len(f.data))
+		var count uint32
+		e = windows.ReadFile(h.node.h, got, &count, nil)
+		if e != nil || int(count) != len(got) {
+			fmt.Println("retained owner full read failed", count, e)
+			os.Exit(2)
+		}
+	} else {
+		got, e = os.ReadFile(filepath.Join(f.dir, "store.db-shm"))
+	}
 	if e != nil || !bytes.Equal(got, f.data) {
 		fmt.Println("retained fixture mutated", e)
 		os.Exit(2)
