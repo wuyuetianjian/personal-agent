@@ -6,3 +6,4 @@ scripts/sqlite-persistent-vfs/generator/* text eol=lf
 scripts/sqlite-persistent-vfs/main_read_bridge_windows.go.txt text eol=lf
 scripts/sqlite-persistent-vfs/access_bridge_windows.go.txt text eol=lf
 scripts/sqlite-persistent-vfs/stock_wal_flags_windows.go.txt text eol=lf
+scripts/sqlite-persistent-vfs/existing_wal_bridge_windows.go.txt text eol=lf

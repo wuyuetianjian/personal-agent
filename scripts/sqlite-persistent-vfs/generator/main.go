@@ -236,6 +236,7 @@ func inventory(root string) (manifest, []byte, error) {
 func run(args []string) error {
 	f := flag.NewFlagSet("generator", flag.ContinueOnError)
 	linked := f.Bool("linked", false, "generate linked main-only helpers, no registration")
+	linkedWAL := f.Bool("linked-wal", false, "reserved WAL initializer mode; refuses pending native private-method RED")
 	source := f.String("source", "", "verified official module directory")
 	approved := f.String("manifest", "", "reviewed manifest JSON")
 	cacheRoot := f.String("cache-root", "", "actual GOMODCACHE from the verified runner")
@@ -246,6 +247,12 @@ func run(args []string) error {
 	}
 	if f.NArg() != 0 || *source == "" {
 		return errors.New("explicit source required; no positional arguments")
+	}
+	if *linked && *linkedWAL {
+		return errors.New("linked modes are mutually exclusive")
+	}
+	if *linkedWAL {
+		return errors.New("linked WAL generation requires verified private-method RED")
 	}
 	buildInventory := inventory
 	if *linked {

@@ -1,8 +1,22 @@
 # Sidecar provenance: executable counterexample plan
 
-Design only. No production changes, relaxed broker, new capability or native
-result is introduced here. Starting evidence: main methods and metadata xAccess
+Design and isolated diagnostic evidence. No production changes, relaxed broker
+or new capability is introduced here. Starting evidence: main methods and metadata xAccess
 have independent native GREEN; private WAL SQL and full external lifecycle do not.
+
+## Recorded native diagnostic (not security GREEN)
+
+At `eaff144`, run `43231058382` / job `131226158431`, the two diagnostic
+contracts each passed three times. Current broker pending/closed/protected
+refusals and benign neighbor reads held. Guarded native rename failed with the
+specific sharing violation and succeeded after guard release. The separate
+relaxed known-main-ID model returned a synthetic payload from a genuinely
+renamed, single-link, fresh external WAL; registering that same retired identity
+then blocked the bytes. This confirms the candidate-policy gap, NOT a flaw in
+the current fail-closed broker or production readiness.
+
+The implemented B fixture is the minimal known-main-ID model. The optional second
+stock generation/current-name-scan variant below is not yet implemented or proven.
 
 ## What this experiment must distinguish
 

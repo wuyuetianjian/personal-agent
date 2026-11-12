@@ -21,7 +21,7 @@ const LINKED_MANIFEST = 'scripts/sqlite-persistent-vfs/generator/linked-manifest
 const LINKED_NAME = 'lib/nativeprobe_sqlite_main_generated_windows.go';
 const DEFAULT_REPO = fileURLToPath(new URL('../', import.meta.url));
 
-export const PATCH_SHA256 = '1dfa21db0e8da93b2b8bff9f52c9766f38c1d776596a504a685cbfcb8b7ee3c7';
+export const PATCH_SHA256 = '9ea59948206490c0ef031d94954d80238e076f1ccd8443b02ca78a03cdf5ee47';
 export function validateInputs(mod, sum, patch, basePatch) {
   validateBaseInputs(mod,sum,basePatch);
   if (createHash('sha256').update(patch).digest('hex') !== PATCH_SHA256) throw new Error('private patch SHA mismatch');

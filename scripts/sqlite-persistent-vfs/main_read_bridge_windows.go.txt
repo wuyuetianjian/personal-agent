@@ -39,7 +39,12 @@ var experimentalMainReadSequence atomic.Uint64
 // Registrations and names remain process-lifetime. No unregister/free while
 // SQLite can retain pointers. This is a test interface, not a public DSN API.
 func ExperimentalMainReadRegister(a ExperimentalMainReadAuthority, canonical string) (uintptr, error) {
-	if a == nil || canonical == "" {
+	return experimentalMainReadRegisterPrepared(a, canonical, __ccgo_fp(experimentalMainReadOpen), nil)
+}
+
+// Factory prepares the complete binding and dispatch before the one VFS publish.
+func experimentalMainReadRegisterPrepared(a ExperimentalMainReadAuthority, canonical string, open uintptr, prepare func(uintptr)) (uintptr, error) {
+	if a == nil || canonical == "" || open == 0 {
 		return 0, fmt.Errorf("missing main authority/name")
 	}
 	tls := libc.NewTLS()
@@ -60,7 +65,7 @@ func ExperimentalMainReadRegister(a ExperimentalMainReadAuthority, canonical str
 	b.vfs.FpNext = 0
 	b.vfs.FpAppData = 0
 	b.vfs.FzName = name
-	b.vfs.FxOpen = __ccgo_fp(experimentalMainReadOpen)
+	b.vfs.FxOpen = open
 	b.vfs.FxFullPathname = __ccgo_fp(experimentalMainReadFullPath)
 	b.vfs.FxDelete = __ccgo_fp(persistentDelete)
 	b.vfs.FxAccess = __ccgo_fp(persistentAccess)
@@ -75,6 +80,9 @@ func ExperimentalMainReadRegister(a ExperimentalMainReadAuthority, canonical str
 	experimentalMainReadMu.Lock()
 	experimentalMainReadBindings[p] = b
 	experimentalMainReadMu.Unlock()
+	if prepare != nil {
+		prepare(p)
+	}
 	if rc := Xsqlite3_vfs_register(tls, p, 0); rc != SQLITE_OK {
 		return 0, fmt.Errorf("register %d", rc)
 	}
@@ -116,7 +124,15 @@ func (b *experimentalMainReadBinding) poison(e error) {
 	func() { defer func() { _ = recover() }(); b.authority.Revoke(e) }()
 }
 
+type experimentalFileRole uint8
+
+const (
+	experimentalRoleMain experimentalFileRole = iota + 1
+	experimentalRoleWAL
+)
+
 type experimentalMainReadFile struct {
+	role       experimentalFileRole
 	mu         sync.Mutex
 	binding    *experimentalMainReadBinding
 	generation uint64
@@ -200,13 +216,19 @@ func experimentalMainReadOpen(tls *libc.TLS, vfs, name, file uintptr, flags int3
 		rc = SQLITE_CANTOPEN
 		return
 	}
-	f := &experimentalMainReadFile{binding: b, generation: experimentalMainReadGeneration.Add(1), lease: lease}
+	experimentalMainReadPublish(file, b, lease, experimentalRoleMain, &experimentalMainReadMethods)
+	published = true
+	return SQLITE_OK
+}
+
+// The accepting initializer and authority acquisition must have completed before
+// publishing this role-tagged record and its method table. Caller owns failure cleanup.
+func experimentalMainReadPublish(file uintptr, b *experimentalMainReadBinding, lease ExperimentalMainReadLease, role experimentalFileRole, methods *Tsqlite3_io_methods) {
+	f := &experimentalMainReadFile{binding: b, generation: experimentalMainReadGeneration.Add(1), lease: lease, role: role}
 	experimentalMainReadMu.Lock()
 	experimentalMainReadFiles[file] = f
 	experimentalMainReadMu.Unlock()
-	(*Tsqlite3_file)(unsafe.Pointer(file)).FpMethods = uintptr(unsafe.Pointer(&experimentalMainReadMethods))
-	published = true
-	return SQLITE_OK
+	(*Tsqlite3_file)(unsafe.Pointer(file)).FpMethods = uintptr(unsafe.Pointer(methods))
 }
 func experimentalMainReadPanic(where string, p any) error {
 	if e, ok := p.(error); ok {
@@ -229,7 +251,10 @@ func experimentalMainReadLeaseClose(l ExperimentalMainReadLease) (e error) {
 
 // Serializes each real TwinFile's mutable lock state. No raw handle is stored
 // between callbacks and no registry lock remains held during host callbacks.
-func experimentalMainReadWith(file uintptr, fn func() int32) (rc int32) {
+func experimentalMainReadWith(file uintptr, fn func() int32) int32 {
+	return experimentalMainReadWithRole(file, 0, fn)
+}
+func experimentalMainReadWithRole(file uintptr, role experimentalFileRole, fn func() int32) (rc int32) {
 	rc = SQLITE_IOERR
 	f := experimentalMainReadLookup(file)
 	if f == nil {
@@ -237,7 +262,7 @@ func experimentalMainReadWith(file uintptr, fn func() int32) (rc int32) {
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if !experimentalMainReadCurrent(file, f) || f.closed || !f.binding.healthy() || !experimentalMainReadNoMapping(file) {
+	if !experimentalMainReadCurrent(file, f) || f.closed || !f.binding.healthy() || !experimentalMainReadNoMapping(file) || (f.role != experimentalRoleMain && f.role != experimentalRoleWAL) || (role != 0 && f.role != role) {
 		return
 	}
 	var fault error
@@ -327,20 +352,20 @@ func experimentalMainReadLock(tls *libc.TLS, file uintptr, kind int32) int32 {
 	if kind != SQLITE_LOCK_SHARED {
 		return SQLITE_READONLY
 	}
-	return experimentalMainReadWith(file, func() int32 { return _paWinLock(tls, file, kind) })
+	return experimentalMainReadWithRole(file, experimentalRoleMain, func() int32 { return _paWinLock(tls, file, kind) })
 }
 func experimentalMainReadUnlock(tls *libc.TLS, file uintptr, kind int32) int32 {
 	if kind != SQLITE_LOCK_NONE && kind != SQLITE_LOCK_SHARED {
 		return SQLITE_IOERR_UNLOCK
 	}
-	return experimentalMainReadWith(file, func() int32 { return _paWinUnlock(tls, file, kind) })
+	return experimentalMainReadWithRole(file, experimentalRoleMain, func() int32 { return _paWinUnlock(tls, file, kind) })
 }
 func experimentalMainReadReserved(tls *libc.TLS, file, out uintptr) int32 {
 	if out == 0 {
 		return SQLITE_IOERR_CHECKRESERVEDLOCK
 	}
 	*(*int32)(unsafe.Pointer(out)) = 0
-	return experimentalMainReadWith(file, func() int32 { return _paWinCheckReservedLock(tls, file, out) })
+	return experimentalMainReadWithRole(file, experimentalRoleMain, func() int32 { return _paWinCheckReservedLock(tls, file, out) })
 }
 func experimentalMainReadWrite(tls *libc.TLS, file, buf uintptr, n int32, off int64) int32 {
 	return SQLITE_READONLY
