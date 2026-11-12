@@ -1,6 +1,6 @@
 # Windows existing-object broker qualification
 
-Status: test-first, disconnected experiment. No production import or capability
+Status: implementation pending native qualification, disconnected experiment. No production import or capability
 change. `nativeprobe_sqlite_identity` is required. No SQLite connection uses it.
 
 ## Decision and boundary
@@ -61,3 +61,23 @@ fixture handles, permitting an error-after-close without a test-induced leak.
   terminal cleanup errors and exact disk-handle restoration.
 - Initial RED stub deliberately refuses construction. Its native failures only
   prove missing broker behavior; downstream assertions are not yet evidence.
+
+## Test-first evidence and implementation status
+
+The first run at `259125a` failed during fixture root acquisition because the
+runner temp path contained an 8.3 ancestor alias. That is not a feature RED.
+The fixture-only revision `7153513` reuses the established handle-derived long
+path helper without relaxing production exact-name checks. Its native run
+`43207232128` reached the refusal stub: all 24 required top-level/subtest nodes
+ran and failed three times at the missing broker or missing lexical refusal.
+
+The candidate implementation now owns lineage duplicates, retains the metadata
+handle until the separate read/write candidate passes exact identity/snapshot
+checks, and closes metadata successfully before registration. Existing-file
+opens use FILE_OPEN only. Read admission serializes with registration and final
+close and requires all three existing roles; broker-owned acquisition/final-close
+cleanup errors retain terminal refusal. The reused `Root.read` and its I/O guard
+still ignore some temporary-handle close errors; this stage does not strengthen
+that inherited cleanup contract or claim complete read-resource error reporting.
+This is pending exact-head Windows qualification, not a claim of native
+GREEN, complete private-storage isolation, WAL locks or standard-user support.

@@ -65,12 +65,12 @@ jobs:
           CGO_ENABLED: '1'
         run: |
           set -o pipefail
-          go test -json -mod=readonly -tags=nativeprobe_darwin_bulk -count=3 -timeout=5m -run '^TestBulkNative' ./internal/nativefs/darwinprobe | tee darwin-bulk-tests.json
+          go test -json -mod=readonly -tags=nativeprobe_darwin_bulk -count=3 -timeout=5m -run '^TestBulk' ./internal/nativefs/darwinprobe | tee darwin-bulk-tests.json
       - name: Require exact tests, no missing tests or skips
         if: ${{ !cancelled() && steps.native.outcome != 'skipped' }}
         run: |
           node scripts/darwin-bulk-gate.mjs darwin-bulk-tests.json
-          printf 'Five APFS contracts and both unsafe-entry subtests passed three times; metadata-only experiment, no production capabilities.\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'All required native and portable contracts passed three times; metadata-only experiment, no production capabilities.\n' >> "$GITHUB_STEP_SUMMARY"
       - name: Verify modules after experiment
         if: ${{ !cancelled() && steps.native.outcome != 'skipped' }}
         run: go mod verify

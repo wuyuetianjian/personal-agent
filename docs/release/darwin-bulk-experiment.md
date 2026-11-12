@@ -1,7 +1,10 @@
 # macOS bounded directory metadata experiment
 
-Status: design reviewed against the current disconnected foundation; native RED
-qualification pending. This is not Search or content Read. Production build flags
+Status: native RED confirmed at `aebd36e` in Actions run `43206558661`: all five
+top-level contracts and both unsafe-entry subtests failed three times at the
+explicit unimplemented refusal, with setup/modules/dependency checks succeeding.
+The implementation below is pending its own native qualification. This is not
+Search or content Read. Production build flags
 and disabled capability gates remain unchanged.
 
 ## Decision and limits
@@ -73,3 +76,33 @@ returned types/flags rather than using them to traverse.
   inode mode. Do not manually declare a private getdirentries64 replacement.
 - O_EVTONLY, clonefileat, stat/open, openbyid_np and Seatbelt do not solve the
   strict leaf-acquisition contract; see native-foundation.md.
+
+## Implementation checkpoint after native RED
+
+The guarded API now opens an independent directory cursor, checks that cursor and
+the owned endpoint against one pre-scan stat observation, and delegates a single
+public SDK query per iteration. The C bridge owns no descriptor or allocation and
+retains no Go pointer. Static SDK ABI assertions accompany a native ABI test.
+A portable byte decoder validates fixed packed fields, all required returned
+masks, reference bounds and termination, entry type/flags and name constraints.
+Cleanup consumes the fresh scan descriptor once. Reported query/check/close and
+cancellation errors produce zero output, with joined causes. Equality ignores
+only access time, which enumeration itself may update; it cannot detect ABA.
+
+Portable parser/protocol tests first failed at explicit parser/protocol stubs,
+then passed on Linux, including race-enabled three-round runs. Five seconds of
+parser fuzzing completed 371,962 executions without failure. These are not APFS
+evidence. Native CI now requires 61 exact test/subtest names (16 top-level), each
+run/pass three times, including nine native top-level contracts, eight native
+subtests, seven portable top-level contracts and 37 portable subtests. Additional
+native checks cover SDK ABI, actual query/record counters, descriptor CLOEXEC,
+empty/256-entry boundaries, observed directory mutation, query plus uncertain
+close errors and cancellation during cleanup. Fault-injected close reports an
+error after actually closing once; it tests error propagation/no retry, not an
+OS close failure. FIFO before/after writer checks are not proof against every
+transient opening primitive; the implementation never issues a leaf open.
+
+All production capabilities remain disabled. The new C bridge cannot be compiled
+or executed in the Linux workspace without Apple's SDK; the previously reported
+Darwin cross-compiles covered the refusal stub only, not this implementation.
+Require exact-commit macOS CI before describing the implementation as qualified.

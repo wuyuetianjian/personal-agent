@@ -149,3 +149,107 @@ func TestBulkNativeDescriptorOwnership(t *testing.T) {
 		t.Fatalf("descriptor set changed: %v -> %v", before, after)
 	}
 }
+
+func TestBulkNativeABI(t *testing.T) {
+	got := nativeBulkABI()
+	if got.Mask != bulkCommonMask || got.AttributeSet != 20 || got.Reference != 8 || got.ObjectType != 4 || got.FileID != 8 || got.Firmlink != 0x800000 || got.PackInvalid != 8 || got.Regular != 1 || got.Directory != 2 {
+		t.Fatalf("unsupported SDK ABI: %+v", got)
+	}
+}
+func TestBulkNativeMutationAndCloseFailure(t *testing.T) {
+	for _, stage := range []string{"mutation", "query-close", "close", "cancel-close"} {
+		t.Run(stage, func(t *testing.T) {
+			p, d := bulkFixture(t)
+			if e := os.WriteFile(filepath.Join(p, "f"), nil, 0600); e != nil {
+				t.Fatal(e)
+			}
+			before := openDescriptorSnapshot(t)
+			calls, closes := 0, 0
+			fault, cleanup := errors.New("injected query error"), errors.New("injected uncertain close error")
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			ops := bulkNativeOps{query: func(fd int, b []byte) (int, error) {
+				calls++
+				if stage == "query-close" {
+					return 0, fault
+				}
+				count, e := queryNativeBulk(fd, b)
+				if stage == "mutation" && calls == 1 {
+					if er := os.WriteFile(filepath.Join(p, "new"), nil, 0600); er != nil {
+						t.Fatal(er)
+					}
+					times := []unix.Timespec{{Sec: 1}, {Sec: 1}}
+					if er := unix.UtimesNanoAt(unix.AT_FDCWD, p, times, 0); er != nil {
+						t.Fatal(er)
+					}
+				}
+				return count, e
+			}, close: func(fd int) error {
+				closes++
+				e := unix.Close(fd)
+				if stage == "cancel-close" {
+					cancel()
+				}
+				if stage == "close" || stage == "query-close" {
+					return errors.Join(e, cleanup)
+				}
+				return e
+			}}
+			got, e := d.observeBulkWith(ctx, ops)
+			bulkEmptyOnError(t, got, e)
+			if closes != 1 {
+				t.Fatalf("cleanup retried/omitted: %d", closes)
+			}
+			if stage == "query-close" && (!errors.Is(e, fault) || !errors.Is(e, cleanup)) {
+				t.Fatalf("lost errors: %v", e)
+			}
+			if stage == "cancel-close" && !errors.Is(e, context.Canceled) {
+				t.Fatalf("lost cancellation: %v", e)
+			}
+			if after := openDescriptorSnapshot(t); !slices.Equal(before, after) {
+				t.Fatalf("leaked fd: %v -> %v", before, after)
+			}
+		})
+	}
+}
+func TestBulkNativeBoundaryAndEmpty(t *testing.T) {
+	for _, count := range []int{0, 256} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			p, d := bulkFixture(t)
+			for i := 0; i < count; i++ {
+				if e := os.WriteFile(filepath.Join(p, fmt.Sprintf("entry-%03d", i)), nil, 0600); e != nil {
+					t.Fatal(e)
+				}
+			}
+			got, e := d.ExperimentalObserveEntries(context.Background())
+			if e != nil || len(got.Entries) != count || got.Calls < 1 {
+				t.Fatalf("%+v %v", got, e)
+			}
+		})
+	}
+}
+
+func TestBulkNativeBridgeEvidence(t *testing.T) {
+	p, d := bulkFixture(t)
+	if e := os.WriteFile(filepath.Join(p, "real"), nil, 0600); e != nil {
+		t.Fatal(e)
+	}
+	calls, positive, closes := 0, 0, 0
+	ops := bulkNativeOps{query: func(fd int, b []byte) (int, error) {
+		calls++
+		flags, e := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
+		if e != nil || flags&unix.FD_CLOEXEC == 0 {
+			t.Fatalf("scan fd not close-on-exec: %v %x", e, flags)
+		}
+		n, e := queryNativeBulk(fd, b)
+		if n > 0 {
+			positive += n
+		}
+		return n, e
+	}, close: func(fd int) error { closes++; return unix.Close(fd) }}
+	got, e := d.observeBulkWith(context.Background(), ops)
+	if e != nil || len(got.Entries) != 1 || got.RawRecords != positive || positive < 1 || got.Calls != calls || closes != 1 {
+		t.Fatalf("%+v %v actual calls=%d positive=%d close=%d", got, e, calls, positive, closes)
+	}
+	t.Logf("BULK_NATIVE_CALLS=%d BULK_NATIVE_RECORDS=%d", calls, positive)
+}
