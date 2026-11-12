@@ -1,0 +1,76 @@
+name: macOS isolated bulk metadata experiment
+
+on:
+  push:
+    branches: [test/rebuild-20261110]
+    paths:
+      - 'internal/nativefs/darwinprobe/**'
+      - '.github/workflows/native-darwin-bulk.yml'
+      - 'scripts/darwin-bulk-gate*'
+      - 'go.mod'
+      - 'go.sum'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: darwin-bulk-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  bulk:
+    name: macos-15 isolated getattrlistbulk evidence
+    runs-on: macos-15
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Test exact native event validator
+        run: node --test scripts/darwin-bulk-gate.test.mjs
+      - name: Record exact source, kernel, SDK and scope
+        run: |
+          git rev-parse HEAD
+          go version
+          sw_vers
+          uname -m
+          id
+          xcrun --show-sdk-path
+          xcrun --show-sdk-version
+          xcrun clang --version
+          diskutil info "$(df "$RUNNER_TEMP" | awk 'NR==2 {print $1}')"
+          printf 'Source %s. Isolated CGO experiment only; default release stays CGO=0; all native capabilities remain disabled.\n' "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify modules and disconnected command graphs
+        run: |
+          go mod verify
+          CGO_ENABLED=0 go list -deps ./cmd/... > deps-default.txt
+          CGO_ENABLED=1 go list -tags=nativeprobe_darwin_bulk -deps ./cmd/... > deps-tagged.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          for name in ['deps-default.txt','deps-tagged.txt']:
+              assert not any(x.startswith('agent/internal/nativefs/') for x in Path(name).read_text().splitlines()), name
+          PY
+      - name: Run native APFS contracts three times
+        id: native
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          set -o pipefail
+          go test -json -mod=readonly -tags=nativeprobe_darwin_bulk -count=3 -timeout=5m -run '^TestBulkNative' ./internal/nativefs/darwinprobe | tee darwin-bulk-tests.json
+      - name: Require exact tests, no missing tests or skips
+        if: ${{ !cancelled() && steps.native.outcome != 'skipped' }}
+        run: |
+          node scripts/darwin-bulk-gate.mjs darwin-bulk-tests.json
+          printf 'Five APFS contracts and both unsafe-entry subtests passed three times; metadata-only experiment, no production capabilities.\n' >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify modules after experiment
+        if: ${{ !cancelled() && steps.native.outcome != 'skipped' }}
+        run: go mod verify
