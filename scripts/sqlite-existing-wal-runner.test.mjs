@@ -128,3 +128,43 @@ test('ambient fixture marker cannot divert the native parent into child-only set
   assert.equal(inspected,true);
  } finally { if(saved===undefined)delete process.env[key];else process.env[key]=saved; }
 });
+
+test('WAL initializer output has its own reviewed mode, SHA and exact build boundary',async()=>{
+ const {createHash}=await import('node:crypto');
+ const {validateWALGenerated:validate}=await import('./sqlite-existing-wal-runner.mjs');
+ const main={OutputSHA256:'a'.repeat(64)};
+ const validateWALGenerated=(b,m)=>validate(b,m,main);
+ const bytes=Buffer.from('//go:build windows && (amd64 || arm64) && nativeprobe_sqlite_persistent && nativeprobe_sqlite_main_read && nativeprobe_sqlite_existing_wal\n\npackage sqlite3\n');
+ const make=b=>({Version:'modernc.org/sqlite@v1.58.0-linked-wal-v1',OutputSHA256:createHash('sha256').update(b).digest('hex'),WAL:{LinkedOutputSHA256:main.OutputSHA256}});
+ validateWALGenerated(bytes,make(bytes));
+ assert.throws(()=>validateWALGenerated(Buffer.concat([bytes,Buffer.from('x')]),make(bytes)));
+ assert.throws(()=>validateWALGenerated(bytes,{...make(bytes),Version:'modernc.org/sqlite@v1.58.0-linked-main-v1'}));
+ for(const body of ['package sqlite3\n',bytes.toString().replace(' && nativeprobe_sqlite_existing_wal',''),bytes.toString()+'//go:build windows\n']) {
+  const wrong=Buffer.from(body);assert.throws(()=>validateWALGenerated(wrong,make(wrong)));
+ }
+ assert.throws(()=>validateWALGenerated(bytes,{Version:make(bytes).Version,OutputSHA256:'bad'}));
+});
+test('generated output installs exclusively and never replaces either earlier output',async()=>{
+ const {installGeneratedOutput}=await import('./sqlite-existing-wal-runner.mjs');
+ const dir=await mkdtemp(path.join(os.tmpdir(),'wal-generated-exclusive-'));
+ try {
+  const main=path.join(dir,'main.go'),wal=path.join(dir,'wal.go');
+  await installGeneratedOutput(main,Buffer.from('main'));
+  await installGeneratedOutput(wal,Buffer.from('wal'));
+  await assert.rejects(installGeneratedOutput(main,Buffer.from('wal overwrite')),/EEXIST/);
+  await assert.rejects(installGeneratedOutput(wal,Buffer.from('second wal')),/EEXIST/);
+  assert.equal(await readFile(main,'utf8'),'main');assert.equal(await readFile(wal,'utf8'),'wal');
+ }finally{await rm(dir,{recursive:true,force:true})}
+});
+
+
+test('WAL output cannot link against a different main helper artifact',async()=>{
+ const {createHash}=await import('node:crypto');
+ const {validateWALGenerated}=await import('./sqlite-existing-wal-runner.mjs');
+ const bytes=Buffer.from('//go:build windows && (amd64 || arm64) && nativeprobe_sqlite_persistent && nativeprobe_sqlite_main_read && nativeprobe_sqlite_existing_wal\n\npackage sqlite3\n');
+ const manifest={Version:'modernc.org/sqlite@v1.58.0-linked-wal-v1',OutputSHA256:createHash('sha256').update(bytes).digest('hex'),WAL:{LinkedOutputSHA256:'a'.repeat(64)}};
+ const main={OutputSHA256:'a'.repeat(64)};
+ validateWALGenerated(bytes,manifest,main);
+ assert.throws(()=>validateWALGenerated(bytes,manifest,{OutputSHA256:'b'.repeat(64)}));
+ assert.throws(()=>validateWALGenerated(bytes,{...manifest,WAL:undefined},main));
+});

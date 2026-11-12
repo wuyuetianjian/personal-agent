@@ -33,6 +33,7 @@ type manifest struct {
 	Functions    []function
 	OutputSHA256 string
 	Linked       *linkedDetails `json:",omitempty"`
+	WAL          *walDetails    `json:",omitempty"`
 }
 
 var pins = map[string]string{
@@ -236,7 +237,7 @@ func inventory(root string) (manifest, []byte, error) {
 func run(args []string) error {
 	f := flag.NewFlagSet("generator", flag.ContinueOnError)
 	linked := f.Bool("linked", false, "generate linked main-only helpers, no registration")
-	linkedWAL := f.Bool("linked-wal", false, "reserved WAL initializer mode; refuses pending native private-method RED")
+	linkedWAL := f.Bool("linked-wal", false, "generate separate existing-WAL initializer; requires linked helpers")
 	source := f.String("source", "", "verified official module directory")
 	approved := f.String("manifest", "", "reviewed manifest JSON")
 	cacheRoot := f.String("cache-root", "", "actual GOMODCACHE from the verified runner")
@@ -251,12 +252,12 @@ func run(args []string) error {
 	if *linked && *linkedWAL {
 		return errors.New("linked modes are mutually exclusive")
 	}
-	if *linkedWAL {
-		return errors.New("linked WAL generation requires verified private-method RED")
-	}
 	buildInventory := inventory
 	if *linked {
 		buildInventory = linkedInventory
+	}
+	if *linkedWAL {
+		buildInventory = walInventory
 	}
 	actual, output, e := buildInventory(*source)
 	if e != nil {
@@ -286,7 +287,7 @@ func run(args []string) error {
 	if e = dec.Decode(new(any)); e != io.EOF {
 		return errors.New("manifest trailing data")
 	}
-	if want.Version != actual.Version || !reflect.DeepEqual(want.Inputs, actual.Inputs) || !reflect.DeepEqual(want.Roots, actual.Roots) || want.OutputSHA256 != actual.OutputSHA256 || !reflect.DeepEqual(want.Linked, actual.Linked) || len(want.Functions) != len(actual.Functions) {
+	if want.Version != actual.Version || !reflect.DeepEqual(want.Inputs, actual.Inputs) || !reflect.DeepEqual(want.Roots, actual.Roots) || want.OutputSHA256 != actual.OutputSHA256 || !reflect.DeepEqual(want.Linked, actual.Linked) || !reflect.DeepEqual(want.WAL, actual.WAL) || len(want.Functions) != len(actual.Functions) {
 		return errors.New("manifest identity/closure/output mismatch")
 	}
 	for i := range want.Functions {

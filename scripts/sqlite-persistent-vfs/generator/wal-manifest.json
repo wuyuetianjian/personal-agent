@@ -1,0 +1,117 @@
+{
+  "Version": "modernc.org/sqlite@v1.58.0-linked-wal-v1",
+  "Inputs": {
+    "LICENSE": "c6fe05491a60ae13bcd223088d2705e36dede24e5587226231d2459ada5c4822",
+    "lib/sqlite.go": "8210957d4836c361efb18808fb6fd4dc5f2a7ca362fd83881d6018e9913ee4d6",
+    "lib/sqlite_g_0000000000060000.go": "8416138b3519a8ad4a2e4a76928c34781333915f09ef5d5444eb75d5cc4eabe7",
+    "lib/sqlite_windows.go": "414fac0347bda229e81decf8b765a276dc59f382cde33542f7246862e7022d98",
+    "sqlite.go": "52fefb00e9f7a9a1bad23b034b57ce47b156bf29bebe7c2aef01083f5880759e"
+  },
+  "Roots": [
+    "_winOpen"
+  ],
+  "Functions": [],
+  "OutputSHA256": "448bc074d00eafecb72adefc2c5e3b3f1ea1fe43380742e18838447a06b4f087",
+  "WAL": {
+    "LinkedOutputSHA256": "fd2f51a33d9ef4238e212c08bfd44fe6285632e9182c7703b72f47c3f4897dbf",
+    "DerivedInitializer": {
+      "Name": "_paWinOpenExistingWALBound",
+      "SourceFile": "lib/sqlite_windows.go",
+      "SourceFunction": "_winOpen",
+      "SourceSHA256": "066772f8b7d7afb5dc7a984fdfaac7cc95bf1319a4edf8724c01249e2ef12d73",
+      "OutputSHA256": "cb0f28e212292443cee42182b2cd7f9c65b1a5d3b86bacea993c52672e7e68db",
+      "Transforms": {
+        "Fh-invalid-keep-bound-drop": {
+          "Count": 2,
+          "InputSHA256": "71fc098a4dc8e3e48a4c257bccd23825ee574974528d57cd0d4847b213c9344a",
+          "OutputSHA256": "8c17cd0b4957274aa03b8adce7fdeebc15b2c3b7e36de980d8df474d6ad37491"
+        },
+        "FhMap": {
+          "Count": 1,
+          "InputSHA256": "51f342b776411644968b78e3da217bf29126f31f3cda0ece51f6820c6f517a90",
+          "OutputSHA256": "51f342b776411644968b78e3da217bf29126f31f3cda0ece51f6820c6f517a90"
+        },
+        "FlastErrno": {
+          "Count": 1,
+          "InputSHA256": "12661d100fecfc87514af0b34ef58e557d04fe90e7abb1d3444a44aa49fb569e",
+          "OutputSHA256": "12661d100fecfc87514af0b34ef58e557d04fe90e7abb1d3444a44aa49fb569e"
+        },
+        "FmmapSize": {
+          "Count": 1,
+          "InputSHA256": "fd2385d3334f8cfd792a557b3592e3f81900323d59a3fc935f574b5b89c2277a",
+          "OutputSHA256": "fd2385d3334f8cfd792a557b3592e3f81900323d59a3fc935f574b5b89c2277a"
+        },
+        "FpMapRegion": {
+          "Count": 1,
+          "InputSHA256": "0b8081ff69d33a125be8dc3e7a43b45f2d4da3282ee4c7e0c3f71b2f560dff13",
+          "OutputSHA256": "0b8081ff69d33a125be8dc3e7a43b45f2d4da3282ee4c7e0c3f71b2f560dff13"
+        },
+        "FpMethods-remove": {
+          "Count": 1,
+          "InputSHA256": "31ad5e120935e320b179dbdcb75cbc551902d8e488cc6f2cb361c4778870c1f2",
+          "OutputSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "FpVfs": {
+          "Count": 1,
+          "InputSHA256": "6769ef1d027cf806fe7c765fa7cfee25e710a5448235b39a4f63a154410894d2",
+          "OutputSHA256": "6769ef1d027cf806fe7c765fa7cfee25e710a5448235b39a4f63a154410894d2"
+        },
+        "FzPath": {
+          "Count": 1,
+          "InputSHA256": "2b4cdc648658ac129a0ea2c7c0a6a474fbaa3f748bf4ac971594bf4f774e5fdf",
+          "OutputSHA256": "2b4cdc648658ac129a0ea2c7c0a6a474fbaa3f748bf4ac971594bf4f774e5fdf"
+        },
+        "PSOW-remove": {
+          "Count": 1,
+          "InputSHA256": "ee003e8b756dbcb9103b0d8ffb222a0eba2042021e27e7a34bc22c203ca6d67d",
+          "OutputSHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "complete-stock-open-to-init-only": {
+          "Count": 1,
+          "InputSHA256": "066772f8b7d7afb5dc7a984fdfaac7cc95bf1319a4edf8724c01249e2ef12d73",
+          "OutputSHA256": "d75194b124686588d12397b7ccb4fbe12c46b05dbd01f2aea2eaefacd98a4489"
+        },
+        "complete-stock-open-to-wal-init-only": {
+          "Count": 1,
+          "InputSHA256": "066772f8b7d7afb5dc7a984fdfaac7cc95bf1319a4edf8724c01249e2ef12d73",
+          "OutputSHA256": "cb0f28e212292443cee42182b2cd7f9c65b1a5d3b86bacea993c52672e7e68db"
+        },
+        "memset": {
+          "Count": 1,
+          "InputSHA256": "824f6d08a0121c3cda1e39697e0f7101fd405b57040f0450947b5e16f1f61905",
+          "OutputSHA256": "824f6d08a0121c3cda1e39697e0f7101fd405b57040f0450947b5e16f1f61905"
+        },
+        "mmap-disable": {
+          "Count": 1,
+          "InputSHA256": "d6a4c28a9347bc9d931360b16d2d21eb5d5819e6d5d789c321099b543cfde9d9",
+          "OutputSHA256": "6b9a656405b6bd9532f7261b98681a4a93466c4b41856262d84f18a19ab9b51d"
+        },
+        "readonly": {
+          "Count": 1,
+          "InputSHA256": "54b23fea1d30911c5e036af1fc1c66a677ecd6e48695de6835220b0329942aed",
+          "OutputSHA256": "54b23fea1d30911c5e036af1fc1c66a677ecd6e48695de6835220b0329942aed"
+        },
+        "wal-name": {
+          "Count": 1,
+          "InputSHA256": "d7f404165062f3dc5ced2e54c6f4c2ed0ebeee645f2fa4eb67d9da72ab97528a",
+          "OutputSHA256": "9b9803cc044d80d4f7212177b0f7c78de3c9affc0eb7c072e4b6f89106bf27d2"
+        },
+        "wal-readonly-state": {
+          "Count": 1,
+          "InputSHA256": "52e567d95b8c458b16833bc747886971e4381e1ef3288908f583d695701aa12d",
+          "OutputSHA256": "c4b450e775c7d8707920cfb4a9c56580453660f25097d35daefbc313befa174c"
+        },
+        "wal-request-identifier": {
+          "Count": 3,
+          "InputSHA256": "c7445a5c6059b52f9382b3e854a932bd093a9903c3dddfb5f3df1f26619c028c",
+          "OutputSHA256": "7d6b38d3e3102c332c8f64b93de3386bb9bbd7d2358f682b036ee6185c1c9eae"
+        },
+        "wal-role-guard": {
+          "Count": 1,
+          "InputSHA256": "4f72d59ca636d3c912543d28d32dbeccba6ff49b8b93a8059cf8ce1ad00210db",
+          "OutputSHA256": "4e035b257468b65a785f26f134fd3126697117ad92133b9f62698e830b37549f"
+        }
+      }
+    }
+  }
+}

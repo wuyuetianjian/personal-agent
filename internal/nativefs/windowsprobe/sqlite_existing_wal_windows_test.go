@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 	"unsafe"
@@ -252,7 +253,7 @@ func existingWALSetup(t *testing.T) (string, *existingWALAuthority, uintptr) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	o, e := newPersistentPermitOwner(r, filepath.Base(path), persistentPermitHooks{})
+	o, e := newPersistentWALReadOnlyOwner(r, filepath.Base(path), persistentPermitHooks{})
 	if e != nil {
 		e = errors.Join(e, r.Close())
 		t.Fatalf("existing authority setup: %v", e)
@@ -322,7 +323,7 @@ func existingWALOpen(t *testing.T, v uintptr, name string, flags int32, required
 	rc := fn(tls, v, n, file, flags, uintptr(unsafe.Pointer(&out)))
 	if required && (rc != sqlite3.SQLITE_OK || out != sqlite3.SQLITE_OPEN_READONLY) {
 		if sqlite3.ExperimentalExistingWALPendingHits(v) == before+1 && rc == sqlite3.SQLITE_CANTOPEN {
-			t.Fatalf("EXISTING_WAL_OPEN_EXPECTED_RED: real private FxOpen WAL refused input=%#x", flags)
+			t.Fatalf("real private FxOpen WAL rejected qualified fixture input=%#x rc=%d", flags, rc)
 		}
 		t.Fatalf("private open %d out=%#x", rc, out)
 	}
@@ -371,8 +372,8 @@ func (f *existingWALFile) dispose(t *testing.T) {
 func (f *existingWALFile) read(t *testing.T, offset int64, n int, expectedRC int32) []byte {
 	t.Helper()
 	m := f.methods()
-	if m == nil {
-		t.Fatal("no file methods")
+	if m == nil || m.FxRead == 0 {
+		t.Fatal("no read method")
 	}
 	b := libc.Xmalloc(f.tls, uint64(n))
 	if b == 0 {
@@ -406,6 +407,9 @@ func TestExistingWALPrivateHeaderAndSize(t *testing.T) {
 		t.Fatal("private header mismatch")
 	}
 	m := f.methods()
+	if m.FxFileSize == 0 {
+		t.Fatal("missing file size method")
+	}
 	var size int64
 	fn := *(*func(*libc.TLS, uintptr, uintptr) int32)(unsafe.Pointer(&m.FxFileSize))
 	if rc := fn(f.tls, f.file, uintptr(unsafe.Pointer(&size))); rc != sqlite3.SQLITE_OK || size != int64(len(expected)) {
@@ -429,6 +433,9 @@ func TestExistingWALRoleAndFlagsRefused(t *testing.T) {
 	existingWALOpen(t, v, name, existingWALFlags, false)
 	existingWALOpen(t, v, name+"-other", existingWALFlags, false)
 	m := f.methods()
+	if m.FxLock == 0 || m.FxWrite == 0 || m.FxTruncate == 0 || m.FxSync == 0 {
+		t.Fatal("missing WAL refusal methods")
+	}
 	lock := *(*func(*libc.TLS, uintptr, int32) int32)(unsafe.Pointer(&m.FxLock))
 	if lock(f.tls, f.file, sqlite3.SQLITE_LOCK_SHARED) == sqlite3.SQLITE_OK {
 		t.Fatal("WAL accepted main byte-lock")
@@ -646,4 +653,198 @@ func TestExistingWALReadOnlyResourceQualification(t *testing.T) {
 		t.Fatalf("pre-cancel resource %v %v", got, e)
 	}
 
+	existingWALResourceFaultContracts(t)
+
+}
+
+func existingWALROFixture(t *testing.T, hooks persistentPermitHooks, expected error) (*persistentPermitOwner, *persistentPermitConnection) {
+	t.Helper()
+	_, root := persistentFixture(t)
+	o, e := newPersistentWALReadOnlyOwner(root, "store.db", hooks)
+	if e != nil {
+		t.Fatal(e)
+	}
+	permitShutdowns.Store(o, &permitShutdown{done: make(chan struct{})})
+	t.Cleanup(func() {
+		if e := permitOwnerClose(o); !mainReadCleanupOnly(e, expected) {
+			t.Errorf("RO owner cleanup: %v", e)
+		}
+	})
+	c, e := o.newConnection(context.Background())
+	if e != nil {
+		t.Fatal(e)
+	}
+	return o, c
+}
+func existingWALROBegin(t *testing.T, c *persistentPermitConnection, expected error) *persistentOperationPermit {
+	t.Helper()
+	p, e := c.begin(context.Background())
+	if e != nil {
+		t.Fatal(e)
+	}
+	t.Cleanup(func() {
+		if e := p.release(); !mainReadCleanupOnly(e, expected) {
+			t.Errorf("RO permit release: %v", e)
+		}
+	})
+	return p
+}
+func existingWALResourceFaultContracts(t *testing.T) {
+	t.Helper()
+	// Legacy owner lacks the factory's close-panic guarantee and must not acquire.
+	legacy := permitFixture(t, persistentPermitHooks{}, nil)
+	lc := permitConnection(t, legacy)
+	lp := permitBegin(t, lc)
+	if r, e := lp.acquireReadOnlyWAL(context.Background()); r != nil || !errors.Is(e, errPersistentPermitForeign) {
+		t.Fatalf("legacy owner accepted RO acquire %v %v", r, e)
+	}
+	if e := lp.release(); e != nil {
+		t.Fatal(e)
+	}
+	primary := errors.New("RO candidate native handle plus error")
+	count := 0
+	_, c := existingWALROFixture(t, persistentPermitHooks{openData: func(parent windows.Handle, n string) (windows.Handle, error) {
+		h, e := persistentOpenReadOnlyWAL(parent, n)
+		if e != nil {
+			return h, e
+		}
+		return h, primary
+	}, close: func(h windows.Handle) error { count++; return windows.CloseHandle(h) }}, nil)
+	p := existingWALROBegin(t, c, nil)
+	if r, e := p.acquireReadOnlyWAL(context.Background()); r != nil || !errors.Is(e, primary) || count != 1 {
+		t.Fatalf("RO handle+error ownership %v %v closes=%d", r, e, count)
+	}
+	// Returning an existing RW candidate is not a permissible RO substitute.
+	rwCloses := 0
+	_, c = existingWALROFixture(t, persistentPermitHooks{openData: func(parent windows.Handle, n string) (windows.Handle, error) { return persistentOpen(parent, n, true) }, close: func(h windows.Handle) error { rwCloses++; return windows.CloseHandle(h) }}, nil)
+	p = existingWALROBegin(t, c, nil)
+	if r, e := p.acquireReadOnlyWAL(context.Background()); r != nil || e == nil || rwCloses != 1 {
+		t.Fatalf("RW candidate qualified as RO %v %v closes=%d", r, e, rwCloses)
+	}
+	for _, panicClose := range []bool{false, true} {
+		fault := errors.New(fmt.Sprintf("RO published cleanup fault panic=%t", panicClose))
+		closes := 0
+		o, c := existingWALROFixture(t, persistentPermitHooks{close: func(h windows.Handle) error {
+			closes++
+			e := windows.CloseHandle(h)
+			if e != nil {
+				return e
+			}
+			if panicClose {
+				panic(fault)
+			}
+			return fault
+		}}, fault)
+		p := existingWALROBegin(t, c, fault)
+		r, e := p.acquireReadOnlyWAL(context.Background())
+		if e != nil {
+			t.Fatal(e)
+		}
+		if e = r.close(); !errors.Is(e, fault) {
+			t.Fatalf("RO close uncertainty not returned: %v", e)
+		}
+		if e = r.close(); !errors.Is(e, fault) || closes != 1 {
+			t.Fatalf("RO uncertain close retried %v/%d", e, closes)
+		}
+		if got, e := p.acquireReadOnlyWAL(context.Background()); got != nil || !errors.Is(e, fault) {
+			t.Fatalf("RO terminal authority revived %v %v", got, e)
+		}
+		if e = p.release(); !errors.Is(e, fault) {
+			t.Fatal("RO release lost terminal")
+		}
+		if e = permitOwnerClose(o); !errors.Is(e, fault) || closes != 1 {
+			t.Fatalf("RO owner terminal %v/%d", e, closes)
+		}
+	}
+
+	// An unpublished candidate failing its native open still owns its handle, and
+	// cleanup failure must preserve BOTH primary and terminal cleanup errors.
+	candidateFault := errors.New("RO candidate cleanup failed")
+	candidateCloses := 0
+	_, c = existingWALROFixture(t, persistentPermitHooks{openData: func(parent windows.Handle, n string) (windows.Handle, error) {
+		h, e := persistentOpenReadOnlyWAL(parent, n)
+		if e != nil {
+			return h, e
+		}
+		return h, primary
+	}, close: func(h windows.Handle) error {
+		candidateCloses++
+		return errors.Join(windows.CloseHandle(h), candidateFault)
+	}}, candidateFault)
+	p = existingWALROBegin(t, c, candidateFault)
+	if r, e := p.acquireReadOnlyWAL(context.Background()); r != nil || !errors.Is(e, primary) || !errors.Is(e, candidateFault) || candidateCloses != 1 {
+		t.Fatalf("candidate error join %v %v closes=%d", r, e, candidateCloses)
+	}
+	// Native open returns a handle after cancellation: ownership still transfers.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancelCloses := 0
+	_, c = existingWALROFixture(t, persistentPermitHooks{openData: func(parent windows.Handle, n string) (windows.Handle, error) {
+		h, e := persistentOpenReadOnlyWAL(parent, n)
+		cancel()
+		return h, e
+	}, close: func(h windows.Handle) error { cancelCloses++; return windows.CloseHandle(h) }}, nil)
+	p = existingWALROBegin(t, c, nil)
+	if r, e := p.acquireReadOnlyWAL(ctx); r != nil || !errors.Is(e, context.Canceled) || cancelCloses != 1 {
+		t.Fatalf("cancel-during-open ownership %v %v/%d", r, e, cancelCloses)
+	}
+	// An admitted acquisition owns its method count through real native IO and
+	// publication, even after permit.release and owner.close start draining.
+	opened := make(chan struct{})
+	resume := make(chan struct{})
+	releasing := make(chan struct{})
+	closing := make(chan struct{})
+	o, c := existingWALROFixture(t, persistentPermitHooks{openData: func(parent windows.Handle, n string) (windows.Handle, error) {
+		h, e := persistentOpenReadOnlyWAL(parent, n)
+		close(opened)
+		<-resume
+		return h, e
+	}, afterReleaseStart: func() { close(releasing) }, afterClosing: func() { close(closing) }}, nil)
+	p = existingWALROBegin(t, c, nil)
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(resume) }) }
+	defer unblock()
+	acquired := make(chan error, 1)
+	go func() {
+		r, e := p.acquireReadOnlyWAL(context.Background())
+		if e == nil && r == nil {
+			e = errUnsafe
+		}
+		acquired <- e
+	}()
+	select {
+	case <-opened:
+	case <-time.After(5 * time.Second):
+		t.Fatal("RO native open never reached")
+	}
+	released := make(chan error, 1)
+	go func() { released <- p.release() }()
+	select {
+	case <-releasing:
+	case <-time.After(5 * time.Second):
+		t.Fatal("RO release never started")
+	}
+	closed := make(chan error, 1)
+	go func() { closed <- permitOwnerClose(o) }()
+	select {
+	case <-closing:
+	case <-time.After(5 * time.Second):
+		t.Fatal("RO owner close never started")
+	}
+	for _, ch := range []chan error{released, closed} {
+		select {
+		case e := <-ch:
+			t.Fatalf("RO lifetime drained before native IO: %v", e)
+		case <-time.After(40 * time.Millisecond):
+		}
+	}
+	unblock()
+	if e := leaseAwait(t, acquired, "RO acquire completion"); e != nil {
+		t.Fatal(e)
+	}
+	if e := leaseAwait(t, released, "RO release completion"); e != nil {
+		t.Fatal(e)
+	}
+	if e := leaseAwait(t, closed, "RO owner close completion"); e != nil {
+		t.Fatal(e)
+	}
 }

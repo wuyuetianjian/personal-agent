@@ -38,7 +38,8 @@ func ExperimentalExistingWALPendingHits(v uintptr) uint64 {
 	}
 	return n.Load()
 }
-func experimentalExistingWALOpen(tls *libc.TLS, v, name, file uintptr, flags int32, out uintptr) int32 {
+func experimentalExistingWALOpen(tls *libc.TLS, v, name, file uintptr, flags int32, out uintptr) (rc int32) {
+	rc = SQLITE_CANTOPEN
 	if out != 0 {
 		*(*int32)(unsafe.Pointer(out)) = 0
 	}
@@ -59,6 +60,50 @@ func experimentalExistingWALOpen(tls *libc.TLS, v, name, file uintptr, flags int
 		return SQLITE_CANTOPEN
 	}
 	n.Add(1)
-	// Native RED boundary. Do not acquire/initialize/publish, and do not call stock.
-	return SQLITE_CANTOPEN
+	if old := experimentalMainReadLookup(file); old != nil {
+		old.mu.Lock()
+		live := !old.closed
+		old.mu.Unlock()
+		if live {
+			return SQLITE_CANTOPEN
+		}
+	}
+	if !b.healthy() {
+		return SQLITE_CANTOPEN
+	}
+	a, ok := b.authority.(ExperimentalExistingWALAuthority)
+	if !ok {
+		return SQLITE_CANTOPEN
+	}
+	var lease ExperimentalMainReadLease
+	published := false
+	defer func() {
+		if p := recover(); p != nil {
+			b.poison(experimentalMainReadPanic("existing WAL open panic", p))
+			rc = SQLITE_CANTOPEN
+		}
+		if !published {
+			if lease != nil {
+				b.poison(experimentalMainReadLeaseClose(lease))
+			}
+			(*Tsqlite3_file)(unsafe.Pointer(file)).FpMethods = 0
+			if out != 0 {
+				*(*int32)(unsafe.Pointer(out)) = 0
+			}
+		}
+	}()
+	var e error
+	lease, e = a.OpenWALReadOnly()
+	if e != nil || lease == nil {
+		return SQLITE_CANTOPEN
+	}
+	if rc = _paWinOpenExistingWALBound(tls, v, name, file, flags, out); rc != SQLITE_OK {
+		return rc
+	}
+	if !b.healthy() {
+		return SQLITE_CANTOPEN
+	}
+	experimentalMainReadPublish(file, b, lease, experimentalRoleWAL, &experimentalMainReadMethods)
+	published = true
+	return SQLITE_OK
 }
