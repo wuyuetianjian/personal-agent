@@ -1,0 +1,89 @@
+name: macOS trusted preopened FD experiment
+
+on:
+  push:
+    branches: [test/rebuild-20261110]
+    paths:
+      - 'internal/nativefs/darwinprobe/**'
+      - '.github/workflows/native-darwin-ownedfd.yml'
+      - 'scripts/darwin-ownedfd-gate*'
+      - 'go.mod'
+      - 'go.sum'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: darwin-ownedfd-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  ownedfd:
+    if: ${{ github.ref == 'refs/heads/test/rebuild-20261110' }}
+    name: macos-15 trusted readonly owned-FD evidence
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      CGO_ENABLED: '0'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Test exact native event validator
+        run: node --test scripts/darwin-ownedfd-gate.test.mjs
+      - name: Record exact source, kernel, SDK and scope
+        run: |
+          git rev-parse HEAD
+          go version
+          go env GOOS GOARCH CGO_ENABLED
+          sw_vers
+          uname -m
+          id
+          xcrun --show-sdk-path
+          xcrun --show-sdk-version
+          xcrun clang --version
+          diskutil info "$(df "$RUNNER_TEMP" | awk 'NR==2 {print $1}')"
+          printf 'Source %s. Trusted preopened readonly regular FD experiment only; CGO=0. No pathname resolution, historical-copy isolation or production capabilities.\n' "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify modules and disconnected command graphs
+        run: |
+          go mod verify
+          CGO_ENABLED=0 go build -mod=readonly ./cmd/...
+          CGO_ENABLED=0 go list -deps ./cmd/... > deps-default.txt
+          CGO_ENABLED=0 go list -tags=nativeprobe_darwin_ownedfd -deps ./cmd/... > deps-tagged.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          for name in ['deps-default.txt','deps-tagged.txt']:
+              assert len(Path(name).read_text().splitlines()) > 1, name
+              assert not any(x.startswith('agent/internal/nativefs/') for x in Path(name).read_text().splitlines()), name
+          PY
+      - name: Run native APFS contracts three times
+        id: native
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          set -o pipefail
+          go test -json -mod=readonly -tags=nativeprobe_darwin_ownedfd -count=3 -timeout=5m -run '^(TestOwnedFDReadPreservesOffset|TestOwnedFDCallerCloseAndPathReplacement|TestOwnedFDAdmissionRefusals|TestOwnedFDBoundsAndObservedMutation|TestOwnedFDCancellationAndCloseRace|TestOwnedFDReadAndCloseFailures)$' ./internal/nativefs/darwinprobe | tee darwin-ownedfd-tests.json
+      - name: Require exact tests, no missing tests or skips
+        if: ${{ !cancelled() && steps.native.outcome != 'skipped' }}
+        run: |
+          node scripts/darwin-ownedfd-gate.mjs darwin-ownedfd-tests.json
+          printf 'All six trusted owned-FD contracts passed three times. Not pathname reads, historical-copy isolation or production qualification.\n' >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify modules after experiment
+        if: ${{ !cancelled() && steps.native.outcome != 'skipped' }}
+        run: go mod verify
+      - name: Preserve raw evidence on every outcome
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: darwin-ownedfd-native
+          path: darwin-ownedfd-tests.json
+          if-no-files-found: error
