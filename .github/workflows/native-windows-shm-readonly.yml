@@ -1,0 +1,81 @@
+name: Windows readonly SHM primitives (NOT private SQL)
+on:
+  push:
+    branches: [test/rebuild-20261110]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-windows-shm-readonly-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  diagnostic:
+    if: ${{ github.ref == 'refs/heads/test/rebuild-20261110' }}
+    runs-on: windows-2025
+    timeout-minutes: 20
+    env:
+      CGO_ENABLED: "0"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Record source and experiment boundary
+        run: |
+          git rev-parse HEAD
+          go version
+          go env GOOS GOARCH CGO_ENABLED
+          echo 'READONLY SHM PRIMITIVES ONLY: exact reduced rights, OS locks and mapping. DMS is simulated protocol, dedup is test-only adapter. NOT stock SQL/private VFS or production GREEN.'
+      - name: Record Windows token and NTFS runtime
+        shell: pwsh
+        run: |
+          [System.Environment]::OSVersion.VersionString
+          [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+          "ElevatedAdministratorToken: $($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"
+          Get-Volume -DriveLetter ([System.IO.Path]::GetPathRoot($env:RUNNER_TEMP).Substring(0,1)) | Select-Object DriveLetter, FileSystemType, DriveType, HealthStatus
+      - name: Test exact event gate
+        run: node --test scripts/windows-shm-readonly-gate.test.mjs
+      - name: Verify modules and disconnected production graph
+        run: |
+          go mod verify
+          go list -mod=readonly -deps ./cmd/... > shm-readonly-production-deps.txt
+          go list -mod=readonly -tags=nativeprobe_shm_readonly -deps ./cmd/... > shm-readonly-tagged-deps.txt
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          for (const path of ['shm-readonly-production-deps.txt', 'shm-readonly-tagged-deps.txt']) {
+            const lines = fs.readFileSync(path, 'utf8').trim().split(/\r?\n/);
+            assert(lines.length > 1, 'empty dependency graph');
+            assert(!lines.some(line => line.startsWith('agent/internal/nativefs/')), 'foundation reached commands');
+          }
+          JS
+      - name: Native readonly SHM primitive fixtures
+        id: native
+        run: |
+          set -o pipefail
+          go test -json -mod=readonly -tags=nativeprobe_shm_readonly -count=3 -timeout=5m -run '^(TestSHMPrimitiveRightsAndMap|TestSHMPrimitiveSameProcess|TestSHMPrimitiveCrossProcess|TestSHMPrimitiveRepeatedShared|TestSHMPrimitiveExactUnlock|TestSHMPrimitiveDMS|TestSHMPrimitiveIndependentClose)$' ./internal/nativefs/windowsprobe | tee shm-readonly-native.json
+      - name: Require every contract without skips
+        if: ${{ !cancelled() && steps.native.outcome != 'skipped' }}
+        run: node scripts/windows-shm-readonly-gate.mjs shm-readonly-native.json
+      - name: Verify unchanged modules
+        if: ${{ !cancelled() }}
+        run: go mod verify
+      - name: Preserve diagnostic evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shm-readonly-native
+          path: shm-readonly-native.json
+          if-no-files-found: error
