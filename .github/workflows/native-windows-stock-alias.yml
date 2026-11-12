@@ -1,0 +1,79 @@
+name: Windows hostile stock file alias diagnostic (NOT security GREEN)
+on:
+  push:
+    branches: [test/rebuild-20261110]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-windows-stock-alias-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  diagnostic:
+    if: ${{ github.ref == 'refs/heads/test/rebuild-20261110' }}
+    runs-on: windows-2025
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Record source and experiment boundary
+        run: |
+          git rev-parse HEAD
+          go version
+          go env GOOS GOARCH
+          echo 'HOSTILE FILE ALIAS DIAGNOSTIC: synthetic data only; SQLite multipath use is not a normal compatibility promise. Inspect all three factual branches; none is general security GREEN.'
+      - name: Record Windows token and NTFS runtime
+        shell: pwsh
+        run: |
+          [System.Environment]::OSVersion.VersionString
+          [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+          "ElevatedAdministratorToken: $($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"
+          Get-Volume -DriveLetter ([System.IO.Path]::GetPathRoot($env:RUNNER_TEMP).Substring(0,1)) | Select-Object DriveLetter, FileSystemType, DriveType, HealthStatus
+      - name: Test exact event gate
+        run: node --test scripts/windows-stock-alias-gate.test.mjs
+      - name: Verify modules and disconnected production graph
+        run: |
+          go mod verify
+          go list -mod=readonly -deps ./cmd/... > stock-alias-production-deps.txt
+          go list -mod=readonly -tags=nativeprobe_sqlite_identity,nativeprobe_sidecar_diagnostic,nativeprobe_stock_epoch,nativeprobe_stock_alias -deps ./cmd/... > stock-alias-tagged-deps.txt
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          for (const path of ['stock-alias-production-deps.txt', 'stock-alias-tagged-deps.txt']) {
+            const lines = fs.readFileSync(path, 'utf8').trim().split(/\r?\n/);
+            assert(lines.length > 1, 'empty dependency graph');
+            assert(!lines.some(line => line.startsWith('agent/internal/nativefs/')), 'foundation reached commands');
+          }
+          JS
+      - name: Native hostile stock file alias fixture
+        id: native
+        run: |
+          set -o pipefail
+          go test -json -mod=readonly -tags=nativeprobe_sqlite_identity,nativeprobe_sidecar_diagnostic,nativeprobe_stock_epoch,nativeprobe_stock_alias -count=3 -timeout=5m -run '^(TestStockOwnerAliasDiagnostic)$' ./internal/nativefs/windowsprobe | tee stock-alias-native.json
+      - name: Require every contract without skips
+        if: ${{ !cancelled() && steps.native.outcome != 'skipped' }}
+        run: node scripts/windows-stock-alias-gate.mjs stock-alias-native.json
+      - name: Verify unchanged modules
+        if: ${{ !cancelled() }}
+        run: go mod verify
+      - name: Preserve diagnostic evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: stock-alias-native
+          path: stock-alias-native.json
+          if-no-files-found: error
