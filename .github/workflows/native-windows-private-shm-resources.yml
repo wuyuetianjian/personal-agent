@@ -1,0 +1,77 @@
+name: Windows private SHM resource lifetime (experimental)
+on:
+  push:
+    branches: [test/rebuild-20261110]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-windows-private-shm-resources-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  private-shm-resources:
+    if: ${{ github.ref == 'refs/heads/test/rebuild-20261110' }}
+    runs-on: windows-2025
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Record source and experiment boundary
+        run: |
+          git rev-parse HEAD
+          go version
+          go env GOOS GOARCH
+          echo 'Private SHM resources and simulated core pointer tickets only. NOT SQL or Rows lifetime integration, recovery or production qualification.'
+      - name: Record Windows token and NTFS runtime
+        shell: pwsh
+        run: |
+          [System.Environment]::OSVersion.VersionString
+          [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+          "ElevatedAdministratorToken: $($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"
+          Get-Volume -DriveLetter ([System.IO.Path]::GetPathRoot($env:RUNNER_TEMP).Substring(0,1)) | Select-Object DriveLetter, FileSystemType, DriveType, HealthStatus
+      - name: Verify modules and disconnected production graph
+        run: |
+          go mod verify
+          go list -mod=readonly -deps ./cmd/... > private-shm-resources-production-deps.txt
+          go list -mod=readonly '-tags=nativeprobe_sqlite_identity,nativeprobe_sqlite_lease,nativeprobe_sqlite_permit,nativeprobe_sqlite_persistent,nativeprobe_sqlite_main_read,nativeprobe_sqlite_existing_wal,nativeprobe_sqlite_access,nativeprobe_sqlite_private_shm,nativeprobe_sqlite_shm_resources' -deps ./cmd/... > private-shm-resources-tagged-deps.txt
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          for (const path of ['private-shm-resources-production-deps.txt', 'private-shm-resources-tagged-deps.txt']) {
+            const lines = fs.readFileSync(path, 'utf8').trim().split(/\r?\n/);
+            assert(lines.length > 1, 'empty dependency graph');
+            assert(!lines.some(line => line.startsWith('agent/internal/nativefs/')), 'foundation reached commands');
+          }
+          JS
+      - name: Runner contract tests
+        run: node --test scripts/sqlite-private-shm-resources-runner.test.mjs
+      - name: Real private SHM resource contracts (experimental)
+        run: |
+          set -o pipefail
+          node scripts/sqlite-private-shm-resources-runner.mjs | tee private-shm-resources-native.json
+      - name: Preserve raw native evidence on every outcome
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: private-shm-resources-native
+          path: private-shm-resources-native.json
+          if-no-files-found: error
+      - name: Verify unchanged modules
+        if: ${{ !cancelled() }}
+        run: |
+          go mod verify
+          git diff --exit-code -- go.mod go.sum

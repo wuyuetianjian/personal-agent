@@ -1,0 +1,111 @@
+//go:build windows && nativeprobe_sqlite_persistent && nativeprobe_sqlite_main_read && nativeprobe_sqlite_shm_resources
+
+package sqlite3
+
+import (
+	"fmt"
+	"modernc.org/libc"
+	"sync"
+	"sync/atomic"
+	"unsafe"
+)
+
+// Only a stage-B direct-method harness. No SQL execution/lifetime API.
+type ExperimentalSHMResourceKey struct {
+	File       uintptr
+	Generation uint64
+}
+type ExperimentalSHMResourceAuthority interface {
+	ExperimentalMainReadAuthority
+	MapSHM(ExperimentalSHMResourceKey, int32, int32, int32) (uintptr, error)
+	DetachSHM(ExperimentalSHMResourceKey, bool) error
+}
+type experimentalSHMResourceBinding struct {
+	authority ExperimentalSHMResourceAuthority
+	calls     atomic.Uint64
+}
+
+var experimentalSHMResourceMu sync.Mutex
+var experimentalSHMResourceBindings = map[uintptr]*experimentalSHMResourceBinding{}
+
+func experimentalSHMResourceBindingFor(v uintptr) *experimentalSHMResourceBinding {
+	experimentalSHMResourceMu.Lock()
+	defer experimentalSHMResourceMu.Unlock()
+	return experimentalSHMResourceBindings[v]
+}
+func ExperimentalSHMResourcesRegister(a ExperimentalSHMResourceAuthority, canonical string) (uintptr, error) {
+	if a == nil {
+		return 0, fmt.Errorf("missing SHM authority")
+	}
+	return experimentalMainReadRegisterPrepared(a, canonical, __ccgo_fp(experimentalSHMResourceOpen), func(v uintptr) {
+		experimentalSHMResourceMu.Lock()
+		experimentalSHMResourceBindings[v] = &experimentalSHMResourceBinding{authority: a}
+		experimentalSHMResourceMu.Unlock()
+	})
+}
+func ExperimentalSHMResourcesCalls(v uintptr) uint64 {
+	b := experimentalSHMResourceBindingFor(v)
+	if b == nil {
+		return 0
+	}
+	return b.calls.Load()
+}
+
+var experimentalSHMResourceMethods = func() Tsqlite3_io_methods {
+	m := experimentalMainReadMethods
+	m.FxShmMap = __ccgo_fp(experimentalSHMResourceMap)
+	m.FxShmUnmap = __ccgo_fp(experimentalSHMResourceUnmap)
+	m.FxClose = __ccgo_fp(experimentalSHMResourceClose)
+	return m
+}()
+
+func experimentalSHMResourceOpen(tls *libc.TLS, v, n, f uintptr, flags int32, out uintptr) int32 {
+	rc := experimentalMainReadOpen(tls, v, n, f, flags, out)
+	if rc == SQLITE_OK {
+		(*Tsqlite3_file)(unsafe.Pointer(f)).FpMethods = uintptr(unsafe.Pointer(&experimentalSHMResourceMethods))
+	}
+	return rc
+}
+func experimentalSHMResourceMap(tls *libc.TLS, file uintptr, region, size, extend int32, out uintptr) int32 {
+	if out == 0 {
+		return SQLITE_IOERR_SHMMAP
+	}
+	*(*uintptr)(unsafe.Pointer(out)) = 0
+	return experimentalMainReadWithRole(file, experimentalRoleMain, func() int32 {
+		f := experimentalMainReadLookup(file)
+		b := experimentalSHMResourceBindingFor(uintptr(unsafe.Pointer(&f.binding.vfs)))
+		if b == nil {
+			return SQLITE_IOERR_SHMMAP
+		}
+		b.calls.Add(1)
+		p, e := b.authority.MapSHM(ExperimentalSHMResourceKey{file, f.generation}, region, size, extend)
+		if e != nil || p == 0 {
+			return SQLITE_IOERR_SHMMAP
+		}
+		*(*uintptr)(unsafe.Pointer(out)) = p
+		return SQLITE_READONLY
+	})
+}
+func experimentalSHMResourceDetach(file uintptr, remove bool) int32 {
+	f := experimentalMainReadLookup(file)
+	if f == nil {
+		return SQLITE_IOERR_SHMMAP
+	}
+	b := experimentalSHMResourceBindingFor(uintptr(unsafe.Pointer(&f.binding.vfs)))
+	if b == nil {
+		return SQLITE_IOERR_SHMMAP
+	}
+	if e := b.authority.DetachSHM(ExperimentalSHMResourceKey{file, f.generation}, remove); e != nil {
+		return SQLITE_IOERR_SHMMAP
+	}
+	return SQLITE_OK
+}
+func experimentalSHMResourceUnmap(tls *libc.TLS, file uintptr, remove int32) int32 {
+	return experimentalMainReadWithRole(file, experimentalRoleMain, func() int32 { return experimentalSHMResourceDetach(file, remove != 0) })
+}
+func experimentalSHMResourceClose(tls *libc.TLS, file uintptr) int32 {
+	if rc := experimentalSHMResourceDetach(file, false); rc != SQLITE_OK {
+		return rc
+	}
+	return experimentalMainReadClose(tls, file)
+}
