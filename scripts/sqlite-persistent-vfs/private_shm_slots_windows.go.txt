@@ -64,7 +64,8 @@ func experimentalSHMSlotOpen(tls *libc.TLS, v, n, f uintptr, flags int32, out ui
 	return rc
 }
 func experimentalSHMSlotLock(tls *libc.TLS, file uintptr, offset, count, flags int32) int32 {
-	return experimentalMainReadWithRole(file, experimentalRoleMain, func() int32 {
+	knownSlotFailure := false
+	rc := experimentalMainReadWithRole(file, experimentalRoleMain, func() int32 {
 		f := experimentalMainReadLookup(file)
 		b := experimentalSHMSlotBindingFor(uintptr(unsafe.Pointer(&f.binding.vfs)))
 		if b == nil {
@@ -73,6 +74,7 @@ func experimentalSHMSlotLock(tls *libc.TLS, file uintptr, offset, count, flags i
 		b.locks.Add(1)
 		busy, e := b.authority.LockSHM(ExperimentalSHMResourceKey{file, f.generation}, offset, count, flags)
 		if e != nil {
+			knownSlotFailure = true
 			return SQLITE_IOERR_SHMLOCK
 		}
 		if busy {
@@ -80,6 +82,14 @@ func experimentalSHMSlotLock(tls *libc.TLS, file uintptr, offset, count, flags i
 		}
 		return SQLITE_OK
 	})
+	// A known slot failure may poison the owner, making Borrow.release also fail.
+	// Preserve that specific failure code, never restore a success/BUSY result.
+	// Unentered/panicking callbacks or successful callbacks with release failure
+	// keep WithRole's generic IOERR and cannot be mistaken for successful locking.
+	if knownSlotFailure {
+		return SQLITE_IOERR_SHMLOCK
+	}
+	return rc
 }
 func experimentalSHMSlotBarrier(tls *libc.TLS, file uintptr) {
 	// Capture only inside Borrow. Revoke is an arbitrary adapter callback and

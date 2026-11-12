@@ -23,12 +23,17 @@ const shmSlotChildEnv = "AGENT_PRIVATE_SHM_SLOT_FIXTURE"
 
 type shmSlotAuthority struct {
 	*shmResourceTestAuthority
-	slots    *persistentSHMSlotHost
-	onRevoke func(error)
+	slots     *persistentSHMSlotHost
+	onRevoke  func(error)
+	afterLock func(bool, error)
 }
 
 func (a *shmSlotAuthority) LockSHM(k sqlite3.ExperimentalSHMResourceKey, o, n, f int32) (bool, error) {
-	return a.slots.lock(a.c, k, o, n, f)
+	busy, e := a.slots.lock(a.c, k, o, n, f)
+	if a.afterLock != nil {
+		a.afterLock(busy, e)
+	}
+	return busy, e
 }
 func (a *shmSlotAuthority) BarrierSHM(k sqlite3.ExperimentalSHMResourceKey) error {
 	return a.slots.barrier(a.c, k)
@@ -596,10 +601,40 @@ func shmSlotRetainedChild(t *testing.T, kind string) {
 		os.Exit(2)
 	case <-time.After(50 * time.Millisecond):
 	}
+	if kind == "lock-error" {
+		shmSlotSuccessReleaseFailure(t)
+	}
 	if t.Failed() {
 		fmt.Println("slot retained prior failure")
 		os.Exit(2)
 	}
 	fmt.Println("SHM_SLOT_CHILD_OK retained")
 	os.Exit(0)
+}
+
+// Runs inside the existing normal-exiting retained child. Its extra deliberately
+// poisoned authority remains process-owned; no failing cleanup is hidden.
+func shmSlotSuccessReleaseFailure(t *testing.T) {
+	f := newSHMSlotFixture(t)
+	f.requireReady(t)
+	fault := errors.New("successful slot callback then lease release fault")
+	called := false
+	f.a.afterLock = func(busy bool, e error) {
+		if busy || e != nil {
+			t.Errorf("success control callback %v/%v", busy, e)
+			return
+		}
+		called = true
+		f.a.c.owner.poison(fault)
+	}
+	rc := shmSlotCall(t, f.file, 4, 1, 10)
+	if !called || rc != sqlite3.SQLITE_IOERR {
+		t.Errorf("successful callback with release fault returned %d", rc)
+	}
+	f.a.c.owner.mu.Lock()
+	terminal := f.a.c.owner.terminal
+	f.a.c.owner.mu.Unlock()
+	if !errors.Is(terminal, fault) {
+		t.Error("success control did not preserve owner terminal")
+	}
 }
