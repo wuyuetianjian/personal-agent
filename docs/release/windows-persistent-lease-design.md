@@ -1,6 +1,6 @@
 # Persistent connection leases: design and test-first boundary
 
-Status: **not implemented**. The private SQL spike at `0cf123d` reached real
+Status: **implementation candidate, native qualification pending**. The private SQL spike at `0cf123d` reached real
 private xOpen three times and refused with SQLITE_CANTOPEN. This next stage is
 only independently opened native file leases, not accepting SQLite callbacks.
 Both `nativeprobe_sqlite_lease` and `nativeprobe_sqlite_identity` are required;
@@ -114,3 +114,23 @@ integration must separate an operation-admission/drain token from the short
 registry mutex, or acquire all required resources in a protected phase before
 borrowing handles for fragments that cannot acquire again. The current RWMutex
 is not a drop-in wrapper around arbitrary SQLite callbacks.
+
+### Candidate after owner-only RED
+
+At `941cf47`, Actions `43214280097` reached the explicitly unimplemented owner
+constructor after 36 successful leaf native prerequisite controls. All 14 required
+nodes failed three rounds with no setup/build/skip/panic/timeout failure. This is
+owner-only RED, not execution evidence for the downstream lifecycle assertions.
+
+The candidate now creates an owner-held broker and opaque connection registries.
+Every resource uses fresh metadata and data opens and compares current full
+identity, regular type, exact name and lineage before publishing. The resource
+close hook covers data candidates/live resources only; metadata always uses native
+CloseHandle, with any error retained in owner terminal state. Failed opens claim
+returned handles, registration rollback consumes candidates, and borrow unlocks
+via defer even on a propagating callback panic. Owner and connection closing
+transitions precede lock acquisition; terminal/closing owners reject new work.
+The test now invokes owner.close directly twice after initial completed shutdown,
+checking retained terminal error and no extra resource close, independently of the
+fixture single-flight helper. Unknown cleanup results never trigger numeric handle
+retry. Native lifecycle GREEN remains pending for the implementation's exact SHA.

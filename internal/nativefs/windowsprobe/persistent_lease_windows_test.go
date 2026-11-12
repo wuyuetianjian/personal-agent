@@ -253,6 +253,24 @@ func TestPersistentLeaseCloseTerminalOnce(t *testing.T) {
 	if data, e := o.readWorkspace(context.Background(), r, []string{"neighbor.txt"}); e == nil || data != nil {
 		t.Fatal("terminal owner returned workspace bytes")
 	}
+	// First shutdown uses fixture bookkeeping, but the following calls invoke
+	// the implementation directly: single-flight cleanup cannot satisfy them.
+	if e := leaseOwnerClose(o); !errors.Is(e, fault) {
+		t.Fatalf("owner close lost terminal error: %v", e)
+	}
+	for i := 0; i < 2; i++ {
+		if e := leaseOwnerRepeatRaw(t, o); !errors.Is(e, fault) {
+			t.Fatalf("direct repeat %d lost terminal result: %v", i, e)
+		}
+	}
+	if len(calls) != 1 {
+		t.Fatalf("owner repeats added native close attempts: %v", calls)
+	}
+	for _, n := range calls {
+		if n != 1 {
+			t.Fatal("owner repeated native close")
+		}
+	}
 }
 func TestPersistentLeaseCrossOwnerRefused(t *testing.T) {
 	_, a := leaseFixture(t, persistentLeaseHooks{}, nil)
@@ -573,6 +591,33 @@ func leaseOwnerClose(o *persistentLeaseOwner) error {
 		return state.err
 	case <-time.After(5 * time.Second):
 		state.timedOut.Store(true)
+		return errLeaseShutdownTimeout
+	}
+}
+
+// Only call after the first owner shutdown completed. This explicitly tests the
+// implementation again, not the test helper's cached result. If it hangs, mark
+// fixture cleanup unsafe so it does not free roots beneath the active call.
+func leaseOwnerRepeatRaw(t *testing.T, o *persistentLeaseOwner) error {
+	t.Helper()
+	value, ok := leaseShutdowns.Load(o)
+	if !ok {
+		t.Fatal("missing fixture shutdown ownership")
+	}
+	state := value.(*leaseShutdown)
+	select {
+	case <-state.done:
+	default:
+		t.Fatal("first shutdown not complete before raw repeat")
+	}
+	done := make(chan error, 1)
+	go func() { done <- o.close() }()
+	select {
+	case e := <-done:
+		return e
+	case <-time.After(5 * time.Second):
+		state.timedOut.Store(true)
+		t.Fatal("direct repeated owner close timed out; no further cleanup")
 		return errLeaseShutdownTimeout
 	}
 }
