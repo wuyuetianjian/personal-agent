@@ -17,6 +17,7 @@ type ExperimentalSHMResourceKey struct {
 }
 type ExperimentalSHMResourceAuthority interface {
 	ExperimentalMainReadAuthority
+	AttachSHM(ExperimentalSHMResourceKey) error
 	MapSHM(ExperimentalSHMResourceKey, int32, int32, int32) (uintptr, error)
 	DetachSHM(ExperimentalSHMResourceKey, bool) error
 }
@@ -62,6 +63,32 @@ var experimentalSHMResourceMethods = func() Tsqlite3_io_methods {
 func experimentalSHMResourceOpen(tls *libc.TLS, v, n, f uintptr, flags int32, out uintptr) int32 {
 	rc := experimentalMainReadOpen(tls, v, n, f, flags, out)
 	if rc == SQLITE_OK {
+		record := experimentalMainReadLookup(f)
+		b := experimentalSHMResourceBindingFor(v)
+		var err error
+		panicked := false
+		func() {
+			defer func() {
+				if p := recover(); p != nil {
+					panicked = true
+					err = experimentalMainReadPanic("SHM attach panic", p)
+				}
+			}()
+			err = b.authority.AttachSHM(ExperimentalSHMResourceKey{f, record.generation})
+		}()
+		if err != nil {
+			if out != 0 {
+				*(*int32)(unsafe.Pointer(out)) = 0
+			}
+			// Failed attach is paired with idempotent detach, including absent state.
+			// If cleanup is uncertain, Close retains the lease/pin and saved failure.
+			(*Tsqlite3_file)(unsafe.Pointer(f)).FpMethods = uintptr(unsafe.Pointer(&experimentalSHMResourceMethods))
+			closeRC := experimentalSHMResourceClose(tls, f)
+			if panicked || closeRC != SQLITE_OK {
+				record.binding.poison(fmt.Errorf("SHM attach failed: %w; cleanup rc=%d", err, closeRC))
+			}
+			return SQLITE_CANTOPEN
+		}
 		(*Tsqlite3_file)(unsafe.Pointer(f)).FpMethods = uintptr(unsafe.Pointer(&experimentalSHMResourceMethods))
 	}
 	return rc
@@ -86,26 +113,70 @@ func experimentalSHMResourceMap(tls *libc.TLS, file uintptr, region, size, exten
 		return SQLITE_READONLY
 	})
 }
-func experimentalSHMResourceDetach(file uintptr, remove bool) int32 {
+
+// Called with the live file mutex held, never through ordinary Borrow: terminal
+// cleanup must remain possible after authority poison. Authority retains ledger
+// and owner pin if cleanup cannot establish safety.
+func experimentalSHMResourceDetachLocked(file uintptr, f *experimentalMainReadFile, remove bool) (err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			err = experimentalMainReadPanic("SHM detach panic", p)
+		}
+	}()
+	b := experimentalSHMResourceBindingFor(uintptr(unsafe.Pointer(&f.binding.vfs)))
+	if b == nil {
+		return fmt.Errorf("foreign SHM binding")
+	}
+	return b.authority.DetachSHM(ExperimentalSHMResourceKey{file, f.generation}, remove)
+}
+func experimentalSHMResourceUnmap(tls *libc.TLS, file uintptr, remove int32) int32 {
 	f := experimentalMainReadLookup(file)
 	if f == nil {
 		return SQLITE_IOERR_SHMMAP
 	}
-	b := experimentalSHMResourceBindingFor(uintptr(unsafe.Pointer(&f.binding.vfs)))
-	if b == nil {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !experimentalMainReadCurrent(file, f) || f.closed || f.role != experimentalRoleMain {
 		return SQLITE_IOERR_SHMMAP
 	}
-	if e := b.authority.DetachSHM(ExperimentalSHMResourceKey{file, f.generation}, remove); e != nil {
+	if e := experimentalSHMResourceDetachLocked(file, f, remove != 0); e != nil {
+		// An uncertain unmap/detach consumes this file's cleanup attempt. A later
+		// xClose returns saved failure, never re-enters the same panic/native hook.
+		f.closed = true
+		f.result = SQLITE_IOERR_CLOSE
+		f.binding.poison(e)
 		return SQLITE_IOERR_SHMMAP
 	}
 	return SQLITE_OK
 }
-func experimentalSHMResourceUnmap(tls *libc.TLS, file uintptr, remove int32) int32 {
-	return experimentalMainReadWithRole(file, experimentalRoleMain, func() int32 { return experimentalSHMResourceDetach(file, remove != 0) })
-}
 func experimentalSHMResourceClose(tls *libc.TLS, file uintptr) int32 {
-	if rc := experimentalSHMResourceDetach(file, false); rc != SQLITE_OK {
-		return rc
+	f := experimentalMainReadLookup(file)
+	if f == nil {
+		return SQLITE_IOERR_CLOSE
 	}
-	return experimentalMainReadClose(tls, file)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !experimentalMainReadCurrent(file, f) || f.role != experimentalRoleMain {
+		return SQLITE_IOERR_CLOSE
+	}
+	if f.closed {
+		return f.result
+	}
+	f.closed = true
+	f.result = SQLITE_IOERR_CLOSE
+	if e := experimentalSHMResourceDetachLocked(file, f, false); e != nil {
+		f.binding.poison(e)
+		return f.result
+	}
+	l := f.lease
+	f.lease = nil
+	p := (*TwinFile)(unsafe.Pointer(file))
+	p.Fh = ^uintptr(0)
+	p.FpMethod = 0
+	if e := experimentalMainReadLeaseClose(l); e != nil {
+		f.binding.poison(e)
+		return f.result
+	}
+	f.result = SQLITE_OK
+	return f.result
 }

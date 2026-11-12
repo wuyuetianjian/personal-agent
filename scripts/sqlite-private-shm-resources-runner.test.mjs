@@ -183,3 +183,15 @@ test('WAL and access overlays keep independent pins in the composed admission',(
 test('prior admission overlay cannot silently change with SHM resources',()=>{
  assert.throws(()=>validateAllInputs(mod,sum,patch,basePatch,mainPatch,walPatch,accessPatch,admissionPatch+'\n'),/patch SHA mismatch/);
 });
+
+test('ambient retained-resource child marker cannot bypass parent contracts',async()=>{
+ const key='AGENT_PRIVATE_SHM_RETAINED_FIXTURE', saved=process.env[key];
+ process.env[key]='1';let inspected=false;
+ try {
+  await assert.rejects(runExperiment({platform:'win32',log:()=>{},command:async(args,options)=>{
+   assert.equal(Object.hasOwn(options.env,key),false,'retained child marker leaked');inspected=true;
+   throw new Error('stop after retained environment inspection');
+  }}),/stop after retained environment inspection/);
+  assert.equal(inspected,true);
+ }finally{if(saved===undefined)delete process.env[key];else process.env[key]=saved;}
+});

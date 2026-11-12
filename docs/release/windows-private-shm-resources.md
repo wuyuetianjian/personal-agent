@@ -118,3 +118,60 @@ exit. Timeout/kill is failure, not evidence. Do not put such a deliberately
 retained owner through the regular fixture's unconditional owner cleanup, nor
 fake successful cleanup with a hook. Current post-map rollback case exercises
 only a determinate cleanup path, not this uncertainty matrix.
+
+## GREEN candidate implementation (native validation pending)
+
+The host now binds attachment authority at actual private main xOpen via
+AttachSHM, before its successful return. A key includes the bridge's actual
+file generation and is fixed to one connection. Test tickets now take this key
+and connection: detach marks that attachment draining under the admission mutex
+before waiting; fresh tickets for it are refused even without host shutdown.
+Host-wide ticket counts conservatively delay other detaches. Tickets remain
+simulated core use, not SQL/Rows/Stmt integration.
+
+Native work uses the busy reservation with no host mutex held. Cached pointer
+grants and new-view publication both check closing and commit under that same
+mutex. Shutdown has one finalization executor, waits for every attachment and
+ticket, then closes the underlying permit owner outside the host mutex and
+caches its result. Terminal retained state never reaches that finalizer.
+
+Live SHM method/close dispatch is serialized by the actual main record mutex.
+Close records a saved result and consumes the main lease only after successful
+node detach, rather than recursively entering the old close callback. Detach
+panic is contained and leaves the owner pin retained. Failed main attach clears
+outFlags, invokes idempotent detach (absent state owns nothing), and consumes the
+main lease only when safe; panic or uncertain cleanup poisons the binding.
+
+Retained records include unpublished views, attempted base/mapping/data/metadata
+handles, and exclusive/shared DMS unlock state. An attempted identifier is audit
+state only, never permission to retry a potentially reused number. Normal-exit
+child cases cover unmap failure, mapping/data close uncertainty, close-hook panic,
+unlock failure, detach panic, unpublished-view cleanup failure, metadata cleanup
+failure and first-opener exclusive-unlock uncertainty. Children check already
+recorded test errors before emitting a witness and exiting zero. Parent requires
+that witness and a successful process exit; timeout/kill cannot pass.
+
+Determinate faults exercise real open/mapping/view results returned with errors,
+once-only rollback, and successful reacquisition. A native before-publication
+barrier proves **host-close publication rollback**, not generic context
+cancellation: mapRegion currently has no ctx argument. Stage D must separately
+prove real SQL cancellation. Foreign-connection tests use the actual live key
+with its original-connection positive control. Retirement is separately tested;
+the same-address/new-generation test is a host-token simulation, not evidence
+that SQLite's allocator reused an actual file allocation at that address.
+
+Current host.close is a synchronous drain primitive with no context argument.
+Bounded waits in tests are harness controls only; a production close(ctx) or
+SQL cancellation API is not implemented. Waiting never authorizes forced unmap.
+The retained child suite additionally verifies attach-panic cleanup: it records
+poison, but when detach succeeds there must be no leaked attachment pin, and
+owner.close returns the saved poison instead of hanging. Ordinary attach errors
+both before and after attachment registration clear outFlags/methods after safe
+cleanup and leave the original authority usable.
+
+The trusted adapter's Revoke must propagate terminal state to both SHM host and
+permit owner. Detach hook panic is contained by the bridge; the direct host API
+alone does not promise panic containment for that trusted hook. The retained
+children verify host.close returns the expected terminal error without changing
+underlying owner closing/closed state, then independently prove that an explicit
+raw owner.close remains blocked by the retained pin.

@@ -31,7 +31,7 @@ const WAL_MANIFEST = 'scripts/sqlite-persistent-vfs/generator/wal-manifest.json'
 const WAL_LINKED_NAME = 'lib/nativeprobe_sqlite_wal_generated_windows.go';
 const DEFAULT_REPO = fileURLToPath(new URL('../', import.meta.url));
 
-export const PATCH_SHA256 = '9c0c7e1e9c18b78c439495f5593ad695c1621add897f5152fc974a88d820847b';
+export const PATCH_SHA256 = 'ac43ec59117b46b05df979519683151dfc2fac11a230142f4324e53a17ab2949';
 export function validateInputs(mod, sum, patch, basePatch, mainPatch, walPatch, accessPatch, admissionPatch) {
   validateAdmissionInputs(mod,sum,admissionPatch,basePatch,mainPatch,walPatch,accessPatch);
   if (createHash('sha256').update(patch).digest('hex') !== PATCH_SHA256) throw new Error('private patch SHA mismatch');
@@ -207,6 +207,7 @@ export async function runExperiment({platform=process.platform,repo=DEFAULT_REPO
   const options={cwd:repo,env:{...process.env,GOWORK:'off',GOFLAGS:'',GOTOOLCHAIN:'local',GOOS:'windows'}};
   // Only the Go test explicitly launching its controlled child may set this.
   delete options.env.AGENT_PRIVATE_EXISTING_WAL_FIXTURE;
+  delete options.env.AGENT_PRIVATE_SHM_RETAINED_FIXTURE;
   const environment=JSON.parse(await command(['env','-json','GOMODCACHE'],options));
   if(typeof environment.GOMODCACHE!=='string' || !path.isAbsolute(environment.GOMODCACHE)) throw new Error('go env did not identify an absolute module cache');
   let existingCache;
