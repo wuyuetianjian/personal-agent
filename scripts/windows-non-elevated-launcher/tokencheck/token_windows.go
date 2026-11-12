@@ -7,28 +7,30 @@ import (
 	"unsafe"
 )
 
-func info(t windows.Token, class uint32) ([]byte, error) {
-	var n uint32
-	e := windows.GetTokenInformation(t, class, nil, 0, &n)
-	if e != windows.ERROR_INSUFFICIENT_BUFFER || n == 0 || n > 1<<20 {
-		return nil, fmt.Errorf("token query size %d: %w", class, e)
+func nativeQuery(t windows.Token, class uint32) informationQuery {
+	return func(b []byte) (uint32, error) {
+		var p *byte
+		if len(b) > 0 {
+			p = &b[0]
+		}
+		var used uint32
+		e := windows.GetTokenInformation(t, class, p, uint32(len(b)), &used)
+		return used, e
 	}
-	b := make([]byte, n)
-	e = windows.GetTokenInformation(t, class, &b[0], n, &n)
+}
+func info(t windows.Token, class uint32) ([]byte, error) {
+	b, e := queryVariable(nativeQuery(t, class), windows.ERROR_INSUFFICIENT_BUFFER)
 	if e != nil {
-		return nil, e
+		return nil, fmt.Errorf("token variable query %d: %w", class, e)
 	}
 	return b, nil
 }
 func scalar(t windows.Token, class uint32) (uint32, error) {
-	b, e := info(t, class)
+	value, e := queryScalar(nativeQuery(t, class))
 	if e != nil {
-		return 0, e
+		return 0, fmt.Errorf("token scalar query %d: %w", class, e)
 	}
-	if len(b) != 4 {
-		return 0, fmt.Errorf("invalid scalar token size")
-	}
-	return *(*uint32)(unsafe.Pointer(&b[0])), nil
+	return value, nil
 }
 func Inspect(t windows.Token) (s Snapshot, err error) {
 	s.Elevation, err = scalar(t, windows.TokenElevation)
