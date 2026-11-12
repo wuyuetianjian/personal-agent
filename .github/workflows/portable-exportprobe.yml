@@ -1,0 +1,73 @@
+name: Portable explicit export capability experiment
+on:
+  push:
+    branches: [test/rebuild-20261110]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: portable-exportprobe-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  exportprobe:
+    if: ${{ github.ref == 'refs/heads/test/rebuild-20261110' }}
+    runs-on: ubuntu-24.04
+    env:
+      CGO_ENABLED: '1'
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Record source and experiment boundary
+        run: |
+          git rev-parse HEAD
+          go version
+          go env GOOS GOARCH CGO_ENABLED
+          uname -a
+          echo 'Synthetic explicit export only. Not native reading, source provenance, user approval UI, historical-copy isolation or production qualification.'
+      - name: Test exact event gate
+        run: node --test scripts/exportprobe-gate.test.mjs
+      - name: Verify modules and disconnected production graph
+        run: |
+          go mod verify
+          go list -mod=readonly -deps ./cmd/... > export-production-deps.txt
+          go list -mod=readonly -tags=nativeprobe_export -deps ./cmd/... > export-tagged-deps.txt
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          for (const path of ['export-production-deps.txt', 'export-tagged-deps.txt']) {
+            const lines = fs.readFileSync(path, 'utf8').trim().split(/\r?\n/);
+            assert(lines.length > 1, 'empty dependency graph');
+            assert(!lines.some(line => line.startsWith('agent/internal/nativefs/')), 'foundation reached commands');
+          }
+          JS
+      - name: Synthetic export contracts with race detector
+        id: native
+        run: |
+          set -o pipefail
+          go test -race -json -mod=readonly -tags=nativeprobe_export -count=3 -timeout=5m -run '^TestExport' ./internal/nativefs/exportprobe | tee export-race.json
+      - name: Require every contract without skips
+        if: ${{ !cancelled() && steps.native.outcome != 'skipped' }}
+        run: node scripts/exportprobe-gate.mjs export-race.json
+      - name: Verify unchanged modules
+        if: ${{ !cancelled() }}
+        run: go mod verify
+      - name: Preserve race evidence on every outcome
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: exportprobe-race
+          path: export-race.json
+          if-no-files-found: error
