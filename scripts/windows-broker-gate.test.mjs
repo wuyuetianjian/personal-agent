@@ -16,3 +16,8 @@ test('package completion and terminal ordering required',()=>{const e=events();e
 
 test('top-level passes cannot hide missing refusal subtest',()=>{const missing='TestPersistentExistingRefusals/junction';assert.throws(()=>validate(encode(events().filter(e=>e.Test!==missing))));});
 test('top-level passes cannot hide missing basename subtest',()=>{const missing='TestPersistentInvalidBasenames/ads';assert.throws(()=>validate(encode(events().filter(e=>e.Test!==missing))));});
+
+test('creation residual subtest required independently', () => {
+  const filtered = events().filter(e => e.Test !== 'TestPersistentCreateFaultResidual/after-create');
+  assert.throws(() => validate(encode(filtered)));
+});

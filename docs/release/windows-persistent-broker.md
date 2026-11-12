@@ -81,3 +81,37 @@ still ignore some temporary-handle close errors; this stage does not strengthen
 that inherited cleanup contract or claim complete read-resource error reporting.
 This is pending exact-head Windows qualification, not a claim of native
 GREEN, complete private-storage isolation, WAL locks or standard-user support.
+
+## Next stage: initial missing sidecar creation (test-first)
+
+The `349d1ae` native broker run passed all 24 required nodes three times. The
+next slice is only initial missing WAL/SHM creation. Main DB creation is refused.
+`createMissing(ctx, role)` uses FILE_CREATE, never OPEN_ALWAYS, overwrite or
+truncate; an existing object collision must retain its bytes and identity.
+The existing broker lock covers acquisition, create, registration and reads.
+All three owned roles are still required before any workspace read is admitted.
+Consequently this stage cannot demonstrate draining an already active content
+read before creation. It must not describe serialization tests as that proof.
+
+Creation results distinguish confirmed FILE_CREATED from verified identity
+registration. Created handles are non-inheritable and opened with the same
+read/write sharing as existing objects, without DELETE or DELETE_ON_CLOSE.
+Content IO remains absent. Successful identity/type/volume/exact-name checks and
+registration precede publication. New empty files remain after ordinary close.
+
+Before the syscall, cancellation has no creation effect. After a successful
+create, any cancellation, qualification or publication fault permanently revokes
+this broker's read admission, retains the error and an explicitly reported
+residual. No error path deletes by name, attempts rollback or retries Close.
+Any returned owned handle remains accountable through final close; uncertainty
+is reported, never interpreted as absence of residual or restored admission.
+A failed create may report no confirmed creation while the native outcome is
+uncertain; the conservative terminal contract must preserve that distinction.
+Fixture tests use empty files only; no real existing DB is deleted to enable a
+creation test. Collision positive controls include a file created immediately
+before FILE_CREATE, proving the broker did not silently open or truncate it.
+
+Still unresolved: actual active-reader drain during a live role replacement,
+external SQLite readers creating SHM, lock/mapping lifecycle and share-delete
+requirements, crash recovery, durable creation/parent flush and a complete VFS.
+No optional-role-ready shortcut or production import is introduced.

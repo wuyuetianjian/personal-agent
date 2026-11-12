@@ -228,12 +228,26 @@ func openRelativeShared(parent windows.Handle, name string, data bool, share uin
 // FILE_READ_DATA (the same bit as FILE_LIST_DIRECTORY) creates a participating
 // no-delete guard. The caller retains the metadata handle through this call,
 // preventing identity reuse. Never traverse/read until qualification completes.
+// handleOps is a per-call private seam. Public entry points always use the
+// native opener/closer; no mutable global hook can replace their behavior.
+type handleOps struct {
+	open  func(windows.Handle, string, bool, uint32) (windows.Handle, error)
+	close func(windows.Handle) error
+}
+
+func nativeHandleOps() handleOps {
+	return handleOps{open: openRelativeShared, close: windows.CloseHandle}
+}
+
 func acquireIOGuard(parent windows.Handle, name string, expected snapshot) (windows.Handle, snapshot, error) {
+	return acquireIOGuardWithOps(parent, name, expected, nativeHandleOps())
+}
+func acquireIOGuardWithOps(parent windows.Handle, name string, expected snapshot, ops handleOps) (windows.Handle, snapshot, error) {
 	share := uint32(windows.FILE_SHARE_READ)
 	if expected.Standard.Directory != 0 {
 		share |= windows.FILE_SHARE_WRITE
 	}
-	h, err := openRelativeShared(parent, name, true, share)
+	h, err := ops.open(parent, name, true, share)
 	if err != nil {
 		return 0, snapshot{}, err
 	}
@@ -245,7 +259,7 @@ func acquireIOGuard(parent windows.Handle, name string, expected snapshot) (wind
 		err = exactName(h, name)
 	}
 	if err != nil {
-		windows.CloseHandle(h)
+		ops.close(h)
 		return 0, snapshot{}, err
 	}
 	return h, actual, nil
@@ -275,6 +289,9 @@ func (r *Root) Read(ctx context.Context, components []string) ([]byte, error) {
 // Exclusions are object identities pinned by live metadata-only duplicates for
 // this call, not pathnames, persisted IDs, or complete private-storage policy.
 func (r *Root) read(ctx context.Context, components []string, excluded map[idInfo]struct{}) ([]byte, error) {
+	return r.readWithHandleOps(ctx, components, excluded, nativeHandleOps())
+}
+func (r *Root) readWithHandleOps(ctx context.Context, components []string, excluded map[idInfo]struct{}, ops handleOps) ([]byte, error) {
 	if err := validateComponents(components); err != nil {
 		return nil, err
 	}
@@ -296,7 +313,7 @@ func (r *Root) read(ctx context.Context, components []string, excluded map[idInf
 	handles := []windows.Handle{}
 	defer func() {
 		for i := len(handles) - 1; i >= 0; i-- {
-			windows.CloseHandle(handles[i])
+			ops.close(handles[i])
 		}
 	}()
 	parent := r.h
@@ -310,7 +327,7 @@ func (r *Root) read(ctx context.Context, components []string, excluded map[idInf
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		h, err := openRelative(parent, name, false)
+		h, err := ops.open(parent, name, false, windows.FILE_SHARE_READ)
 		if err != nil {
 			return nil, err
 		}
@@ -331,7 +348,7 @@ func (r *Root) read(ctx context.Context, components []string, excluded map[idInf
 			if s.Standard.Directory == 0 {
 				return nil, errUnsafe
 			}
-			ioGuard, qualified, err := acquireIOGuard(parent, name, s)
+			ioGuard, qualified, err := acquireIOGuardWithOps(parent, name, s, ops)
 			if err != nil {
 				return nil, err
 			}
@@ -354,7 +371,7 @@ func (r *Root) read(ctx context.Context, components []string, excluded map[idInf
 		// ReOpenFile's documented contract requires a CreateFile-origin handle;
 		// these are NtCreateFile-origin handles. Instead, reopen one exact basename
 		// beneath the pinned parent and compare full identity BEFORE the first read.
-		data, before, err := acquireIOGuard(parent, name, s)
+		data, before, err := acquireIOGuardWithOps(parent, name, s, ops)
 		if err != nil {
 			return nil, err
 		}

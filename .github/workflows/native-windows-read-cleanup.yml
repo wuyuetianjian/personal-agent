@@ -1,0 +1,71 @@
+name: Windows temporary read-handle cleanup (experimental)
+on:
+  push:
+    branches: [test/rebuild-20261110]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-windows-read-cleanup-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  cleanup:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Record source and experiment boundary
+        run: |
+          git rev-parse HEAD
+          go version
+          go env GOOS GOARCH
+          echo 'Read/guard temporary cleanup only; caller root retained, native capabilities disabled.'
+      - name: Record Windows token and NTFS runtime
+        shell: pwsh
+        run: |
+          [System.Environment]::OSVersion.VersionString
+          [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+          "ElevatedAdministratorToken: $($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"
+          Get-Volume -DriveLetter ([System.IO.Path]::GetPathRoot($env:RUNNER_TEMP).Substring(0,1)) | Select-Object DriveLetter, FileSystemType, DriveType, HealthStatus
+      - name: Test exact event gate
+        run: node --test scripts/windows-read-cleanup-gate.test.mjs
+      - name: Verify modules and disconnected production graph
+        run: |
+          go mod verify
+          go list -mod=readonly -deps ./cmd/... > broker-production-deps.txt
+          go list -mod=readonly -tags=nativeprobe_sqlite_identity -deps ./cmd/... > broker-tagged-deps.txt
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import assert from 'node:assert/strict';
+          for (const path of ['broker-production-deps.txt', 'broker-tagged-deps.txt']) {
+            const lines = fs.readFileSync(path, 'utf8').trim().split(/\r?\n/);
+            assert(lines.length > 1, 'empty dependency graph');
+            assert(!lines.some(line => line.startsWith('agent/internal/nativefs/')), 'foundation reached commands');
+          }
+          JS
+      - name: Native temporary read-handle cleanup contracts
+        id: native
+        run: |
+          set -o pipefail
+          go test -json -mod=readonly -count=3 -timeout=5m -run '^(TestReadCleanup|TestGuardCleanup)' ./internal/nativefs/windowsprobe | tee broker-native.json
+      - name: Require every contract without skips
+        if: ${{ !cancelled() && steps.native.outcome != 'skipped' }}
+        run: node scripts/windows-read-cleanup-gate.mjs broker-native.json
+      - name: Verify unchanged modules
+        if: ${{ !cancelled() }}
+        run: go mod verify

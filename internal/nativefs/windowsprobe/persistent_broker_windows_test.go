@@ -350,3 +350,211 @@ func TestPersistentUncertainCloseQuarantines(t *testing.T) {
 		t.Fatalf("poisoned read: %v", e)
 	}
 }
+
+func persistentMissing(t *testing.T, role persistentRole, hooks persistentHooks) (string, *Root, *persistentBroker) {
+	t.Helper()
+	dir, r := persistentFixture(t)
+	if e := os.Remove(filepath.Join(dir, persistentNames[role])); e != nil {
+		t.Fatal(e)
+	}
+	b, e := newPersistentBroker(r, "store.db", hooks)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, existing := range []persistentRole{persistentMain, persistentWAL, persistentSHM} {
+		if existing != role {
+			if e := b.acquireExisting(context.Background(), existing); e != nil {
+				_ = b.close()
+				t.Fatal(e)
+			}
+		}
+	}
+	return dir, r, b
+}
+func TestPersistentCreateMissingSidecar(t *testing.T) {
+	for _, role := range []persistentRole{persistentWAL, persistentSHM} {
+		t.Run(persistentNames[role], func(t *testing.T) {
+			dir, r, b := persistentMissing(t, role, persistentHooks{})
+			t.Cleanup(func() {
+				if e := b.close(); e != nil {
+					t.Error(e)
+				}
+			})
+			mainBefore, e := os.ReadFile(filepath.Join(dir, persistentNames[0]))
+			if e != nil {
+				t.Fatal(e)
+			}
+			if _, e := b.readWorkspace(context.Background(), r, []string{"neighbor.txt"}); !errors.Is(e, errPersistentPending) {
+				t.Fatalf("missing role admitted read: %v", e)
+			}
+			result, e := b.createMissing(context.Background(), role)
+			if e != nil || !result.Created || !result.Registered {
+				t.Fatalf("missing sidecar creation required: result=%+v err=%v", result, e)
+			}
+			if b.evidence().Published != 3 {
+				t.Fatal("created identity not registered")
+			}
+			v, e := os.ReadFile(filepath.Join(dir, persistentNames[role]))
+			if e != nil || len(v) != 0 {
+				t.Fatalf("new sidecar not empty/read-shareable: %v", e)
+			}
+			if data, e := b.readWorkspace(context.Background(), r, []string{persistentNames[role]}); data != nil || !errors.Is(e, errProtected) {
+				t.Fatalf("created role readable: %v", e)
+			}
+			if data, e := b.readWorkspace(context.Background(), r, []string{"neighbor.txt"}); e != nil || len(data) == 0 {
+				t.Fatalf("neighbor: %v", e)
+			}
+			if e = b.close(); e != nil {
+				t.Fatal(e)
+			}
+			if v, e = os.ReadFile(filepath.Join(dir, persistentNames[role])); e != nil || len(v) != 0 {
+				t.Fatalf("close removed/modified residual: %v", e)
+			}
+			if v, e = os.ReadFile(filepath.Join(dir, persistentNames[0])); e != nil || !bytes.Equal(v, mainBefore) {
+				t.Fatal("main changed")
+			}
+		})
+	}
+}
+func TestPersistentCreateCollisionPreservesThirdParty(t *testing.T) {
+	var dir string
+	called := false
+	hooks := persistentHooks{beforeCreate: func(role persistentRole) error {
+		called = true
+		return os.WriteFile(filepath.Join(dir, persistentNames[role]), []byte("third-party sentinel"), 0600)
+	}}
+	path, _, b := persistentMissing(t, persistentWAL, hooks)
+	dir = path
+	t.Cleanup(func() {
+		if e := b.close(); e != nil {
+			t.Error(e)
+		}
+	})
+	result, e := b.createMissing(context.Background(), persistentWAL)
+	if e == nil || result.Created || result.Registered {
+		t.Fatalf("collision accepted: %+v %v", result, e)
+	}
+	if !called {
+		t.Fatal("collision control did not execute")
+	}
+	if v, e := os.ReadFile(filepath.Join(dir, "store.db-wal")); e != nil || string(v) != "third-party sentinel" {
+		t.Fatalf("collision destroyed: %v", e)
+	}
+	if b.evidence().Published != 2 {
+		t.Fatal("collision registered third-party object")
+	}
+}
+func TestPersistentCreateRejectsMainAndInvalidRole(t *testing.T) {
+	_, r := persistentFixture(t)
+	b := persistentNew(t, r, persistentHooks{})
+	for _, role := range []persistentRole{persistentMain, persistentRole(99)} {
+		result, e := b.createMissing(context.Background(), role)
+		if !errors.Is(e, errUnsafe) || result.Created || result.Registered {
+			t.Fatalf("invalid creation role: %+v %v", result, e)
+		}
+	}
+}
+func TestPersistentCreatePreCancelled(t *testing.T) {
+	touched := false
+	dir, _, b := persistentMissing(t, persistentWAL, persistentHooks{beforeCreate: func(persistentRole) error { touched = true; return nil }})
+	t.Cleanup(func() {
+		if e := b.close(); e != nil {
+			t.Error(e)
+		}
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	result, e := b.createMissing(ctx, persistentWAL)
+	if !errors.Is(e, context.Canceled) || result.Created || result.Registered || touched {
+		t.Fatalf("pre-cancel effect: %+v %v touched=%v", result, e, touched)
+	}
+	if _, e = os.Stat(filepath.Join(dir, "store.db-wal")); !os.IsNotExist(e) {
+		t.Fatalf("unexpected residual: %v", e)
+	}
+}
+func TestPersistentCreateFaultResidual(t *testing.T) {
+	for _, stage := range []string{"after-create", "after-register", "cancel-after-create"} {
+		t.Run(stage, func(t *testing.T) {
+			fault := errors.New("injected postcreate fault")
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			called := false
+			hooks := persistentHooks{}
+			if stage == "after-register" {
+				hooks.afterRegistered = func(role persistentRole) error {
+					if role == persistentWAL {
+						called = true
+						return fault
+					}
+					return nil
+				}
+			} else {
+				hooks.afterCreate = func(persistentRole) error {
+					called = true
+					if stage == "cancel-after-create" {
+						cancel()
+						return nil
+					}
+					return fault
+				}
+			}
+			dir, r, b := persistentMissing(t, persistentWAL, hooks)
+			expected := fault
+			if stage == "cancel-after-create" {
+				expected = context.Canceled
+			}
+			t.Cleanup(func() {
+				if e := b.close(); !errors.Is(e, expected) {
+					t.Errorf("terminal cleanup: %v", e)
+				}
+			})
+			result, e := b.createMissing(ctx, persistentWAL)
+			if !called || !errors.Is(e, expected) || !result.Created || result.Registered != (stage == "after-register") {
+				t.Fatalf("postcreate fault: %+v %v called=%v", result, e, called)
+			}
+			if !b.evidence().Closed {
+				t.Fatal("postcreate failure did not revoke admission")
+			}
+			if data, e := b.readWorkspace(context.Background(), r, []string{"neighbor.txt"}); data != nil || !errors.Is(e, errPersistentClosed) {
+				t.Fatalf("fault allowed read: %v", e)
+			}
+			if e = b.close(); !errors.Is(e, expected) {
+				t.Fatalf("lost failure: %v", e)
+			}
+			if v, e := os.ReadFile(filepath.Join(dir, "store.db-wal")); e != nil || len(v) != 0 {
+				t.Fatalf("residual removed/changed: %v", e)
+			}
+		})
+	}
+}
+func TestPersistentCreateUncertainCloseResidual(t *testing.T) {
+	fault := errors.New("close outcome uncertain")
+	calls := map[windows.Handle]int{}
+	dir, r, b := persistentMissing(t, persistentSHM, persistentHooks{close: func(h windows.Handle) error { calls[h]++; return errors.Join(windows.CloseHandle(h), fault) }})
+	t.Cleanup(func() {
+		if e := b.close(); e != nil && !errors.Is(e, fault) {
+			t.Error(e)
+		}
+	})
+	result, e := b.createMissing(context.Background(), persistentSHM)
+	if e != nil || !result.Created || !result.Registered {
+		t.Fatalf("create: %+v %v", result, e)
+	}
+	if e = b.close(); !errors.Is(e, fault) {
+		t.Fatalf("close: %v", e)
+	}
+	if e = b.close(); !errors.Is(e, fault) {
+		t.Fatalf("repeat close: %v", e)
+	}
+	for _, n := range calls {
+		if n != 1 {
+			t.Fatal("uncertain close retried")
+		}
+	}
+	if data, e := b.readWorkspace(context.Background(), r, []string{"neighbor.txt"}); data != nil || !errors.Is(e, errPersistentClosed) {
+		t.Fatalf("poison released reads: %v", e)
+	}
+	if v, e := os.ReadFile(filepath.Join(dir, "store.db-shm")); e != nil || len(v) != 0 {
+		t.Fatalf("uncertain close removed residual: %v", e)
+	}
+}

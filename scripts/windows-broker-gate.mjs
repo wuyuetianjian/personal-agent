@@ -13,6 +13,14 @@ export const required = Object.freeze([
   'TestPersistentMetadataSwap',
   'TestPersistentPublicationCloseRace',
   'TestPersistentUncertainCloseQuarantines',
+  'TestPersistentCreateMissingSidecar',
+  ...['store.db-wal','store.db-shm'].map(n => 'TestPersistentCreateMissingSidecar/'+n),
+  'TestPersistentCreateCollisionPreservesThirdParty',
+  'TestPersistentCreateRejectsMainAndInvalidRole',
+  'TestPersistentCreatePreCancelled',
+  'TestPersistentCreateFaultResidual',
+  ...['after-create','after-register','cancel-after-create'].map(n => 'TestPersistentCreateFaultResidual/'+n),
+  'TestPersistentCreateUncertainCloseResidual',
 ]);
 const pkg = 'agent/internal/nativefs/windowsprobe';
 export function validate(text) {

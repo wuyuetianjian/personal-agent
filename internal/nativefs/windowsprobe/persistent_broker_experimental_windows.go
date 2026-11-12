@@ -23,6 +23,8 @@ var errPersistentPending = errors.New("persistent broker not ready")
 var errPersistentClosed = errors.New("persistent broker closed")
 
 type persistentHooks struct {
+	beforeCreate    func(persistentRole) error
+	afterCreate     func(persistentRole) error
 	afterMetadata   func(persistentRole) error
 	afterRegistered func(persistentRole) error
 	close           func(windows.Handle) error
@@ -325,4 +327,15 @@ func (b *persistentBroker) close() error {
 		closeOwned(&b.lineage[i])
 	}
 	return b.terminal
+}
+
+// Creation is initially a refusal stub for native test-first qualification.
+// Created means FILE_CREATED was confirmed; Registered means verified identity
+// was retained by this broker. A false Created is not an unknown-effect guarantee.
+type persistentCreateResult struct{ Created, Registered bool }
+
+var errPersistentCreateUnimplemented = errors.New("persistent sidecar creation not implemented")
+
+func (b *persistentBroker) createMissing(context.Context, persistentRole) (persistentCreateResult, error) {
+	return persistentCreateResult{}, errPersistentCreateUnimplemented
 }
