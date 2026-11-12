@@ -22,3 +22,15 @@ metadata/bulk experiments and all production capability gates are unchanged.
 Linux cross-compilation verifies Darwin type/build correctness only. Native
 APFS runs, exact per-test evidence and independent review are required before
 calling even this narrow descriptor-consumption capability qualified.
+
+## Tightened admission contract before native RED
+
+The independent fixture positive control requires the complete F_GETFL result
+to equal O_RDONLY (zero). GREEN must reject every extra status flag, not merely
+O_EVTONLY or non-readonly access bits. The existing admission contract includes
+a real O_NONBLOCK status control on a readonly descriptor; it remains behind
+the initial explicit refusal in RED and is not yet claimed executed. No new
+top-level tests or relaxed gates are introduced. Control is reserved for dup;
+afterDup runs only after it returns. Fault fixtures separately verify successful
+native close before injecting a reported close error. Public implementation
+remains the unchanged explicit refusal.

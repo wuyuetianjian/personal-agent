@@ -38,7 +38,7 @@ func ownedFDFixture(t *testing.T) (*os.File, string, []byte) {
 	ownedFDCheck(t, unix.Fstatfs(int(f.Fd()), &fs))
 	flags, e := unix.FcntlInt(f.Fd(), unix.F_GETFL, 0)
 	ownedFDCheck(t, e)
-	if unix.ByteSliceToString(fs.Fstypename[:]) != "apfs" || st.Mode&unix.S_IFMT != unix.S_IFREG || st.Nlink != 1 || flags&unix.O_ACCMODE != unix.O_RDONLY || flags&unix.O_EVTONLY != 0 {
+	if unix.ByteSliceToString(fs.Fstypename[:]) != "apfs" || st.Mode&unix.S_IFMT != unix.S_IFREG || st.Nlink != 1 || flags != unix.O_RDONLY {
 		t.Fatal("fixture requires actual APFS readonly regular single-link FD")
 	}
 	control := make([]byte, len(data))
@@ -129,6 +129,23 @@ func TestOwnedFDAdmissionRefusals(t *testing.T) {
 	ownedFDPositive(t, f, data)
 	b, e := ReadTrustedRegular(context.Background(), nil, 1)
 	ownedFDRefused(t, b, e)
+	// Access-mode bits alone are insufficient: additional status flags may
+	// describe a non-readable descriptor. Qualify the deliberately strict subset.
+	raw, e := f.SyscallConn()
+	ownedFDCheck(t, e)
+	var flagErr error
+	ownedFDCheck(t, raw.Control(func(fd uintptr) { _, flagErr = unix.FcntlInt(fd, unix.F_SETFL, unix.O_NONBLOCK) }))
+	ownedFDCheck(t, flagErr)
+	var observed int
+	ownedFDCheck(t, raw.Control(func(fd uintptr) { observed, flagErr = unix.FcntlInt(fd, unix.F_GETFL, 0) }))
+	ownedFDCheck(t, flagErr)
+	if observed&unix.O_ACCMODE != unix.O_RDONLY || observed&unix.O_NONBLOCK == 0 {
+		t.Fatalf("extra-status readonly control flags=%#x", observed)
+	}
+	b, e = ReadTrustedRegular(context.Background(), f, int64(len(data)))
+	ownedFDRefused(t, b, e)
+	ownedFDCheck(t, raw.Control(func(fd uintptr) { _, flagErr = unix.FcntlInt(fd, unix.F_SETFL, 0) }))
+	ownedFDCheck(t, flagErr)
 	for _, flag := range []int{os.O_RDWR, os.O_WRONLY} {
 		other, e := os.OpenFile(path, flag, 0)
 		ownedFDCheck(t, e)
@@ -255,9 +272,15 @@ func TestOwnedFDReadAndCloseFailures(t *testing.T) {
 		if failRead {
 			ops.pread = func(int, []byte, int64) (int, error) { return 0, readErr }
 		}
-		ops.close = func(fd int) error { closes++; return errors.Join(unix.Close(fd), closeErr) }
+		var nativeCloseErr error
+		ops.close = func(fd int) error {
+			closes++
+			nativeCloseErr = unix.Close(fd)
+			return errors.Join(nativeCloseErr, closeErr)
+		}
 		b, e := readTrustedRegularWithOps(context.Background(), f, int64(len(data)), ops)
 		ownedFDRefused(t, b, e)
+		ownedFDCheck(t, nativeCloseErr) // Injected failure must not hide a real close failure.
 		if !errors.Is(e, closeErr) || (failRead && !errors.Is(e, readErr)) || closes != 1 {
 			t.Fatalf("lost causes/cleanup e=%v closes=%d", e, closes)
 		}
