@@ -73,7 +73,10 @@ func accessFixture(t *testing.T, realWAL bool) (string, *persistentAccessProbe, 
 			t.Error(e)
 		}
 	})
-	a := &persistentAccessProbe{root: root, canonical: name}
+	a, e := newPersistentAccessProbe(root, name)
+	if e != nil {
+		t.Fatalf("access constructor setup: %v", e)
+	}
 	v, e := sqlite3.ExperimentalAccessRegister(a, name)
 	if e != nil {
 		t.Fatal(e)
@@ -106,6 +109,9 @@ func accessControl(t *testing.T, a *persistentAccessProbe, stock uintptr, name s
 	}
 	got := int32(1)
 	if flag == sqlite3.SQLITE_ACCESS_EXISTS && s.Standard.Size == 0 {
+		got = 0
+	}
+	if flag == sqlite3.SQLITE_ACCESS_READWRITE && s.Basic.Attributes&windows.FILE_ATTRIBUTE_READONLY != 0 {
 		got = 0
 	}
 	if got != want {
@@ -169,6 +175,28 @@ func TestPersistentAccessMissingAndEmptySemantics(t *testing.T) {
 		}
 		accessRequire(t, a, v, n, sqlite3.SQLITE_ACCESS_EXISTS, 0)
 	}
+	accessControl(t, a, stock, name, sqlite3.SQLITE_ACCESS_READWRITE, 1)
+	accessRequire(t, a, v, name, sqlite3.SQLITE_ACCESS_READWRITE, 1)
+	w, e := windows.UTF16PtrFromString(name)
+	if e != nil {
+		t.Fatal(e)
+	}
+	attrs, e := windows.GetFileAttributes(w)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = windows.SetFileAttributes(w, attrs|windows.FILE_ATTRIBUTE_READONLY); e != nil {
+		t.Fatal(e)
+	}
+	defer func() {
+		if e := windows.SetFileAttributes(w, attrs); e != nil {
+			t.Error(e)
+		}
+	}()
+	accessControl(t, a, stock, name, sqlite3.SQLITE_ACCESS_READWRITE, 0)
+	accessRequire(t, a, v, name, sqlite3.SQLITE_ACCESS_READWRITE, 0)
+	accessRequire(t, a, v, name, sqlite3.SQLITE_ACCESS_READ, 1)
+
 }
 func TestPersistentAccessRefusesUnqualifiedObservation(t *testing.T) {
 	name, a, v, stock := accessFixture(t, false)
@@ -196,11 +224,77 @@ func TestPersistentAccessRefusesUnqualifiedObservation(t *testing.T) {
 	if e := os.Remove(link); e != nil {
 		t.Fatal(e)
 	}
+
+	for _, flag := range []int32{-1, 3, 0x100} {
+		rc, out := accessCall(t, v, name, flag)
+		if rc != sqlite3.SQLITE_IOERR_ACCESS || out != 0 {
+			t.Fatalf("unknown flag %d accepted", flag)
+		}
+	}
+	for _, kind := range []string{"hardlink", "directory"} {
+		if kind == "hardlink" {
+			if e := os.Link(target, link); e != nil {
+				t.Fatal(e)
+			}
+		} else {
+			if e := os.Mkdir(link, 0700); e != nil {
+				t.Fatal(e)
+			}
+		}
+		rc, out := accessCall(t, v, link, sqlite3.SQLITE_ACCESS_EXISTS)
+		if rc != sqlite3.SQLITE_IOERR_ACCESS || out != 0 {
+			t.Fatalf("%s accepted", kind)
+		}
+		if e := os.Remove(link); e != nil {
+			t.Fatal(e)
+		}
+	}
+	// A differently cased actual basename is not the canonical bound object.
+	wrong := name + "-JOURNAL"
+	if e := os.WriteFile(wrong, []byte("case mismatch"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	rcCase, outCase := accessCall(t, v, wrong, sqlite3.SQLITE_ACCESS_EXISTS)
+	if rcCase != sqlite3.SQLITE_IOERR_ACCESS || outCase != 0 {
+		t.Fatal("nonexact name accepted")
+	}
+	if e := os.Remove(wrong); e != nil {
+		t.Fatal(e)
+	}
 	fault := errors.New("injected metadata open failure")
 	a.open = func(windows.Handle, string) (windows.Handle, error) { return 0, fault }
 	rc, out := accessCall(t, v, name, sqlite3.SQLITE_ACCESS_EXISTS)
 	if rc != sqlite3.SQLITE_IOERR_ACCESS || out != 0 || !errors.Is(a.last, fault) {
 		t.Fatalf("unknown open mistaken absent: %d/%d %v", rc, out, a.last)
+	}
+
+	var returned windows.Handle
+	closes := 0
+	a.open = func(parent windows.Handle, n string) (windows.Handle, error) {
+		h, e := persistentOpen(parent, n, false)
+		if e != nil {
+			return h, e
+		}
+		returned = h
+		return h, fault
+	}
+	a.close = func(h windows.Handle) error {
+		if h == returned {
+			closes++
+		}
+		return windows.CloseHandle(h)
+	}
+	rc, out = accessCall(t, v, name, sqlite3.SQLITE_ACCESS_EXISTS)
+	if rc != sqlite3.SQLITE_IOERR_ACCESS || out != 0 || !errors.Is(a.last, fault) || returned == 0 || closes != 1 {
+		t.Fatalf("handle+error ownership %d/%d %v closes=%d", rc, out, a.last, closes)
+	}
+	a.close = nil
+	a.open = nil
+	accessRequire(t, a, v, name, sqlite3.SQLITE_ACCESS_READ, 1)
+	a.open = func(windows.Handle, string) (windows.Handle, error) { return 0, windows.STATUS_OBJECT_PATH_NOT_FOUND }
+	rc, out = accessCall(t, v, name, sqlite3.SQLITE_ACCESS_EXISTS)
+	if rc != sqlite3.SQLITE_IOERR_ACCESS || out != 0 {
+		t.Fatal("ancestor/path failure called absent")
 	}
 	a.open = nil
 	cleanup := errors.New("metadata cleanup uncertain")
@@ -208,6 +302,61 @@ func TestPersistentAccessRefusesUnqualifiedObservation(t *testing.T) {
 	rc, out = accessCall(t, v, name, sqlite3.SQLITE_ACCESS_EXISTS)
 	if rc != sqlite3.SQLITE_IOERR_ACCESS || out != 0 || !errors.Is(a.last, cleanup) {
 		t.Fatalf("cleanup produced observation: %d/%d %v", rc, out, a.last)
+	}
+
+	calls := 0
+	a.close = nil
+	a.open = func(windows.Handle, string) (windows.Handle, error) {
+		calls++
+		return 0, windows.STATUS_OBJECT_NAME_NOT_FOUND
+	}
+	rc, out = accessCall(t, v, name, sqlite3.SQLITE_ACCESS_EXISTS)
+	if rc != sqlite3.SQLITE_IOERR_ACCESS || out != 0 || calls != 0 || !errors.Is(a.last, cleanup) {
+		t.Fatal("cleanup-poisoned observer reopened")
+	}
+	other, b, bv, bs := accessFixture(t, false)
+	accessControl(t, b, bs, other, sqlite3.SQLITE_ACCESS_READ, 1)
+	accessRequire(t, b, bv, other, sqlite3.SQLITE_ACCESS_READ, 1)
+	b.afterLineage = func() error { return windows.STATUS_OBJECT_NAME_NOT_FOUND }
+	rc, out = accessCall(t, bv, other+"-journal", sqlite3.SQLITE_ACCESS_EXISTS)
+	if rc != sqlite3.SQLITE_IOERR_ACCESS || out != 0 {
+		t.Fatal("ancestor name failure called leaf absence")
+	}
+	b.afterLineage = nil
+	rc, out = accessCall(t, bv, other, sqlite3.SQLITE_ACCESS_READ)
+	if rc != sqlite3.SQLITE_IOERR_ACCESS || out != 0 {
+		t.Fatal("lineage poison cleared")
+	}
+	closed, c, cv, cs := accessFixture(t, false)
+	accessControl(t, c, cs, closed, sqlite3.SQLITE_ACCESS_READ, 1)
+	accessRequire(t, c, cv, closed, sqlite3.SQLITE_ACCESS_READ, 1)
+	if e := c.root.Close(); e != nil {
+		t.Fatal(e)
+	}
+	rc, out = accessCall(t, cv, closed, sqlite3.SQLITE_ACCESS_EXISTS)
+	if rc != sqlite3.SQLITE_IOERR_ACCESS || out != 0 {
+		t.Fatal("closed root admitted observation")
+	}
+
+	panicName, p, pv, ps := accessFixture(t, false)
+	accessControl(t, p, ps, panicName, sqlite3.SQLITE_ACCESS_READ, 1)
+	accessRequire(t, p, pv, panicName, sqlite3.SQLITE_ACCESS_READ, 1)
+	panicCloses := 0
+	p.close = func(h windows.Handle) error {
+		panicCloses++
+		if e := windows.CloseHandle(h); e != nil {
+			return e
+		}
+		panic("close unknown outcome")
+	}
+	rc, out = accessCall(t, pv, panicName, sqlite3.SQLITE_ACCESS_READ)
+	if rc != sqlite3.SQLITE_IOERR_ACCESS || out != 0 || p.terminal == nil || panicCloses != 1 {
+		t.Fatal("cleanup panic not terminal")
+	}
+	p.close = nil
+	rc, out = accessCall(t, pv, panicName, sqlite3.SQLITE_ACCESS_READ)
+	if rc != sqlite3.SQLITE_IOERR_ACCESS || out != 0 || panicCloses != 1 {
+		t.Fatal("cleanup panic authority revived")
 	}
 
 }
