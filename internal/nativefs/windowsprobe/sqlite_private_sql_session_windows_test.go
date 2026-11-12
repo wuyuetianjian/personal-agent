@@ -170,8 +170,18 @@ func newPrivateSQLFixture(t *testing.T, stock *privateSQLStock) *privateSQLFixtu
 	if e != nil {
 		shmResourceCheck(t, errors.Join(e, root.Close()))
 	}
+	var session *privateSQLSession
 	permitShutdowns.Store(owner, &permitShutdown{done: make(chan struct{})})
 	t.Cleanup(func() {
+		if session != nil {
+			session.mu.Lock()
+			safe := session.closed
+			session.mu.Unlock()
+			if !safe {
+				t.Error("session not proven retired; retain owner/root, no forced close")
+				return
+			}
+		}
 		if e := permitOwnerClose(owner); e != nil {
 			t.Error(e)
 			return
@@ -200,7 +210,66 @@ func newPrivateSQLFixture(t *testing.T, stock *privateSQLStock) *privateSQLFixtu
 		t.Fatal("private SQL registration changed stock default VFS")
 	}
 	uri := existingWALURI(stock.path, "ro", name)
-	session, e := newPrivateSQLSession(uri, host.close)
+	session, e = newPrivateSQLSession(uri, c, func() (*persistentSHMTestTicket, error) {
+		host.mu.Lock()
+		var key sqlite3.ExperimentalSHMResourceKey
+		found := false
+		for k, a := range host.attachments {
+			if a.connection == c && !a.retired && !a.draining {
+				if found {
+					host.mu.Unlock()
+					return nil, errors.New("multiple main attachments")
+				}
+				key = k
+				found = true
+			}
+		}
+		host.mu.Unlock()
+		if !found {
+			return nil, errors.New("missing live main attachment")
+		}
+		return host.enterTestCore(c, key)
+	}, func() error {
+		host.mu.Lock()
+		var storageErr error
+		for _, a := range host.attachments {
+			if !a.retired {
+				storageErr = errors.New("SQLite main attachment still live after DB close")
+			}
+		}
+		if host.tickets != 0 || host.busy || host.last != nil {
+			storageErr = errors.Join(storageErr, errors.New("storage not drained"), host.last)
+		}
+		host.mu.Unlock()
+		owner.mu.Lock()
+		storageErr = errors.Join(storageErr, owner.terminal)
+		for resource := range owner.resources {
+			if resource.connection == c {
+				storageErr = errors.Join(storageErr, errors.New("SQL main/WAL resource still registered"))
+			}
+		}
+		if owner.closing || owner.closed {
+			storageErr = errors.Join(storageErr, errors.New("owner closed before session retirement"))
+		}
+		owner.mu.Unlock()
+		return errors.Join(storageErr, sqlite3.ExperimentalPrivateSQLSessionRetired(v))
+	}, func() error {
+		host.mu.Lock()
+		he := host.last
+		bad := host.closing || host.closed || host.busy || (host.node != nil && host.node.retained)
+		host.mu.Unlock()
+		a.slots.mu.Lock()
+		se := a.slots.last
+		a.slots.mu.Unlock()
+		owner.mu.Lock()
+		oe := owner.terminal
+		bad = bad || owner.closing || owner.closed
+		owner.mu.Unlock()
+		if bad {
+			return errors.Join(errors.New("storage not healthy"), he, se, oe)
+		}
+		return errors.Join(he, se, oe)
+	}, host.close)
 	shmResourceCheck(t, e)
 	t.Cleanup(func() {
 		done := make(chan error, 1)
@@ -253,9 +322,7 @@ func (f *privateSQLFixture) firstRow(t *testing.T) *privateSQLRows {
 }
 func privateSQLWitness(t *testing.T, f *privateSQLFixture, r *privateSQLRows) {
 	t.Helper()
-	r.mu.Lock()
-	state, e := driver.ExperimentalPrivateSQLDiagnostics(f.s.conn)
-	r.mu.Unlock()
+	state, e := r.snapshot()
 	shmResourceCheck(t, e)
 	if !state.WALPresent || !state.NormalMode || state.HeapMode || state.SHMUnreliable || !state.WALReadOnly || !state.SHMReadOnly || !state.PrivateMainLive || !state.LivePageZeroMatches || !state.LiveReaderSlotMatches || state.ReaderIndex < 0 {
 		t.Fatalf("private live WAL witness: %+v", state)
@@ -314,6 +381,76 @@ func TestPrivateSQLRowsLifetime(t *testing.T) {
 	if remaining != 0 {
 		t.Fatal("Rows.Close did not release its permit")
 	}
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := f.s.query(cancelled, "SELECT value FROM fixture"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled admission=%v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	live, err := f.s.query(ctx, "SELECT value FROM fixture")
+	shmResourceCheck(t, err)
+	cancel()
+	if !live.next() {
+		t.Fatalf("admitted Rows cancelled asynchronously: %v", live.err())
+	}
+	privateSQLWitness(t, f, live)
+	f.a.host.mu.Lock()
+	held = f.a.host.tickets
+	f.a.host.mu.Unlock()
+	if held == 0 {
+		t.Fatal("original context cancellation dropped live Rows pin")
+	}
+	shmResourceCheck(t, live.close())
+	// Real diagnostic call holds the same core lock as Next and Close. Pause
+	// immediately before it, then require both contenders to remain blocked.
+	live = f.firstRow(t)
+	entered, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(release) })
+	f.s.beforeSnapshot = func() { close(entered); <-release }
+	diag := make(chan error, 1)
+	go func() { _, err := live.snapshot(); diag <- err }()
+	select {
+	case <-entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("snapshot handshake blocked")
+	}
+	started := make(chan struct{}, 2)
+	next := make(chan bool, 1)
+	closed := make(chan error, 1)
+	go func() { started <- struct{}{}; next <- live.next() }()
+	go func() { started <- struct{}{}; closed <- live.close() }()
+	<-started
+	<-started
+	select {
+	case <-next:
+		t.Fatal("Next bypassed diagnostic serialization")
+	case <-closed:
+		t.Fatal("Close bypassed diagnostic serialization")
+	case <-time.After(30 * time.Millisecond):
+	}
+	releaseOnce.Do(func() { close(release) })
+	select {
+	case err := <-diag:
+		shmResourceCheck(t, err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("diagnostic did not finish")
+	}
+	select {
+	case more := <-next:
+		if more {
+			t.Fatal("unexpected second row")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Next did not finish")
+	}
+	select {
+	case err := <-closed:
+		shmResourceCheck(t, err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("Close did not finish")
+	}
+	f.s.beforeSnapshot = nil
 }
 func TestPrivateSQLStatementDrain(t *testing.T) {
 	if privateSQLAdmissionChild(t) {
@@ -360,6 +497,12 @@ func TestPrivateSQLStatementDrain(t *testing.T) {
 	if _, e := f.s.query(context.Background(), "SELECT value FROM fixture"); e == nil {
 		t.Fatal("closing session admitted query")
 	}
+	if _, err := stmt.query(context.Background()); err == nil {
+		t.Fatal("closing statement admitted new Rows")
+	}
+	if err := stmt.close(); err == nil {
+		t.Fatal("statement finalized while dependent Rows live")
+	}
 	shmResourceCheck(t, rows.close())
 	shmResourceCheck(t, stmt.close())
 	shmResourceCheck(t, f.s.close(context.Background()))
@@ -370,19 +513,150 @@ func TestPrivateSQLStatementDrain(t *testing.T) {
 		t.Fatal("storage not retired after actual statement teardown")
 	}
 }
+
+const privateSQLRetainedEnv = "AGENT_PRIVATE_SQL_RETAINED_FIXTURE"
+
 func TestPrivateSQLReadonlyFailures(t *testing.T) {
 	if privateSQLAdmissionChild(t) {
+		return
+	}
+	if mode := os.Getenv(privateSQLRetainedEnv); mode != "" {
+		privateSQLRetainedChild(t, mode)
 		return
 	}
 	f := newPrivateSQLFixture(t, nil)
 	r := f.firstRow(t)
 	shmResourceCheck(t, r.close())
-	e := f.s.exec(context.Background(), "INSERT INTO fixture VALUES('must-not-write')")
+	err := f.s.exec(context.Background(), "INSERT INTO fixture VALUES('must-not-write')")
 	var native *driver.Error
-	if !errors.As(e, &native) || native.Code()&0xff != sqlite3.SQLITE_READONLY {
-		t.Fatalf("private write must fail READONLY, got %v", e)
+	if !errors.As(err, &native) || native.Code() != sqlite3.SQLITE_READONLY {
+		t.Fatalf("expected exact READONLY: %v", err)
 	}
-	existingWALStockRead(t, f.stock.path)
+	shmResourceCheck(t, f.s.failure())
+	f.a.host.mu.Lock()
+	tickets := f.a.host.tickets
+	f.a.host.mu.Unlock()
+	if tickets != 0 {
+		t.Fatal("normal readonly failure retained execution ticket")
+	}
+	stock, e := sql.Open("sqlite", existingWALURI(f.stock.path, "ro", ""))
+	shmResourceCheck(t, e)
+	var count, bad int
+	qerr := stock.QueryRow("SELECT count(*),sum(value='must-not-write') FROM fixture").Scan(&count, &bad)
+	shmResourceCheck(t, errors.Join(qerr, stock.Close()))
+	if count != 1 || bad != 0 {
+		t.Fatalf("readonly failure changed rows count=%d bad=%d", count, bad)
+	}
+	again := f.firstRow(t)
+	shmResourceCheck(t, again.close())
+	shmResourceCheck(t, f.s.close(context.Background()))
+	for _, mode := range []string{"rows-error", "rows-panic", "stmt-error", "stmt-panic"} {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestPrivateSQLReadonlyFailures$", "-test.timeout=90s")
+		for _, entry := range os.Environ() {
+			k, _, _ := strings.Cut(entry, "=")
+			if !strings.EqualFold(k, privateSQLRetainedEnv) && !strings.EqualFold(k, existingWALChildEnv) {
+				cmd.Env = append(cmd.Env, entry)
+			}
+		}
+		cmd.Env = append(cmd.Env, privateSQLRetainedEnv+"="+mode)
+		out, e := cmd.CombinedOutput()
+		if e != nil || strings.Count(string(out), "PRIVATE_SQL_RETAINED_OK "+mode) != 1 {
+			t.Fatalf("retained child %s: %v\n%s", mode, e, out)
+		}
+	}
+}
+func privateSQLRetainedChild(t *testing.T, mode string) {
+	f := newPrivateSQLFixture(t, nil)
+	r := f.firstRow(t)
+	fault := errors.New("injected SQL cleanup uncertainty")
+	calls := 0
+	hook := func() error {
+		calls++
+		if strings.HasSuffix(mode, "panic") {
+			panic(fault)
+		}
+		return fault
+	}
+	switch mode {
+	case "rows-error", "rows-panic":
+		f.s.beforeRowsClose = hook
+		if r.close() == nil || r.close() == nil || calls != 1 {
+			t.Fatalf("Rows cleanup consume once calls=%d", calls)
+		}
+	case "stmt-error", "stmt-panic":
+		shmResourceCheck(t, r.close())
+		stmt, e := f.s.prepare(context.Background(), "SELECT value FROM fixture")
+		shmResourceCheck(t, e)
+		f.s.beforeStmtClose = hook
+		if stmt.close() == nil || stmt.close() == nil || calls != 1 {
+			t.Fatalf("Stmt cleanup consume once calls=%d", calls)
+		}
+	default:
+		t.Fatal("unknown retained mode")
+	}
+	stock, e := sql.Open("sqlite", existingWALURI(f.stock.path, "ro", ""))
+	shmResourceCheck(t, e)
+	var count, bad int
+	qerr := stock.QueryRow("SELECT count(*),sum(value='must-not-write') FROM fixture").Scan(&count, &bad)
+	shmResourceCheck(t, errors.Join(qerr, stock.Close()))
+	if count != 1 || bad != 0 {
+		t.Fatalf("stock contents changed count=%d bad=%d", count, bad)
+	}
+	if !errors.Is(f.s.failure(), fault) {
+		t.Fatal("missing retained SQL original cause")
+	}
+	closed := make(chan error, 1)
+	go func() { closed <- f.s.close(context.Background()) }()
+	select {
+	case err := <-closed:
+		if !errors.Is(err, errSHMRetained) {
+			t.Fatalf("retained close %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("retained close blocked")
+	}
+	f.a.host.mu.Lock()
+	held := f.a.host.tickets
+	hostClosed := f.a.host.closed
+	f.a.host.mu.Unlock()
+	if held == 0 || hostClosed {
+		t.Fatal("unknown cleanup dropped core lifetime")
+	}
+	o := f.a.c.owner
+	o.mu.Lock()
+	started := o.closing || o.closed
+	o.mu.Unlock()
+	if started {
+		t.Fatal("terminal session attempted underlying owner.close")
+	}
+	raw := make(chan error, 1)
+	go func() { raw <- o.close() }()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		o.mu.Lock()
+		began := o.closing
+		o.mu.Unlock()
+		if began {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("owner close did not start")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	select {
+	case err := <-raw:
+		t.Fatalf("underlying close bypassed retained pin: %v", err)
+	case <-time.After(40 * time.Millisecond):
+	}
+	// Explicitly retire the independent stock child, not the uncertain private
+	// connection. Normal process exit lets Windows reclaim retained authority.
+	shmResourceCheck(t, f.stock.stop())
+	if t.Failed() {
+		os.Exit(2)
+	}
+	fmt.Println("PRIVATE_SQL_RETAINED_OK " + mode)
+	os.Exit(0)
 }
 func TestPrivateSQLStorageRequalification(t *testing.T) {
 	if privateSQLAdmissionChild(t) {
@@ -394,10 +668,13 @@ func TestPrivateSQLStorageRequalification(t *testing.T) {
 	// Release the external stock holder first so its share mode cannot explain
 	// the following refusal. The already-qualified private owner remains active.
 	shmResourceCheck(t, f.stock.stop())
-	name, e := windows.UTF16PtrFromString(f.stock.path)
-	shmResourceCheck(t, e)
-	if e = windows.DeleteFile(name); !errors.Is(e, windows.ERROR_SHARING_VIOLATION) {
-		t.Fatalf("active share guard delete=%v", e)
+	var e error
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		name, err := windows.UTF16PtrFromString(f.stock.path + suffix)
+		shmResourceCheck(t, err)
+		if err = windows.DeleteFile(name); !errors.Is(err, windows.ERROR_SHARING_VIOLATION) {
+			t.Fatalf("active share guard %s delete=%v", suffix, err)
+		}
 	}
 	shmResourceCheck(t, f.s.close(context.Background()))
 	shmResourceCheck(t, f.stock.stop())

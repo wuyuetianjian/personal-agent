@@ -42,7 +42,7 @@ const WAL_MANIFEST = 'scripts/sqlite-persistent-vfs/generator/wal-manifest.json'
 const WAL_LINKED_NAME = 'lib/nativeprobe_sqlite_wal_generated_windows.go';
 const DEFAULT_REPO = fileURLToPath(new URL('../', import.meta.url));
 
-export const PATCH_SHA256 = 'fdcbf49090ddb91cf774f580c62646b567a540a946bbfe289dff19c7b50cccbb';
+export const PATCH_SHA256 = '32b8c853bcc82f470e6b3d24f4b0e247f5fec876391efcf99e7725e89db0405f';
 export function validateInputs(mod, sum, patch, basePatch, mainPatch, walPatch, accessPatch, admissionPatch, resourcePatch, slotPatch, diagnostics, driver) {
   validateSlotInputs(mod,sum,slotPatch,basePatch,mainPatch,walPatch,accessPatch,admissionPatch,resourcePatch);
   validateDiagnostics(diagnostics,driver);
@@ -228,6 +228,7 @@ export async function runExperiment({platform=process.platform,repo=DEFAULT_REPO
   delete options.env.AGENT_PRIVATE_EXISTING_WAL_FIXTURE;
   delete options.env.AGENT_PRIVATE_SHM_RETAINED_FIXTURE;
   delete options.env.AGENT_PRIVATE_SHM_SLOT_FIXTURE;
+  delete options.env.AGENT_PRIVATE_SQL_RETAINED_FIXTURE;
   const environment=JSON.parse(await command(['env','-json','GOMODCACHE'],options));
   if(typeof environment.GOMODCACHE!=='string' || !path.isAbsolute(environment.GOMODCACHE)) throw new Error('go env did not identify an absolute module cache');
   let existingCache;

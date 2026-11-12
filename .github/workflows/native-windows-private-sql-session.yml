@@ -33,7 +33,7 @@ jobs:
           git rev-parse HEAD
           go version
           go env GOOS GOARCH
-          echo 'Private SQL session only; simulated core tickets. NOT SQL or Rows lifetime integration, recovery or production qualification.'
+          echo 'Private readonly SQL slice and live WAL-index witness; serialized Rows/Stmt lifetimes with fail-closed uncertain cleanup. NOT production, arbitrary SQL, recovery or cancellation qualification.'
       - name: Record Windows token and NTFS runtime
         shell: pwsh
         run: |

@@ -59,7 +59,11 @@ func ExperimentalPrivateSQLSessionRegister(a ExperimentalPrivateSQLAuthority, ca
 	}
 	return v, libc.GoString((*Tsqlite3_vfs)(unsafe.Pointer(v)).FzName), nil
 }
-func experimentalPrivateSQLSessionOpen(tls *libc.TLS, v, name, file uintptr, flags int32, out uintptr) int32 {
+
+// All tables and bindings are prepared before registration. Only the fixed,
+// internally generated URI is admitted; this is not an arbitrary URI gateway.
+func experimentalPrivateSQLSessionOpen(tls *libc.TLS, v, name, file uintptr, flags int32, out uintptr) (rc int32) {
+	rc = SQLITE_CANTOPEN
 	if out != 0 {
 		*(*int32)(unsafe.Pointer(out)) = 0
 	}
@@ -67,13 +71,59 @@ func experimentalPrivateSQLSessionOpen(tls *libc.TLS, v, name, file uintptr, fla
 		(*Tsqlite3_file)(unsafe.Pointer(file)).FpMethods = 0
 	}
 	b := experimentalSQLAdmissionLookup(v)
-	if b != nil && name != 0 && file != 0 && out != 0 && libc.GoString(name) == b.canonical && flags == SQLITE_OPEN_READONLY|SQLITE_OPEN_URI|SQLITE_OPEN_MAIN_DB && experimentalSQLAdmissionURI(tls, v, name) {
-		experimentalPrivateSQLMu.Lock()
-		p := experimentalPrivateSQLRefusals[v]
-		experimentalPrivateSQLMu.Unlock()
-		if p != nil {
-			p.Add(1)
+	if b == nil || b.disabled.Load() || name == 0 || file == 0 || out == 0 {
+		return
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			if binding := experimentalMainReadBindingFor(v); binding != nil {
+				binding.poison(experimentalMainReadPanic("SQL session open", p))
+			}
+			*(*int32)(unsafe.Pointer(out)) = 0
+			rc = SQLITE_CANTOPEN
+		}
+	}()
+	if libc.GoString(name) == b.canonical {
+		if flags != SQLITE_OPEN_READONLY|SQLITE_OPEN_URI|SQLITE_OPEN_MAIN_DB || !experimentalSQLAdmissionURI(tls, v, name) {
+			return
+		}
+		b.mainURI.Add(1)
+		return experimentalSHMSlotOpen(tls, v, name, file, flags&^SQLITE_OPEN_URI, out)
+	}
+	// Existing-WAL and unsupported journal routing retain the truthful admission
+	// callbacks; WAL never receives the main database/SHM methods table.
+	return experimentalSQLAdmissionOpen(tls, v, name, file, flags, out)
+}
+
+// Called only after the dedicated connection and pool have closed, with session
+// admission stopped. Snapshot registry references without holding its mutex
+// while taking file locks (callbacks take file -> registry for generation checks).
+func ExperimentalPrivateSQLSessionRetired(v uintptr) error {
+	b := experimentalMainReadBindingFor(v)
+	if b == nil {
+		return fmt.Errorf("missing private SQL binding")
+	}
+	b.mu.Lock()
+	terminal := b.terminal
+	b.mu.Unlock()
+	if terminal != nil {
+		return terminal
+	}
+	experimentalMainReadMu.Lock()
+	var files []*experimentalMainReadFile
+	for _, f := range experimentalMainReadFiles {
+		if f.binding == b {
+			files = append(files, f)
 		}
 	}
-	return SQLITE_CANTOPEN
+	experimentalMainReadMu.Unlock()
+	for _, f := range files {
+		f.mu.Lock()
+		safe := f.closed && f.result == SQLITE_OK && f.lease == nil
+		f.mu.Unlock()
+		if !safe {
+			return fmt.Errorf("private SQL file not successfully retired")
+		}
+	}
+	return nil
 }

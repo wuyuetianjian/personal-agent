@@ -239,3 +239,15 @@ test('both diagnostic overlays retain LF and driver package stays at module root
   assert.match(runner,/writeFile\(path.join\(replacement,DRIVER_NAME\),driver,\{flag:'wx'\}\)/);
  }finally{await rm(dir,{recursive:true,force:true})}
 });
+
+test('ambient SQL retained child marker cannot bypass parent contracts',async()=>{
+ const key='AGENT_PRIVATE_SQL_RETAINED_FIXTURE', saved=process.env[key];
+ process.env[key]='1';let inspected=false;
+ try {
+  await assert.rejects(runExperiment({platform:'win32',log:()=>{},command:async(args,options)=>{
+   assert.equal(Object.hasOwn(options.env,key),false,'retained child marker leaked');inspected=true;
+   throw new Error('stop after retained environment inspection');
+  }}),/stop after retained environment inspection/);
+  assert.equal(inspected,true);
+ }finally{if(saved===undefined)delete process.env[key];else process.env[key]=saved;}
+});

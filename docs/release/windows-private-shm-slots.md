@@ -112,7 +112,11 @@ LOCK/UNLOCK branches; generated Go omitting assertions is not broader permission
 Native contention returns busy=true,nil to the bridge, producing SQLite BUSY
 without poisoning or converting through Go-error Borrow handling to generic IOERR.
 
-## GREEN candidate, native validation pending
+## Verified direct-method native qualification
+
+Commit f54babe / run 43256116998: six contracts × three passed, including
+eight normal-exit retained children per round and the success-callback/release-
+failure control. This is direct-method qualification, not SQL integration.
 
 C operations reserve the existing B.busy state after validating the actual
 attachment under B.mu. Thus the B reservation counts every C in-flight operation;
