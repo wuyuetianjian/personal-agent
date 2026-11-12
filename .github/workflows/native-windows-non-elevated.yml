@@ -54,7 +54,7 @@ jobs:
           New-Item -ItemType Directory -Path $stage | Out-Null
           go build -mod=readonly -o (Join-Path $stage 'launcher.exe') ./scripts/windows-non-elevated-launcher
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          go test -c -mod=readonly -tags=nativeprobe_sqlite_identity,nativeprobe_sqlite_lease,nativeprobe_sqlite_permit,nativeprobe_non_elevated_guard -o (Join-Path $stage 'probe.test.exe') ./internal/nativefs/windowsprobe
+          go test -c -mod=readonly '-tags=nativeprobe_sqlite_identity,nativeprobe_sqlite_lease,nativeprobe_sqlite_permit,nativeprobe_non_elevated_guard' -o (Join-Path $stage 'probe.test.exe') ./internal/nativefs/windowsprobe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "FILTERED_STAGE_WIN=$stage" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Output 'No UAC, ACL, accounts, integrity labels or privilege grants changed. Existing TEMP access must suffice.'
