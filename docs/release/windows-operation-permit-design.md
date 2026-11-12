@@ -1,6 +1,9 @@
 # Operation permits and short registry locks
 
-Status: not implemented; native test-first refusal scaffold. Independent of the
+Status: experimental implementation awaiting native GREEN validation. The native
+owner-only RED was confirmed at 955d97b (run 43218296007): 8 nodes × 3
+failed at the designated constructor sentinel after prerequisite controls.
+Independent of the
 qualified transitional lease implementation, which remains unchanged. Requires
 `nativeprobe_sqlite_identity,nativeprobe_sqlite_lease,nativeprobe_sqlite_permit`.
 No SQLite callback accepts IO, no production capability is enabled.
@@ -25,6 +28,9 @@ permit.borrow(ctx,resource,fn); permit.release(); resource.close(); connection.c
 owner.close(). Permits and resources bind to both owner AND connection. No shared
 grant, cross-connection borrowing, raw token restoration or native handle export.
 Borrowed native handles are valid only during trusted callbacks and cannot escape.
+These internal objects are pointer-only; do not copy or construct zero-value
+tokens/resources. A future opaque-ID bridge must resolve only published bindings
+before calling lifecycle methods; these structs are not an untrusted token API.
 A future stock bridge may temporarily set real winFile.Fh under its per-file lock
 and reset it to invalid in defer; this stage does not add that bridge.
 
@@ -86,3 +92,9 @@ SHM, deletion/recreation semantics, DMS recovery, private stock SHM node/mapping
 ownership or actual SQL interoperability. Host-long broker no-share-delete guards
 are retained as a transitional experimental constraint, not a complete compatible
 VFS. No existing DB/WAL is migrated, truncated, deleted or downgraded.
+
+The implementation retains the broker mutex across qualification of an opening
+only; registry/refcount locks are independent and are not held during it. No
+borrow callback holds that broker mutex. Metadata cleanup uses real CloseHandle,
+separately from the data-resource close injection hook. Cleanup failures latch
+terminal state before the admitted method releases its lifetime count.

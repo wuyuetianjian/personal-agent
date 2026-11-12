@@ -1,0 +1,655 @@
+{
+  "Version": "modernc.org/sqlite@v1.58.0-review-only-v1",
+  "Inputs": {
+    "LICENSE": "c6fe05491a60ae13bcd223088d2705e36dede24e5587226231d2459ada5c4822",
+    "lib/sqlite.go": "8210957d4836c361efb18808fb6fd4dc5f2a7ca362fd83881d6018e9913ee4d6",
+    "lib/sqlite_g_0000000000060000.go": "8416138b3519a8ad4a2e4a76928c34781333915f09ef5d5444eb75d5cc4eabe7",
+    "lib/sqlite_windows.go": "414fac0347bda229e81decf8b765a276dc59f382cde33542f7246862e7022d98",
+    "sqlite.go": "52fefb00e9f7a9a1bad23b034b57ce47b156bf29bebe7c2aef01083f5880759e"
+  },
+  "Roots": [
+    "_winOpen",
+    "_winRead",
+    "_winFileSize",
+    "_winLock",
+    "_winUnlock",
+    "_winCheckReservedLock",
+    "_winClose"
+  ],
+  "Functions": [
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winAccess",
+      "SHA256": "871295713ac03d0315b339e8fe72330f7e2421a835f95eb9eec8c505aa63ecad",
+      "VariantSHA256": "f71bd6ecae1134763108d155b00f24401ef85fe251bc98f187a5ecfbd1496e95",
+      "Calls": {
+        "_winConvertFromUtf8Filename": 1,
+        "_winLogErrorAtLine": 1,
+        "_winLogIoerr": 1,
+        "_winRetryIoerr": 1
+      },
+      "Refs": {
+        "_winAccess": 1,
+        "_winConvertFromUtf8Filename": 1,
+        "_winLogErrorAtLine": 1,
+        "_winLogIoerr": 1,
+        "_winRetryIoerr": 1
+      },
+      "Syscalls": {
+        "20": 1,
+        "22": 1,
+        "26": 1
+      },
+      "Renames": {
+        "_winAccess": 1,
+        "_winConvertFromUtf8Filename": 1,
+        "_winLogErrorAtLine": 1,
+        "_winLogIoerr": 1,
+        "_winRetryIoerr": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winCheckReservedLock",
+      "SHA256": "235aaf97a85b23b5fe8687652f9e22cad4069427f0aad435b94b5b68820a1199",
+      "VariantSHA256": "9f95ef1d2954f7fc2345c0f23cdf1a7024e5b1700803f69ce14300360b0a174b",
+      "Calls": {
+        "_winLockFile": 1,
+        "_winUnlockFile": 1
+      },
+      "Refs": {
+        "_winCheckReservedLock": 1,
+        "_winLockFile": 1,
+        "_winUnlockFile": 1
+      },
+      "Syscalls": {},
+      "Renames": {
+        "_winCheckReservedLock": 1,
+        "_winLockFile": 1,
+        "_winUnlockFile": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_g_0000000000060000.go",
+      "Name": "_winClose",
+      "SHA256": "8f318e049ed0031b01998668fb727b117db6f075cf6c7c21370eedb1831be106",
+      "VariantSHA256": "691824538d9828afeea89f7b5f4f0eac6d739f29e22f91d8c5267b1e656ca1bb",
+      "Calls": {
+        "_winLogErrorAtLine": 1,
+        "_winUnmapfile": 1
+      },
+      "Refs": {
+        "_winClose": 1,
+        "_winLogErrorAtLine": 1,
+        "_winUnmapfile": 1
+      },
+      "Syscalls": {
+        "26": 1,
+        "3": 1
+      },
+      "Renames": {
+        "_winClose": 1,
+        "_winLogErrorAtLine": 1,
+        "_winUnmapfile": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_g_0000000000060000.go",
+      "Name": "_winConvertFromUtf8Filename",
+      "SHA256": "df6a467547121d74e4d1b719f170426b8b080bba14ca01d6a09ed5823ef1b1b8",
+      "VariantSHA256": "42a2381e4c7644ecf258da6382ffd8eb8a5670bdb3e9bb636245714ed5e7f006",
+      "Calls": {
+        "_winUtf8ToMbcs": 1,
+        "_winUtf8ToUnicode": 1
+      },
+      "Refs": {
+        "_winConvertFromUtf8Filename": 1,
+        "_winUtf8ToMbcs": 1,
+        "_winUtf8ToUnicode": 1
+      },
+      "Syscalls": {
+        "0": 1
+      },
+      "Renames": {
+        "_winConvertFromUtf8Filename": 1,
+        "_winUtf8ToMbcs": 1,
+        "_winUtf8ToUnicode": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_g_0000000000060000.go",
+      "Name": "_winFileSize",
+      "SHA256": "d4633bbe563a9ea2a2219deaecef5fb7926bc9c35605a57a0f129101517db80d",
+      "VariantSHA256": "1cdfda2a9d256e9525db4d0bc0c9e08033a38253c1478a5f80983ef3258357bc",
+      "Calls": {
+        "_winLogErrorAtLine": 1
+      },
+      "Refs": {
+        "_winFileSize": 1,
+        "_winLogErrorAtLine": 1
+      },
+      "Syscalls": {
+        "23": 1,
+        "26": 1
+      },
+      "Renames": {
+        "_winFileSize": 1,
+        "_winLogErrorAtLine": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winGetLastErrorMsg",
+      "SHA256": "3eb6d56cf2c3d41023e6338891195804b1554be02d663a40eff5c12327e40b0b",
+      "VariantSHA256": "26d4a623df0d6e4dc93b3ae720b0181a052ff832daa30ba7968cca6fc7560407",
+      "Calls": {
+        "_winMbcsToUtf8": 1,
+        "_winUnicodeToUtf8": 1
+      },
+      "Refs": {
+        "_winGetLastErrorMsg": 1,
+        "_winMbcsToUtf8": 1,
+        "_winUnicodeToUtf8": 1
+      },
+      "Syscalls": {
+        "0": 1,
+        "14": 1,
+        "15": 1,
+        "46": 2
+      },
+      "Renames": {
+        "_winGetLastErrorMsg": 1,
+        "_winMbcsToUtf8": 1,
+        "_winUnicodeToUtf8": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winGetReadLock",
+      "SHA256": "e023ab9ecfd2ee6cef8be74e03b39a1cea2a2fdb038b73482d5a198fe104c92e",
+      "VariantSHA256": "ea26e5904ea04a88e4cf5cbc2da5c70b2811832afb0c1fbb5e41588066953a8a",
+      "Calls": {
+        "_winLockFile": 2
+      },
+      "Refs": {
+        "_winGetReadLock": 1,
+        "_winLockFile": 2
+      },
+      "Syscalls": {
+        "26": 1
+      },
+      "Renames": {
+        "_winGetReadLock": 1,
+        "_winLockFile": 2
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winGetTempname",
+      "SHA256": "6068211bcbe6fcaeb716d7a3d726cc283e9f4e07300b9d50c85b3694800548e8",
+      "VariantSHA256": "fc934d66139f25f812dd59d4d4f6e819b316e370915d402a0bdcd22b16a9a0b3",
+      "Calls": {
+        "_winLogErrorAtLine": 5,
+        "_winMakeEndInDirSep": 1,
+        "_winMbcsToUtf8": 1,
+        "_winTempDirDefined": 1,
+        "_winUnicodeToUtf8": 1
+      },
+      "Refs": {
+        "_winGetTempname": 1,
+        "_winLogErrorAtLine": 5,
+        "_winMakeEndInDirSep": 1,
+        "_winMbcsToUtf8": 1,
+        "_winTempDirDefined": 1,
+        "_winUnicodeToUtf8": 1
+      },
+      "Syscalls": {
+        "0": 1,
+        "17": 1,
+        "26": 2,
+        "31": 1,
+        "32": 1
+      },
+      "Renames": {
+        "_winGetTempname": 1,
+        "_winLogErrorAtLine": 5,
+        "_winMakeEndInDirSep": 1,
+        "_winMbcsToUtf8": 1,
+        "_winTempDirDefined": 1,
+        "_winUnicodeToUtf8": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winIsDir",
+      "SHA256": "04b1ac73fc7dcc1ffb550d75587e984cb2a9acef0da295e0e63f168e33bba7f7",
+      "VariantSHA256": "5fd32dd714b36121a667863cf965fcc03dcb20e4daf64b31ab6a9d540fd07a25",
+      "Calls": {
+        "_winRetryIoerr": 1
+      },
+      "Refs": {
+        "_winIsDir": 1,
+        "_winRetryIoerr": 1
+      },
+      "Syscalls": {
+        "20": 1,
+        "22": 1
+      },
+      "Renames": {
+        "_winIsDir": 1,
+        "_winRetryIoerr": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_g_0000000000060000.go",
+      "Name": "_winIsDriveLetterAndColon",
+      "SHA256": "4e330f1c623236b05defb709034b56995c4b45af57e46b23e6db80aba8d6bd98",
+      "VariantSHA256": "a2d0ca219a969e1007ed5aea576b580e976a3dfb5f86db95a5a2b73655b7b344",
+      "Calls": {},
+      "Refs": {
+        "_winIsDriveLetterAndColon": 1
+      },
+      "Syscalls": {},
+      "Renames": {
+        "_winIsDriveLetterAndColon": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winLock",
+      "SHA256": "63c5ec624bdbf2d7a827991cfdb552a72e8900cae26c062a4037e5ae88e15e78",
+      "VariantSHA256": "3d93e68e64cdd314d0514d44778090e7490a5bf28f2f4a7ac8d11562182c8810",
+      "Calls": {
+        "_winGetReadLock": 2,
+        "_winLockFile": 3,
+        "_winUnlockFile": 1,
+        "_winUnlockReadLock": 1
+      },
+      "Refs": {
+        "_winGetReadLock": 2,
+        "_winLock": 1,
+        "_winLockFile": 3,
+        "_winUnlockFile": 1,
+        "_winUnlockReadLock": 1
+      },
+      "Syscalls": {
+        "26": 4
+      },
+      "Renames": {
+        "_winGetReadLock": 2,
+        "_winLock": 1,
+        "_winLockFile": 3,
+        "_winUnlockFile": 1,
+        "_winUnlockReadLock": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winLockFile",
+      "SHA256": "95ba15ebd236114f7e6639803a24f78b11cab0d06a65684578da3d484db8d7ce",
+      "VariantSHA256": "ec91de44b9eba49928709c983bb874b22ccc04a303243fac2b0b8d3c6b12e40d",
+      "Calls": {},
+      "Refs": {
+        "_winLockFile": 1
+      },
+      "Syscalls": {
+        "47": 1,
+        "48": 1
+      },
+      "Renames": {
+        "_winLockFile": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_g_0000000000060000.go",
+      "Name": "_winLogErrorAtLine",
+      "SHA256": "003a89ed893ae6b3774c6e0410d11fa6a3b6d7ee80afd7368300403b97ebc1cd",
+      "VariantSHA256": "efc47254727f147204442eac1aa41a272717d8d74087917cb6e998ff594ce564",
+      "Calls": {
+        "_winGetLastErrorMsg": 1
+      },
+      "Refs": {
+        "_winGetLastErrorMsg": 1,
+        "_winLogErrorAtLine": 1
+      },
+      "Syscalls": {},
+      "Renames": {
+        "_winGetLastErrorMsg": 1,
+        "_winLogErrorAtLine": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_g_0000000000060000.go",
+      "Name": "_winLogIoerr",
+      "SHA256": "54add7e4ab4dba46929a462ab29f98edc5ab16557d03462920da2ff9a0c6ae57",
+      "VariantSHA256": "12142e32b4936fe24a98a8b71b7eeea342988f4bcc12d9f33e2acf8f02033c58",
+      "Calls": {},
+      "Refs": {
+        "_winIoerrRetryDelay": 1,
+        "_winLogIoerr": 1
+      },
+      "Syscalls": {},
+      "Renames": {
+        "_winLogIoerr": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_g_0000000000060000.go",
+      "Name": "_winMakeEndInDirSep",
+      "SHA256": "4c3441cf4d2578958555e37b0c40f0b2e6c15038b0d37fc2b8993370b96b4486",
+      "VariantSHA256": "fec1425428bbfee662c7f198758e5088e1a3f9010162966b2a47a76a22345e4b",
+      "Calls": {
+        "_winIsDriveLetterAndColon": 1
+      },
+      "Refs": {
+        "_winIsDriveLetterAndColon": 1,
+        "_winMakeEndInDirSep": 1
+      },
+      "Syscalls": {
+        "75": 1
+      },
+      "Renames": {
+        "_winIsDriveLetterAndColon": 1,
+        "_winMakeEndInDirSep": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winMbcsToUnicode",
+      "SHA256": "f8607701f9fd69adbcda27096077a25d99e51b5cb9923b37424cf939caec7478",
+      "VariantSHA256": "e7f2ba41dbd96191912ddc285d9392a258bc12e89d710410aa6fd850cc91180d",
+      "Calls": {},
+      "Refs": {
+        "_winMbcsToUnicode": 1
+      },
+      "Syscalls": {
+        "50": 2
+      },
+      "Renames": {
+        "_winMbcsToUnicode": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_g_0000000000060000.go",
+      "Name": "_winMbcsToUtf8",
+      "SHA256": "3ad508d401fdd70e52c68276d39623c61a9c0fb20e84a7e2d5ff2d0c6b981b42",
+      "VariantSHA256": "c15b0a0d474c64095a27127bc46fe4431c0dffc720cae3a72d1b40c615e3ddae",
+      "Calls": {
+        "_winMbcsToUnicode": 1,
+        "_winUnicodeToUtf8": 1
+      },
+      "Refs": {
+        "_winMbcsToUnicode": 1,
+        "_winMbcsToUtf8": 1,
+        "_winUnicodeToUtf8": 1
+      },
+      "Syscalls": {},
+      "Renames": {
+        "_winMbcsToUnicode": 1,
+        "_winMbcsToUtf8": 1,
+        "_winUnicodeToUtf8": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winOpen",
+      "SHA256": "066772f8b7d7afb5dc7a984fdfaac7cc95bf1319a4edf8724c01249e2ef12d73",
+      "VariantSHA256": "0e93d83760a0088e725dafccef2e9f1aa3539cede1810c0db71cd2861490f7f5",
+      "Calls": {
+        "_winAccess": 2,
+        "_winConvertFromUtf8Filename": 1,
+        "_winGetTempname": 1,
+        "_winIsDir": 1,
+        "_winLogErrorAtLine": 1,
+        "_winLogIoerr": 1,
+        "_winOpen": 1,
+        "_winRetryIoerr": 2
+      },
+      "Refs": {
+        "_winAccess": 2,
+        "_winConvertFromUtf8Filename": 1,
+        "_winGetTempname": 1,
+        "_winIoMethod": 1,
+        "_winIsDir": 1,
+        "_winLogErrorAtLine": 1,
+        "_winLogIoerr": 1,
+        "_winOpen": 2,
+        "_winRetryIoerr": 2
+      },
+      "Syscalls": {
+        "4": 1,
+        "5": 1
+      },
+      "Renames": {
+        "_winAccess": 2,
+        "_winConvertFromUtf8Filename": 1,
+        "_winGetTempname": 1,
+        "_winIsDir": 1,
+        "_winLogErrorAtLine": 1,
+        "_winLogIoerr": 1,
+        "_winOpen": 2,
+        "_winRetryIoerr": 2
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winRead",
+      "SHA256": "d7a1d378c4b327a4004b101a0365fa82f4f843cb71c695c50638f8b6b20d5061",
+      "VariantSHA256": "4c1a94aada04e3c72247c31b1755791adac61896cf8bb7a8ee0b99b62ebf24cc",
+      "Calls": {
+        "_winLogErrorAtLine": 1,
+        "_winLogIoerr": 1,
+        "_winRetryIoerr": 1
+      },
+      "Refs": {
+        "_winLogErrorAtLine": 1,
+        "_winLogIoerr": 1,
+        "_winRead": 1,
+        "_winRetryIoerr": 1
+      },
+      "Syscalls": {
+        "26": 1,
+        "52": 1
+      },
+      "Renames": {
+        "_winLogErrorAtLine": 1,
+        "_winLogIoerr": 1,
+        "_winRead": 1,
+        "_winRetryIoerr": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_g_0000000000060000.go",
+      "Name": "_winRetryIoerr",
+      "SHA256": "0c75905f8b2d0ec4fa5362c9b8becfb67a08452ebafc2d062c3713b96e52bad0",
+      "VariantSHA256": "4187f6926b53128aafee403f008efbd4679329239d5512dc7c06b0b99fda7305",
+      "Calls": {},
+      "Refs": {
+        "_winIoerrRetry": 1,
+        "_winIoerrRetryDelay": 1,
+        "_winRetryIoerr": 1
+      },
+      "Syscalls": {
+        "26": 1
+      },
+      "Renames": {
+        "_winRetryIoerr": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_g_0000000000060000.go",
+      "Name": "_winTempDirDefined",
+      "SHA256": "4fc5c0abdb972564a1494b0ab430908d97eaf10b0bd9f571040a259d8b30652c",
+      "VariantSHA256": "1e883f6dd954693c2687a258a6cd8ce24574a8465d5ea7be96a5c63a90c24f53",
+      "Calls": {},
+      "Refs": {
+        "_winTempDirDefined": 1
+      },
+      "Syscalls": {},
+      "Renames": {
+        "_winTempDirDefined": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_g_0000000000060000.go",
+      "Name": "_winUnicodeToMbcs",
+      "SHA256": "c2e12e3dfeffe373e7b20c2d3900661e049d446842f86b152ebd21a276fab6a8",
+      "VariantSHA256": "a0093b525ad20dadad69cb3758f14c375aacac19f99ddb5e145545dacfbc6e09",
+      "Calls": {},
+      "Refs": {
+        "_winUnicodeToMbcs": 1
+      },
+      "Syscalls": {
+        "60": 2
+      },
+      "Renames": {
+        "_winUnicodeToMbcs": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_g_0000000000060000.go",
+      "Name": "_winUnicodeToUtf8",
+      "SHA256": "0105d32f12a3aa0a1821ef9bcd273d79b7de591cde32f9e5ae511cd953a042d6",
+      "VariantSHA256": "e8e220e1eff70184b77966d554a2cc83440c6eedd95291ff0af99c1e69b2a613",
+      "Calls": {},
+      "Refs": {
+        "_winUnicodeToUtf8": 1
+      },
+      "Syscalls": {
+        "60": 2
+      },
+      "Renames": {
+        "_winUnicodeToUtf8": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winUnlock",
+      "SHA256": "52734aeb94390e7a0247c21fef434bf37db7a1d4f00132cf3fe2f7149442a573",
+      "VariantSHA256": "0a191b123aaadffbf3ae659a953112d07abc94a345c6058e48a615ea243ed845",
+      "Calls": {
+        "_winGetReadLock": 1,
+        "_winLogErrorAtLine": 1,
+        "_winUnlockFile": 3,
+        "_winUnlockReadLock": 1
+      },
+      "Refs": {
+        "_winGetReadLock": 1,
+        "_winLogErrorAtLine": 1,
+        "_winUnlock": 1,
+        "_winUnlockFile": 3,
+        "_winUnlockReadLock": 1
+      },
+      "Syscalls": {
+        "26": 1
+      },
+      "Renames": {
+        "_winGetReadLock": 1,
+        "_winLogErrorAtLine": 1,
+        "_winUnlock": 1,
+        "_winUnlockFile": 3,
+        "_winUnlockReadLock": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winUnlockFile",
+      "SHA256": "1c4e4745290956236ea5429880780e636c9d0e2ab66567e1c3dfc733248b2da5",
+      "VariantSHA256": "24769a4fd0990980e71e6f730ebcd59ec93a9884ee2757a05a0f9141b4fcef16",
+      "Calls": {},
+      "Refs": {
+        "_winUnlockFile": 1
+      },
+      "Syscalls": {
+        "57": 1,
+        "58": 1
+      },
+      "Renames": {
+        "_winUnlockFile": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winUnlockReadLock",
+      "SHA256": "d193f1007bbf36345b9bcb43e0b64cfef2b297774bee5edbb4b68eb260d67b74",
+      "VariantSHA256": "914035ef25b8ca5e3bde3ae685b9f6aa93fc10aae33f3376556331cc99d99bfe",
+      "Calls": {
+        "_winLogErrorAtLine": 1,
+        "_winUnlockFile": 2
+      },
+      "Refs": {
+        "_winLogErrorAtLine": 1,
+        "_winUnlockFile": 2,
+        "_winUnlockReadLock": 1
+      },
+      "Syscalls": {
+        "26": 1
+      },
+      "Renames": {
+        "_winLogErrorAtLine": 1,
+        "_winUnlockFile": 2,
+        "_winUnlockReadLock": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_g_0000000000060000.go",
+      "Name": "_winUnmapfile",
+      "SHA256": "1ddffdcace89390f58435c078884d7729903055da24b74e6ad18b803df3b455e",
+      "VariantSHA256": "f669746c512c58175c9c9129ecc70dde1531fe67f78a70146c8dde95203d26b2",
+      "Calls": {
+        "_winLogErrorAtLine": 2
+      },
+      "Refs": {
+        "_winLogErrorAtLine": 2,
+        "_winUnmapfile": 1
+      },
+      "Syscalls": {
+        "26": 2,
+        "3": 1,
+        "59": 1
+      },
+      "Renames": {
+        "_winLogErrorAtLine": 2,
+        "_winUnmapfile": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_g_0000000000060000.go",
+      "Name": "_winUtf8ToMbcs",
+      "SHA256": "87bf2733626355fee8d2b0d274f19ac049c25b122dbfd83d4c862aa4cd758195",
+      "VariantSHA256": "2c76ae270b7a70793ba3f84b3257f9d79702c1e51fcd2af992b8f3c92a1942c2",
+      "Calls": {
+        "_winUnicodeToMbcs": 1,
+        "_winUtf8ToUnicode": 1
+      },
+      "Refs": {
+        "_winUnicodeToMbcs": 1,
+        "_winUtf8ToMbcs": 1,
+        "_winUtf8ToUnicode": 1
+      },
+      "Syscalls": {},
+      "Renames": {
+        "_winUnicodeToMbcs": 1,
+        "_winUtf8ToMbcs": 1,
+        "_winUtf8ToUnicode": 1
+      }
+    },
+    {
+      "File": "lib/sqlite_windows.go",
+      "Name": "_winUtf8ToUnicode",
+      "SHA256": "14adecc16f4eb9933f64dcdfb25e575da6299dfb077e9a4754db2beeb26a1b19",
+      "VariantSHA256": "a7c1652273fd6ebb7bd2783c970bc35c9a592b887f7cd7df3ede90ef48fd7010",
+      "Calls": {},
+      "Refs": {
+        "_winUtf8ToUnicode": 1
+      },
+      "Syscalls": {
+        "50": 2
+      },
+      "Renames": {
+        "_winUtf8ToUnicode": 1
+      }
+    }
+  ],
+  "OutputSHA256": "b9a9fa90fd837e08c45275ecf803cd4779e890a201e33658f9184f4c10af7a09"
+}

@@ -2,3 +2,5 @@
 protocol/v1/*.json text eol=lf
 # Private SQLite overlay is SHA256-pinned byte-for-byte on Windows too.
 scripts/sqlite-persistent-vfs/lib_patch_windows.go.txt text eol=lf
+scripts/sqlite-persistent-vfs/generator/* text eol=lf
+scripts/sqlite-persistent-vfs/main_read_bridge_windows.go.txt text eol=lf

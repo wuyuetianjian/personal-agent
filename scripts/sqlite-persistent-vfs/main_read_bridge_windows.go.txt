@@ -1,0 +1,113 @@
+//go:build windows && nativeprobe_sqlite_persistent && nativeprobe_sqlite_main_read
+
+// Experimental RED interface only. No accepted opens or synthesized winFile.
+package sqlite3
+
+import (
+	"fmt"
+	"modernc.org/libc"
+	"sync"
+	"sync/atomic"
+	"unsafe"
+)
+
+// Authority is already bound to one owner, connection and MAIN_DB role. These
+// trusted callbacks must not reenter the bridge. Handles may not escape Borrow.
+type ExperimentalMainReadAuthority interface {
+	OpenMain() (ExperimentalMainReadLease, error)
+}
+type ExperimentalMainReadLease interface {
+	Borrow(func(uintptr) int32) (int32, error)
+	Close() error
+}
+type experimentalMainReadBinding struct {
+	vfs       Tsqlite3_vfs
+	authority ExperimentalMainReadAuthority
+	canonical string
+	refusals  atomic.Uint64
+}
+
+var experimentalMainReadMu sync.Mutex
+var experimentalMainReadBindings = map[uintptr]*experimentalMainReadBinding{}
+var experimentalMainReadSequence atomic.Uint64
+
+// Registrations and names remain process-lifetime. No unregister/free while
+// SQLite can retain pointers. This is a test interface, not a public DSN API.
+func ExperimentalMainReadRegister(a ExperimentalMainReadAuthority, canonical string) (uintptr, error) {
+	if a == nil || canonical == "" {
+		return 0, fmt.Errorf("missing main authority/name")
+	}
+	tls := libc.NewTLS()
+	defer tls.Close()
+	if rc := Xsqlite3_initialize(tls); rc != SQLITE_OK {
+		return 0, fmt.Errorf("initialize %d", rc)
+	}
+	stock := Xsqlite3_vfs_find(tls, 0)
+	if stock == 0 {
+		return 0, fmt.Errorf("missing stock VFS")
+	}
+	name, err := libc.CString(fmt.Sprintf("agent-main-read-red-%d", experimentalMainReadSequence.Add(1)))
+	if err != nil {
+		return 0, err
+	}
+	b := &experimentalMainReadBinding{authority: a, canonical: canonical}
+	b.vfs = *(*Tsqlite3_vfs)(unsafe.Pointer(stock))
+	b.vfs.FpNext = 0
+	b.vfs.FpAppData = 0
+	b.vfs.FzName = name
+	b.vfs.FxOpen = __ccgo_fp(experimentalMainReadOpen)
+	b.vfs.FxFullPathname = __ccgo_fp(experimentalMainReadFullPath)
+	b.vfs.FxDelete = __ccgo_fp(persistentDelete)
+	b.vfs.FxAccess = __ccgo_fp(persistentAccess)
+	b.vfs.FxDlOpen = __ccgo_fp(persistentDlOpen)
+	b.vfs.FxDlError = __ccgo_fp(persistentDlError)
+	b.vfs.FxDlSym = __ccgo_fp(persistentDlSym)
+	b.vfs.FxDlClose = __ccgo_fp(persistentDlClose)
+	b.vfs.FxSetSystemCall = 0
+	b.vfs.FxGetSystemCall = 0
+	b.vfs.FxNextSystemCall = 0
+	p := uintptr(unsafe.Pointer(&b.vfs))
+	experimentalMainReadMu.Lock()
+	experimentalMainReadBindings[p] = b
+	experimentalMainReadMu.Unlock()
+	if rc := Xsqlite3_vfs_register(tls, p, 0); rc != SQLITE_OK {
+		return 0, fmt.Errorf("register %d", rc)
+	}
+	if Xsqlite3_vfs_find(tls, 0) != stock {
+		return 0, fmt.Errorf("default changed")
+	}
+	return p, nil
+}
+func experimentalMainReadBindingFor(vfs uintptr) *experimentalMainReadBinding {
+	experimentalMainReadMu.Lock()
+	defer experimentalMainReadMu.Unlock()
+	return experimentalMainReadBindings[vfs]
+}
+func ExperimentalMainReadRefusals(vfs uintptr) uint64 {
+	if b := experimentalMainReadBindingFor(vfs); b != nil {
+		return b.refusals.Load()
+	}
+	return 0
+}
+func experimentalMainReadOpen(tls *libc.TLS, vfs, name, file uintptr, flags int32, out uintptr) int32 {
+	if out != 0 {
+		*(*int32)(unsafe.Pointer(out)) = 0
+	}
+	if file != 0 {
+		(*Tsqlite3_file)(unsafe.Pointer(file)).FpMethods = 0
+	}
+	b := experimentalMainReadBindingFor(vfs)
+	if b == nil || name == 0 || file == 0 || libc.GoString(name) != b.canonical || flags != SQLITE_OPEN_READONLY|SQLITE_OPEN_MAIN_DB {
+		return SQLITE_CANTOPEN
+	}
+	b.refusals.Add(1) // exact-bound actual VFS call reached the refusing constructor
+	return SQLITE_CANTOPEN
+}
+func experimentalMainReadFullPath(tls *libc.TLS, vfs, name uintptr, n int32, out uintptr) int32 {
+	b := experimentalMainReadBindingFor(vfs)
+	if b == nil || name == 0 || out == 0 || n <= 0 || libc.GoString(name) != b.canonical || len(b.canonical) >= int(n) {
+		return SQLITE_CANTOPEN
+	}
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(out)), int(n)), append([]byte(b.canonical), 0))
+	return SQLITE_OK
+}
