@@ -29,7 +29,7 @@ const WAL_MANIFEST = 'scripts/sqlite-persistent-vfs/generator/wal-manifest.json'
 const WAL_LINKED_NAME = 'lib/nativeprobe_sqlite_wal_generated_windows.go';
 const DEFAULT_REPO = fileURLToPath(new URL('../', import.meta.url));
 
-export const PATCH_SHA256 = '9afc18f1dd8fa30c6aacc7afdc724b572c99302e31f884e0d1d98b94c7d48436';
+export const PATCH_SHA256 = '8ee935f3115943bf248384d26bfd3b15b4ee5da58b211eae4e2c4f66a9a69cea';
 export function validateInputs(mod, sum, patch, basePatch, mainPatch, walPatch, accessPatch) {
   validateWALInputs(mod,sum,walPatch,basePatch,mainPatch);
   validateAccessInputs(mod,sum,accessPatch,basePatch,mainPatch);

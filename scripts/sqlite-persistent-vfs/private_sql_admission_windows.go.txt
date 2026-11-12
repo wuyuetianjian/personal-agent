@@ -48,6 +48,10 @@ func ExperimentalSQLAdmissionRegisterRO(a ExperimentalSQLAdmissionAuthority, can
 		p := (*Tsqlite3_vfs)(unsafe.Pointer(v))
 		p.FxAccess = __ccgo_fp(experimentalSQLAdmissionAccess)
 		p.FxFullPathname = __ccgo_fp(experimentalSQLAdmissionFullPath)
+		// Existing-WAL dispatcher requires its owner-local attempt counter too.
+		experimentalExistingWALMu.Lock()
+		experimentalExistingWALPending[v] = &atomic.Uint64{}
+		experimentalExistingWALMu.Unlock()
 		experimentalSQLAdmissionMu.Lock()
 		experimentalSQLAdmissionBindings[v] = b
 		experimentalSQLAdmissionMu.Unlock()
@@ -91,27 +95,148 @@ func experimentalSQLAdmissionFullPath(tls *libc.TLS, v, name uintptr, n int32, o
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(out)), int(n)), append([]byte(b.canonical), 0))
 	return SQLITE_OK
 }
-func experimentalSQLAdmissionOpen(tls *libc.TLS, v, name, file uintptr, flags int32, out uintptr) int32 {
+
+// Only real SQLite URI filename allocations reach this function. Core has
+// already parsed URI options; unknown/duplicate effective keys are rejected.
+// This is a controlled fixture entry, not a parser for arbitrary external URIs.
+func experimentalSQLAdmissionURI(tls *libc.TLS, v, name uintptr) bool {
+	seen := map[string]bool{}
+	expectedVFS := libc.GoString((*Tsqlite3_vfs)(unsafe.Pointer(v)).FzName)
+	for i := int32(0); i < 3; i++ {
+		key := Xsqlite3_uri_key(tls, name, i)
+		if key == 0 {
+			return seen["mode"] && seen["vfs"]
+		}
+		k := libc.GoString(key)
+		if seen[k] {
+			return false
+		}
+		seen[k] = true
+		value := Xsqlite3_uri_parameter(tls, name, key)
+		if value == 0 {
+			return false
+		}
+		switch k {
+		case "mode":
+			if libc.GoString(value) != "ro" {
+				return false
+			}
+		case "vfs":
+			if libc.GoString(value) != expectedVFS {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return false
+}
+func experimentalSQLAdmissionOpen(tls *libc.TLS, v, name, file uintptr, flags int32, out uintptr) (rc int32) {
+	rc = SQLITE_CANTOPEN
 	if out != 0 {
 		*(*int32)(unsafe.Pointer(out)) = 0
 	}
 	b := experimentalSQLAdmissionLookup(v)
 	if b == nil || name == 0 || file == 0 {
-		return SQLITE_CANTOPEN
+		return
 	}
-	if libc.GoString(name) == b.canonical && flags == SQLITE_OPEN_READONLY|SQLITE_OPEN_URI|SQLITE_OPEN_MAIN_DB {
-		b.mainURI.Add(1)
-		b.unimplemented.Add(1)
+	// No authority callback may escape into SQLite with a Go panic. Other opaque
+	// resource lifetimes are managed by the separately reviewed main/WAL helpers.
+	defer func() {
+		if p := recover(); p != nil {
+			if binding := experimentalMainReadBindingFor(v); binding != nil {
+				binding.poison(experimentalMainReadPanic("SQL admission panic", p))
+			}
+			if out != 0 {
+				*(*int32)(unsafe.Pointer(out)) = 0
+			}
+			rc = SQLITE_CANTOPEN
+		}
+	}()
+	path := libc.GoString(name)
+	if path == b.canonical {
+		if flags != SQLITE_OPEN_READONLY|SQLITE_OPEN_MAIN_DB && flags != SQLITE_OPEN_READONLY|SQLITE_OPEN_URI|SQLITE_OPEN_MAIN_DB {
+			return
+		}
+		if flags&SQLITE_OPEN_URI != 0 {
+			b.mainURI.Add(1)
+			if !experimentalSQLAdmissionURI(tls, v, name) {
+				return
+			}
+		}
+		// URI is removed only after exact path/keys/mode validation. Preserve the
+		// original SQLite filename allocation with its attached parameter lifetime.
+		rc = experimentalMainReadOpen(tls, v, name, file, flags&^SQLITE_OPEN_URI, out)
+		if rc == SQLITE_OK {
+			(*Tsqlite3_file)(unsafe.Pointer(file)).FpMethods = uintptr(unsafe.Pointer(&experimentalSQLAdmissionMethods))
+		}
+		return
 	}
-	// At native RED this is the missing admission path, not a SHM implementation.
-	return SQLITE_CANTOPEN
+	if path == b.canonical+"-wal" && flags == SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE|SQLITE_OPEN_WAL {
+		b.wal.Add(1)
+		return experimentalExistingWALOpen(tls, v, name, file, flags, out)
+	}
+	if path == b.canonical+"-journal" {
+		b.journalRejected.Add(1)
+	}
+	return
 }
-func experimentalSQLAdmissionAccess(tls *libc.TLS, v, name uintptr, flags int32, out uintptr) int32 {
-	if out != 0 {
-		*(*int32)(unsafe.Pointer(out)) = 0
+func experimentalSQLAdmissionAccess(tls *libc.TLS, v, name uintptr, flags int32, out uintptr) (rc int32) {
+	rc = SQLITE_IOERR_ACCESS
+	if out == 0 {
+		return
 	}
-	if b := experimentalSQLAdmissionLookup(v); b != nil {
-		b.access.Add(1)
+	*(*int32)(unsafe.Pointer(out)) = 0
+	b := experimentalSQLAdmissionLookup(v)
+	if b == nil || name == 0 {
+		return
 	}
-	return SQLITE_IOERR_ACCESS
+	b.access.Add(1)
+	binding := experimentalMainReadBindingFor(v)
+	if binding == nil || !binding.healthy() {
+		return
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			binding.poison(experimentalMainReadPanic("SQL observation panic", p))
+			*(*int32)(unsafe.Pointer(out)) = 0
+			rc = SQLITE_IOERR_ACCESS
+		}
+	}()
+	yes, e := b.authority.Observe(libc.GoString(name), flags)
+	if e != nil {
+		return
+	}
+	if yes {
+		*(*int32)(unsafe.Pointer(out)) = 1
+	}
+	return SQLITE_OK
+}
+
+// A new table, not mutation of the previously qualified shared/default tables.
+var experimentalSQLAdmissionMethods = func() Tsqlite3_io_methods {
+	methods := experimentalMainReadMethods
+	methods.FxShmMap = __ccgo_fp(experimentalSQLAdmissionShmMap)
+	return methods
+}()
+
+func experimentalSQLAdmissionShmMap(tls *libc.TLS, file uintptr, page, size, extend int32, out uintptr) int32 {
+	if out == 0 {
+		return SQLITE_IOERR_SHMMAP
+	}
+	*(*uintptr)(unsafe.Pointer(out)) = 0
+	return experimentalMainReadWithRole(file, experimentalRoleMain, func() int32 {
+		f := experimentalMainReadLookup(file)
+		if f == nil {
+			return SQLITE_IOERR_SHMMAP
+		}
+		b := experimentalSQLAdmissionLookup(uintptr(unsafe.Pointer(&f.binding.vfs)))
+		if b == nil {
+			return SQLITE_IOERR_SHMMAP
+		}
+		b.shm.Add(1)
+		// Fail terminally at the requested boundary. In particular, CANTINIT is NOT
+		// returned: the pager may interpret it as permission for heap-index recovery.
+		return SQLITE_IOERR_SHMMAP
+	})
 }
