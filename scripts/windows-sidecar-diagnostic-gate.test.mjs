@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {validate,required} from './windows-sidecar-diagnostic-gate.mjs';
+const pkg='agent/internal/nativefs/windowsprobe';
+function stream(marker=true){const e=[{Action:'start',Package:pkg}];for(let i=0;i<3;i++)for(const Test of required){e.push({Action:'run',Package:pkg,Test});if(marker)e.push({Action:'output',Package:pkg,Test,Output:(Test.endsWith('UnknownRetiredWAL')?'SIDECAR_PROVENANCE_GAP_CONFIRMED':'SIDECAR_CURRENT_GUARDS_REFUSE')+'\n'});e.push({Action:'pass',Package:pkg,Test});}e.push({Action:'pass',Package:pkg});return e.map(JSON.stringify).join('\n')+'\n';}
+test('exact two diagnostics and three paired rounds with their own markers',()=>{assert.equal(required.length,2);assert.doesNotThrow(()=>validate(stream()));});
+test('mere PASS is not a diagnostic witness',()=>assert.throws(()=>validate(stream(false))));
+test('truncation failures skips extra child or falsey Test refuse',()=>{const s=stream();for(const changed of [s.trimEnd(),s.replace('"pass"','"fail"'),s.replace('"pass"','"skip"'),s.replace(required[0],'TestSidecarDiagnosticChild'),s.replace(/\{"Action":"pass","Package":"agent\/internal\/nativefs\/windowsprobe"\}\n$/, '{"Action":"pass","Package":"'+pkg+'","Test":""}\n')])assert.throws(()=>validate(changed));});
+test('marker outside its active test cannot satisfy contract',()=>{assert.throws(()=>validate(stream().replace('"SIDECAR_CURRENT_GUARDS_REFUSE\\n"','"SIDECAR_PROVENANCE_GAP_CONFIRMED\\n"')));});
+test('duplicate marker extra round and event after package completion refuse',()=>{const s=stream();const marker='SIDECAR_PROVENANCE_GAP_CONFIRMED';const lines=s.trimEnd().split('\n');const index=lines.findIndex(l=>l.includes(marker));const dup=[...lines.slice(0,index),lines[index],...lines.slice(index)].join('\n')+'\n';assert.throws(()=>validate(dup));assert.throws(()=>validate(s+JSON.stringify({Action:'output',Package:pkg,Output:'late'})+'\n'));const run=JSON.stringify({Action:'run',Package:pkg,Test:required[0]});assert.throws(()=>validate(s.slice(0,s.lastIndexOf('{'))+run+'\n'));});
