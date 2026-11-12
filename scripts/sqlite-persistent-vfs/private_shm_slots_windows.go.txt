@@ -1,0 +1,104 @@
+//go:build windows && nativeprobe_sqlite_persistent && nativeprobe_sqlite_main_read && nativeprobe_sqlite_shm_resources && nativeprobe_sqlite_shm_slots
+
+package sqlite3
+
+import (
+	"fmt"
+	"modernc.org/libc"
+	"sync"
+	"sync/atomic"
+	"unsafe"
+)
+
+type ExperimentalSHMSlotAuthority interface {
+	ExperimentalSHMResourceAuthority
+	LockSHM(ExperimentalSHMResourceKey, int32, int32, int32) (bool, error)
+	BarrierSHM(ExperimentalSHMResourceKey) error
+}
+type experimentalSHMSlotBinding struct {
+	authority       ExperimentalSHMSlotAuthority
+	locks, barriers atomic.Uint64
+}
+
+var experimentalSHMSlotMu sync.Mutex
+var experimentalSHMSlotBindings = map[uintptr]*experimentalSHMSlotBinding{}
+
+func experimentalSHMSlotBindingFor(v uintptr) *experimentalSHMSlotBinding {
+	experimentalSHMSlotMu.Lock()
+	defer experimentalSHMSlotMu.Unlock()
+	return experimentalSHMSlotBindings[v]
+}
+func ExperimentalSHMSlotsRegister(a ExperimentalSHMSlotAuthority, canonical string) (uintptr, error) {
+	if a == nil {
+		return 0, fmt.Errorf("missing slot authority")
+	}
+	return experimentalMainReadRegisterPrepared(a, canonical, __ccgo_fp(experimentalSHMSlotOpen), func(v uintptr) {
+		experimentalSHMResourceMu.Lock()
+		experimentalSHMResourceBindings[v] = &experimentalSHMResourceBinding{authority: a}
+		experimentalSHMResourceMu.Unlock()
+		experimentalSHMSlotMu.Lock()
+		experimentalSHMSlotBindings[v] = &experimentalSHMSlotBinding{authority: a}
+		experimentalSHMSlotMu.Unlock()
+	})
+}
+func ExperimentalSHMSlotsCalls(v uintptr) (uint64, uint64) {
+	b := experimentalSHMSlotBindingFor(v)
+	if b == nil {
+		return 0, 0
+	}
+	return b.locks.Load(), b.barriers.Load()
+}
+
+var experimentalSHMSlotMethods = func() Tsqlite3_io_methods {
+	m := experimentalSHMResourceMethods
+	m.FxShmLock = __ccgo_fp(experimentalSHMSlotLock)
+	m.FxShmBarrier = __ccgo_fp(experimentalSHMSlotBarrier)
+	return m
+}()
+
+func experimentalSHMSlotOpen(tls *libc.TLS, v, n, f uintptr, flags int32, out uintptr) int32 {
+	rc := experimentalSHMResourceOpen(tls, v, n, f, flags, out)
+	if rc == SQLITE_OK {
+		(*Tsqlite3_file)(unsafe.Pointer(f)).FpMethods = uintptr(unsafe.Pointer(&experimentalSHMSlotMethods))
+	}
+	return rc
+}
+func experimentalSHMSlotLock(tls *libc.TLS, file uintptr, offset, count, flags int32) int32 {
+	return experimentalMainReadWithRole(file, experimentalRoleMain, func() int32 {
+		f := experimentalMainReadLookup(file)
+		b := experimentalSHMSlotBindingFor(uintptr(unsafe.Pointer(&f.binding.vfs)))
+		if b == nil {
+			return SQLITE_IOERR_SHMLOCK
+		}
+		b.locks.Add(1)
+		busy, e := b.authority.LockSHM(ExperimentalSHMResourceKey{file, f.generation}, offset, count, flags)
+		if e != nil {
+			return SQLITE_IOERR_SHMLOCK
+		}
+		if busy {
+			return SQLITE_BUSY
+		}
+		return SQLITE_OK
+	})
+}
+func experimentalSHMSlotBarrier(tls *libc.TLS, file uintptr) {
+	rc := experimentalMainReadWithRole(file, experimentalRoleMain, func() int32 {
+		f := experimentalMainReadLookup(file)
+		b := experimentalSHMSlotBindingFor(uintptr(unsafe.Pointer(&f.binding.vfs)))
+		if b == nil {
+			return SQLITE_IOERR_SHMLOCK
+		}
+		b.barriers.Add(1)
+		if e := b.authority.BarrierSHM(ExperimentalSHMResourceKey{file, f.generation}); e != nil {
+			f.binding.poison(e)
+			return SQLITE_IOERR_SHMLOCK
+		}
+		return SQLITE_OK
+	})
+	// Void callback failures must not disappear behind a later success.
+	if rc != SQLITE_OK {
+		if f := experimentalMainReadLookup(file); f != nil {
+			f.binding.poison(fmt.Errorf("SHM barrier refused rc=%d", rc))
+		}
+	}
+}

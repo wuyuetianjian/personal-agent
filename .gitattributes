@@ -9,3 +9,4 @@ scripts/sqlite-persistent-vfs/stock_wal_flags_windows.go.txt text eol=lf
 scripts/sqlite-persistent-vfs/existing_wal_bridge_windows.go.txt text eol=lf
 scripts/sqlite-persistent-vfs/private_sql_admission_windows.go.txt text eol=lf
 scripts/sqlite-persistent-vfs/private_shm_resources_windows.go.txt text eol=lf
+scripts/sqlite-persistent-vfs/private_shm_slots_windows.go.txt text eol=lf
