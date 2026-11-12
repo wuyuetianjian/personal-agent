@@ -199,6 +199,34 @@ func TestOwnedFDBoundsAndObservedMutation(t *testing.T) {
 	if calls == 0 || calls > 32 {
 		t.Fatalf("pread budget calls=%d", calls)
 	}
+	// Invalid/short-zero and interrupted native returns never publish a prefix.
+	for _, mode := range []string{"zero", "negative", "oversized", "interrupted", "partial-error"} {
+		ops = ownedFDSystemOps()
+		attempts := 0
+		ops.pread = func(fd int, p []byte, offset int64) (int, error) {
+			attempts++
+			switch mode {
+			case "zero":
+				return 0, nil
+			case "negative":
+				return -1, nil
+			case "oversized":
+				return len(p) + 1, nil
+			case "interrupted":
+				return 0, unix.EINTR
+			default:
+				if attempts == 1 {
+					return unix.Pread(fd, p[:1], offset)
+				}
+				return 0, unix.EIO
+			}
+		}
+		b, e = readTrustedRegularWithOps(context.Background(), f, int64(len(data)), ops)
+		ownedFDRefused(t, b, e)
+		if attempts == 0 || attempts > 32 {
+			t.Fatalf("invalid return call budget: %s %d", mode, attempts)
+		}
+	}
 	ops = ownedFDSystemOps()
 	calls = 0
 	ops.pread = func(fd int, p []byte, offset int64) (int, error) {
@@ -211,6 +239,23 @@ func TestOwnedFDBoundsAndObservedMutation(t *testing.T) {
 	}
 	b, e = readTrustedRegularWithOps(context.Background(), f, int64(len(data)+1), ops)
 	ownedFDRefused(t, b, e)
+	// Largest admitted object must fit the fixed per-call/total-read budgets.
+	largest := bytes.Repeat([]byte("L"), 1<<20)
+	ownedFDCheck(t, os.WriteFile(path, largest, 0600))
+	ops = ownedFDSystemOps()
+	calls = 0
+	ops.pread = func(fd int, p []byte, offset int64) (int, error) {
+		calls++
+		if len(p) > 64*1024 {
+			return 0, errors.New("oversized pread buffer")
+		}
+		return unix.Pread(fd, p, offset)
+	}
+	b, e = readTrustedRegularWithOps(context.Background(), f, 1<<20, ops)
+	ownedFDCheck(t, e)
+	if !bytes.Equal(b, largest) || calls == 0 || calls > 32 {
+		t.Fatalf("maximum object/call budget %d", calls)
+	}
 	ownedFDCheck(t, os.WriteFile(path, nil, 0600))
 	b, e = ReadTrustedRegular(context.Background(), f, 0)
 	ownedFDCheck(t, e)
@@ -287,6 +332,37 @@ func TestOwnedFDReadAndCloseFailures(t *testing.T) {
 		var st unix.Stat_t
 		if e = unix.Fstat(owned, &st); !errors.Is(e, unix.EBADF) {
 			t.Fatalf("duplicate cleanup not observed %v", e)
+		}
+	}
+
+	// A trusted seam panic still consumes cleanup once and returns no bytes.
+	for _, stage := range []string{"after-dup", "pread", "close"} {
+		ops := ownedFDSystemOps()
+		closes := 0
+		var nativeCloseErr error
+		if stage == "after-dup" {
+			ops.afterDup = func(int) error { panic(readErr) }
+		}
+		if stage == "pread" {
+			ops.pread = func(int, []byte, int64) (int, error) { panic(readErr) }
+		}
+		ops.close = func(fd int) error {
+			closes++
+			nativeCloseErr = unix.Close(fd)
+			if stage == "close" {
+				panic(closeErr)
+			}
+			return nativeCloseErr
+		}
+		b, e := readTrustedRegularWithOps(context.Background(), f, int64(len(data)), ops)
+		ownedFDRefused(t, b, e)
+		ownedFDCheck(t, nativeCloseErr)
+		cause := readErr
+		if stage == "close" {
+			cause = closeErr
+		}
+		if !errors.Is(e, cause) || closes != 1 {
+			t.Fatalf("panic cause/cleanup %s: %v closes=%d", stage, e, closes)
 		}
 	}
 }

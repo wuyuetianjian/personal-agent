@@ -37,3 +37,14 @@ Sources: Apple XNU xnu-11215.81.4 bsd/sys/fcntl.h; Apple dup(2) and pread(2) man
 - https://developer.apple.com/library/archive/documentation/System/Conceptual/ManPages_iPhoneOS/man2/pread.2.html
 
 Source boundary review: XNU xnu-11215.81.4 bsd/sys/fcntl.h:183 and :235-238 define O_EXEC and flag conversion; masking only O_ACCMODE cannot establish read access. bsd/kern/kern_descrip.c:2817-2836 routes F_DUPFD_CLOEXEC through finishdup, which retains the existing fileglob rather than opening a pathname; :2856-2868 implements F_GETFL. Go 1.26.4 internal/poll/fd_posix.go RawControl holds a file reference throughout its callback. This explains both the strict full-flags subset and the afterDup-outside-Control ordering.
+
+## Implementation review checkpoint
+
+Native RED at 157dc58 (run 43269525085/job 131362015030) was independently
+recounted: six tests, each three runs/fixture-controls/explicit-refusal failures.
+The subsequent candidate uses a deferred publication guard: data exists only
+locally until exactly-once close and the final cancellation check complete; any
+error resets the named return buffer to nil. A controlled hook panic is converted
+to an error and still attempts cleanup once. A close-hook panic is never retried.
+Additional cases stay inside the same six top-level contracts. They are not native
+passing evidence yet. No production dependency or source acquisition path is added.
