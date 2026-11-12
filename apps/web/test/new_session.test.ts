@@ -73,3 +73,39 @@ test('protocol preflight refusal leaves draft editable and permits only a new ex
  }
  assert.equal(reads,3);assert.equal((await client.listSessions()).length,1);await page.getByRole('button',{name:'＋ 新建会话'}).click();await expect(page.locator('aside nav button')).toHaveCount(2);assert.equal(posts,1);await expect(page.getByLabel('消息')).toHaveValue('keep preflight draft');assert.equal((await client.listSessions()).length,2);
 }));
+
+test('explicit unavailable workspace modes preserve choice and block repeated Web admission before POST',{timeout:70000},async()=>fixture([],async(page)=>{
+ let writes=0;
+ await page.route('**/api/v1/sessions',async route=>{if(route.request().method()==='POST')writes++;await route.continue()});
+ await page.route('**/api/v1/status',async route=>{const response=await route.fetch();const body=await response.json();body.workspace={...body.workspace,Files:{Enabled:false,Reason:'native fixture reason <not HTML>'}};await route.fulfill({response,json:body})});
+ await page.reload();await page.getByLabel('服务令牌').fill('acceptance-local');await page.getByRole('button',{name:'连接',exact:true}).click();
+ const mode=page.getByLabel('新会话权限');
+ for(const value of ['default','plan','acceptEdits']){
+  await mode.selectOption(value);
+  await expect(mode.locator(`option[value="${value}"]`)).toContainText('不可用');
+  await page.getByRole('button',{name:'＋ 新建会话'}).evaluate((el:HTMLButtonElement)=>{el.click();el.click()});
+  await expect(page.getByRole('status')).toContainText('native fixture reason <not HTML>');
+  await expect(mode).toHaveValue(value);assert.equal(writes,0);assert.equal(await page.locator('.admission-operation').count(),0);
+  assert.equal(await page.evaluate(()=>sessionStorage.getItem('agent-session-admission')),null);
+ }
+ await mode.selectOption('chat_only');await page.getByRole('button',{name:'＋ 新建会话'}).click();await page.getByLabel('消息').waitFor();assert.equal(writes,1);
+}));
+
+test('unknown or stale enabled workspace status leaves server refusal and read-only recovery authoritative',{timeout:70000},async()=>fixture([],async(page)=>{
+ let files:unknown=undefined,writes=0,request='',lookups=0;
+ await page.route('**/api/v1/status',async route=>{const response=await route.fetch();const body=await response.json();body.workspace={Files:files};await route.fulfill({response,json:body})});
+ // A transport fixture for the real Web/client admission state machine, not
+ // evidence of backend effects. Actual 409 native refusal has its own Go CI.
+ await page.route('**/api/v1/sessions',async route=>{if(route.request().method()!=='POST'){await route.continue();return}writes++;request=route.request().postDataJSON().request_id;await route.fulfill({status:409,json:{error:{code:'workspace_unavailable_choose_chat_only'}}})});
+ await page.route('**/api/v1/admissions/*',async route=>{lookups++;assert.ok(route.request().url().endsWith(request));assert.equal(route.request().method(),'GET');await route.fulfill({json:{request_id:request,session_id:'unpublished',state:'unresolved',mcp_opt_in:false,reason:'fixture refusal settled'}})});
+ for(const value of [undefined,{Enabled:'false'},{Enabled:true}]){
+  files=value;await page.reload();await page.getByLabel('服务令牌').fill('acceptance-local');await page.getByRole('button',{name:'连接',exact:true}).click();
+  const mode=page.getByLabel('新会话权限');await mode.selectOption('plan');await expect(mode.locator('option[value="plan"]')).toHaveText('计划');const before=writes;
+  await page.getByRole('button',{name:'＋ 新建会话'}).evaluate((el:HTMLButtonElement)=>{el.click();el.click()});
+  await expect(page.locator('.admission-operation')).toContainText('unknown:');assert.equal(writes,before+1);await expect(mode).toHaveValue('plan');await expect(mode).toBeDisabled();
+  await expect(page.getByRole('status')).toContainText('workspace_unavailable_choose_chat_only');
+  await page.getByRole('button',{name:'Recover admission / 只读核对新会话'}).click();await expect(page.locator('.admission-operation')).toContainText('unresolved:');assert.equal(writes,before+1);
+  await page.getByRole('button',{name:'Acknowledge failed claim; allow a new explicit action / 确认失败记录并解锁'}).click();await expect(mode).toBeEnabled();await expect(mode).toHaveValue('plan');
+ }
+ assert.equal(writes,3);assert.equal(lookups,3);
+}));

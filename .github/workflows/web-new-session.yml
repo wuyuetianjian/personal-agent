@@ -1,0 +1,68 @@
+name: Web new-session guidance and admission browser regression
+on:
+  push:
+    branches: [test/rebuild-20261110]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: web-new-session-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  browser:
+    if: ${{ github.ref == 'refs/heads/test/rebuild-20261110' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Record source and install locked dependencies
+        run: |
+          git rev-parse HEAD
+          uname -a
+          go version
+          node --version
+          npm install --global pnpm@11.25.0
+          pnpm install --frozen-lockfile
+      - name: Verify CI contract and TypeScript
+        run: |
+          node --test scripts/web-new-session-ci.test.mjs
+          pnpm typecheck
+          node --test apps/web/test/workspace_modes.test.ts
+      - name: Install official Playwright Chromium
+        run: |
+          pnpm --filter @personal-agent/web exec playwright install --with-deps chromium
+          browser=$(cd apps/web && node --input-type=module -e 'import {chromium} from "@playwright/test"; console.log(chromium.executablePath())')
+          test -x "$browser"
+          printf 'CHROMIUM_PATH=%s\n' "$browser" >> "$GITHUB_ENV"
+      - name: Build and embed actual Web for Go fixture
+        run: |
+          pnpm --filter @personal-agent/web build
+          mkdir -p internal/webui/dist
+          cp -R apps/web/dist/. internal/webui/dist/
+          go mod verify
+      - name: Full new-session browser regression, no test filter
+        run: |
+          set -o pipefail
+          node --test --test-reporter=tap apps/web/test/new_session.test.ts 2>&1 | tee web-new-session.tap
+      - name: Preserve raw browser evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: web-new-session-browser
+          path: |
+            web-new-session.tap
+            /tmp/task7e6b-label-390.png
+          if-no-files-found: warn
