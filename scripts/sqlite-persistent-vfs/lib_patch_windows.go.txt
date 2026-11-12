@@ -1,0 +1,99 @@
+//go:build windows && nativeprobe_sqlite_persistent
+
+// RED-only private VFS. No disk acquisition, winFile synthesis or production use.
+package sqlite3
+
+import (
+	"fmt"
+	"modernc.org/libc"
+	"sync"
+	"sync/atomic"
+	"unsafe"
+)
+
+var persistentOnce sync.Once
+var persistentErr error
+var persistentClone Tsqlite3_vfs
+var persistentRefusals atomic.Uint64
+
+// Process lifetime registration, name allocation and real VFS struct are retained
+// until process exit. No unregister/free while SQLite may retain pointers.
+func ExperimentalPersistentRegister() error {
+	persistentOnce.Do(func() {
+		tls := libc.NewTLS()
+		defer tls.Close()
+		if rc := Xsqlite3_initialize(tls); rc != SQLITE_OK {
+			persistentErr = fmt.Errorf("initialize %d", rc)
+			return
+		}
+		stock := Xsqlite3_vfs_find(tls, 0)
+		if stock == 0 {
+			persistentErr = fmt.Errorf("missing default VFS")
+			return
+		}
+		name, e := libc.CString("agent-persistent-red-v1")
+		if e != nil {
+			persistentErr = e
+			return
+		}
+		persistentClone = *(*Tsqlite3_vfs)(unsafe.Pointer(stock))
+		persistentClone.FpNext = 0
+		persistentClone.FzName = name
+		persistentClone.FpAppData = 0
+		persistentClone.FxOpen = __ccgo_fp(persistentOpen)
+		persistentClone.FxDelete = __ccgo_fp(persistentDelete)
+		persistentClone.FxAccess = __ccgo_fp(persistentAccess)
+		persistentClone.FxFullPathname = __ccgo_fp(persistentFullPath)
+		persistentClone.FxDlOpen = __ccgo_fp(persistentDlOpen)
+		persistentClone.FxDlError = __ccgo_fp(persistentDlError)
+		persistentClone.FxDlSym = __ccgo_fp(persistentDlSym)
+		persistentClone.FxDlClose = __ccgo_fp(persistentDlClose)
+		persistentClone.FxSetSystemCall = 0
+		persistentClone.FxGetSystemCall = 0
+		persistentClone.FxNextSystemCall = 0
+		if rc := Xsqlite3_vfs_register(tls, uintptr(unsafe.Pointer(&persistentClone)), 0); rc != SQLITE_OK {
+			persistentErr = fmt.Errorf("register %d", rc)
+		}
+		if Xsqlite3_vfs_find(tls, 0) != stock {
+			persistentErr = fmt.Errorf("default VFS changed")
+		}
+	})
+	return persistentErr
+}
+func ExperimentalPersistentRefusals() uint64 { return persistentRefusals.Load() }
+func persistentOpen(tls *libc.TLS, vfs, name, file uintptr, flags int32, out uintptr) int32 {
+	// SQLite supplies a zeroed sqlite3_file; leave pMethods nil on failure.
+	if out != 0 {
+		*(*int32)(unsafe.Pointer(out)) = 0
+	}
+	persistentRefusals.Add(1)
+	return SQLITE_CANTOPEN
+}
+func persistentDelete(tls *libc.TLS, vfs, name uintptr, syncDir int32) int32 {
+	return SQLITE_IOERR_DELETE
+}
+func persistentAccess(tls *libc.TLS, vfs, name uintptr, flags int32, out uintptr) int32 {
+	if out != 0 {
+		*(*int32)(unsafe.Pointer(out)) = 0
+	}
+	return SQLITE_IOERR_ACCESS
+}
+
+// Pure bounded string copy only, not a pathname resolution or filesystem check.
+// This is sufficient to reach the refusing xOpen; never use for accepting opens.
+func persistentFullPath(tls *libc.TLS, vfs, name uintptr, n int32, out uintptr) int32 {
+	s := libc.GoString(name)
+	if n <= 0 || len(s) >= int(n) {
+		return SQLITE_CANTOPEN
+	}
+	copy(unsafe.Slice((*byte)(unsafe.Pointer(out)), int(n)), append([]byte(s), 0))
+	return SQLITE_OK
+}
+func persistentDlOpen(tls *libc.TLS, vfs, name uintptr) uintptr { return 0 }
+func persistentDlError(tls *libc.TLS, vfs uintptr, n int32, out uintptr) {
+	if n > 0 {
+		*(*byte)(unsafe.Pointer(out)) = 0
+	}
+}
+func persistentDlSym(tls *libc.TLS, vfs, h, name uintptr) uintptr { return 0 }
+func persistentDlClose(tls *libc.TLS, vfs, h uintptr)             {}
