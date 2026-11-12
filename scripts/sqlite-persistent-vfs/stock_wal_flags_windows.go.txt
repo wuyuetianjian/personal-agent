@@ -1,0 +1,93 @@
+//go:build windows && nativeprobe_sqlite_wal_flags
+
+// Stock-only protocol diagnostic, not a private storage authority or VFS solution.
+package sqlite3
+
+import (
+	"fmt"
+	"modernc.org/libc"
+	"sync"
+	"sync/atomic"
+	"unsafe"
+)
+
+type ExperimentalWALFlagEvent struct {
+	Name              string
+	Input, Output, RC int32
+	Forwarded         bool
+}
+type experimentalWALFlagBinding struct {
+	vfs    Tsqlite3_vfs
+	stock  uintptr
+	mu     sync.Mutex
+	events []ExperimentalWALFlagEvent
+}
+
+var experimentalWALFlagMu sync.Mutex
+var experimentalWALFlagBindings = map[uintptr]*experimentalWALFlagBinding{}
+var experimentalWALFlagSeq atomic.Uint64
+
+func ExperimentalWALFlagsRegister() (uintptr, string, error) {
+	tls := libc.NewTLS()
+	defer tls.Close()
+	if rc := Xsqlite3_initialize(tls); rc != SQLITE_OK {
+		return 0, "", fmt.Errorf("initialize %d", rc)
+	}
+	stock := Xsqlite3_vfs_find(tls, 0)
+	if stock == 0 {
+		return 0, "", fmt.Errorf("stock missing")
+	}
+	name := fmt.Sprintf("agent-stock-flags-%d", experimentalWALFlagSeq.Add(1))
+	z, e := libc.CString(name)
+	if e != nil {
+		return 0, "", e
+	}
+	b := &experimentalWALFlagBinding{stock: stock}
+	b.vfs = *(*Tsqlite3_vfs)(unsafe.Pointer(stock))
+	b.vfs.FpNext = 0
+	b.vfs.FzName = z
+	b.vfs.FxOpen = __ccgo_fp(experimentalWALFlagsOpen)
+	p := uintptr(unsafe.Pointer(&b.vfs))
+	experimentalWALFlagMu.Lock()
+	experimentalWALFlagBindings[p] = b
+	experimentalWALFlagMu.Unlock()
+	if rc := Xsqlite3_vfs_register(tls, p, 0); rc != SQLITE_OK {
+		return 0, "", fmt.Errorf("register %d", rc)
+	}
+	if Xsqlite3_vfs_find(tls, 0) != stock {
+		return 0, "", fmt.Errorf("default VFS changed")
+	}
+	return p, name, nil
+}
+func ExperimentalWALFlagsEvents(v uintptr) []ExperimentalWALFlagEvent {
+	experimentalWALFlagMu.Lock()
+	b := experimentalWALFlagBindings[v]
+	experimentalWALFlagMu.Unlock()
+	if b == nil {
+		return nil
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]ExperimentalWALFlagEvent(nil), b.events...)
+}
+func experimentalWALFlagsOpen(tls *libc.TLS, v, name, file uintptr, flags int32, out uintptr) int32 {
+	if out != 0 {
+		*(*int32)(unsafe.Pointer(out)) = 0
+	}
+	experimentalWALFlagMu.Lock()
+	b := experimentalWALFlagBindings[v]
+	experimentalWALFlagMu.Unlock()
+	if b == nil {
+		return SQLITE_CANTOPEN
+	}
+	// Test-first refusal: native RED must reach this actual diagnostic xOpen.
+	// No stock forwarder or WAL observation has been implemented yet.
+	event := ExperimentalWALFlagEvent{Input: flags, RC: SQLITE_CANTOPEN}
+	if name != 0 {
+		event.Name = libc.GoString(name)
+	}
+	b.mu.Lock()
+	b.events = append(b.events, event)
+	b.mu.Unlock()
+	return SQLITE_CANTOPEN
+}

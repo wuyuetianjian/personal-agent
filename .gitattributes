@@ -5,3 +5,4 @@ scripts/sqlite-persistent-vfs/lib_patch_windows.go.txt text eol=lf
 scripts/sqlite-persistent-vfs/generator/* text eol=lf
 scripts/sqlite-persistent-vfs/main_read_bridge_windows.go.txt text eol=lf
 scripts/sqlite-persistent-vfs/access_bridge_windows.go.txt text eol=lf
+scripts/sqlite-persistent-vfs/stock_wal_flags_windows.go.txt text eol=lf
