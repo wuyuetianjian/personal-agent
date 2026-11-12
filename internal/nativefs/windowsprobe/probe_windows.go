@@ -242,12 +242,24 @@ func nativeHandleOps() handleOps {
 func acquireIOGuard(parent windows.Handle, name string, expected snapshot) (windows.Handle, snapshot, error) {
 	return acquireIOGuardWithOps(parent, name, expected, nativeHandleOps())
 }
-func acquireIOGuardWithOps(parent windows.Handle, name string, expected snapshot, ops handleOps) (windows.Handle, snapshot, error) {
+func acquireIOGuardWithOps(parent windows.Handle, name string, expected snapshot, ops handleOps) (owned windows.Handle, observed snapshot, err error) {
 	share := uint32(windows.FILE_SHARE_READ)
 	if expected.Standard.Directory != 0 {
 		share |= windows.FILE_SHARE_WRITE
 	}
 	h, err := ops.open(parent, name, true, share)
+	// A native failure may still return an owned candidate. Claim it before
+	// examining the error, and consume it exactly once on every failed path.
+	defer func() {
+		if err != nil {
+			if h != 0 && h != windows.InvalidHandle {
+				candidate := h
+				h = 0
+				err = errors.Join(err, ops.close(candidate))
+			}
+			owned, observed = 0, snapshot{}
+		}
+	}()
 	if err != nil {
 		return 0, snapshot{}, err
 	}
@@ -259,7 +271,6 @@ func acquireIOGuardWithOps(parent windows.Handle, name string, expected snapshot
 		err = exactName(h, name)
 	}
 	if err != nil {
-		ops.close(h)
 		return 0, snapshot{}, err
 	}
 	return h, actual, nil
@@ -291,7 +302,7 @@ func (r *Root) Read(ctx context.Context, components []string) ([]byte, error) {
 func (r *Root) read(ctx context.Context, components []string, excluded map[idInfo]struct{}) ([]byte, error) {
 	return r.readWithHandleOps(ctx, components, excluded, nativeHandleOps())
 }
-func (r *Root) readWithHandleOps(ctx context.Context, components []string, excluded map[idInfo]struct{}, ops handleOps) ([]byte, error) {
+func (r *Root) readWithHandleOps(ctx context.Context, components []string, excluded map[idInfo]struct{}, ops handleOps) (out []byte, err error) {
 	if err := validateComponents(components); err != nil {
 		return nil, err
 	}
@@ -313,7 +324,12 @@ func (r *Root) readWithHandleOps(ctx context.Context, components []string, exclu
 	handles := []windows.Handle{}
 	defer func() {
 		for i := len(handles) - 1; i >= 0; i-- {
-			ops.close(handles[i])
+			owned := handles[i]
+			handles[i] = 0 // consume before attempting an uncertain close
+			err = errors.Join(err, ops.close(owned))
+		}
+		if err != nil {
+			out = nil
 		}
 	}()
 	parent := r.h
@@ -328,10 +344,12 @@ func (r *Root) readWithHandleOps(ctx context.Context, components []string, exclu
 			return nil, err
 		}
 		h, err := ops.open(parent, name, false, windows.FILE_SHARE_READ)
+		if h != 0 && h != windows.InvalidHandle {
+			handles = append(handles, h)
+		}
 		if err != nil {
 			return nil, err
 		}
-		handles = append(handles, h)
 		s, err := inspect(h)
 		if err != nil {
 			return nil, err

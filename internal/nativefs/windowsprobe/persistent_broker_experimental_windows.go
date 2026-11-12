@@ -5,6 +5,7 @@ package windowsprobe
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"unsafe"
 
@@ -47,6 +48,7 @@ type persistentBroker struct {
 	lineage           []persistentObject
 	names             [3]string
 	objects           [3]persistentObject
+	residual          persistentObject // owned but never qualified/published; terminal host only
 	hooks             persistentHooks
 	revoked, disposed bool
 	terminal          error
@@ -320,6 +322,7 @@ func (b *persistentBroker) close() error {
 		}
 		b.terminal = errors.Join(b.terminal, e)
 	}
+	closeOwned(&b.residual)
 	for i := len(b.objects) - 1; i >= 0; i-- {
 		closeOwned(&b.objects[i])
 	}
@@ -329,13 +332,124 @@ func (b *persistentBroker) close() error {
 	return b.terminal
 }
 
-// Creation is initially a refusal stub for native test-first qualification.
 // Created means FILE_CREATED was confirmed; Registered means verified identity
 // was retained by this broker. A false Created is not an unknown-effect guarantee.
 type persistentCreateResult struct{ Created, Registered bool }
 
-var errPersistentCreateUnimplemented = errors.New("persistent sidecar creation not implemented")
-
-func (b *persistentBroker) createMissing(context.Context, persistentRole) (persistentCreateResult, error) {
-	return persistentCreateResult{}, errPersistentCreateUnimplemented
+// Only initial missing WAL/SHM objects. Readiness still requires all three roles;
+// this is not live sidecar replacement, SQLite IO, or an active-reader-drain proof.
+func (b *persistentBroker) createMissing(ctx context.Context, role persistentRole) (result persistentCreateResult, err error) {
+	if e := ctx.Err(); e != nil {
+		return result, e
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.revoked {
+		return result, errors.Join(errPersistentClosed, b.terminal)
+	}
+	if e := ctx.Err(); e != nil {
+		return result, e
+	}
+	if (role != persistentWAL && role != persistentSHM) || b.objects[role].h != 0 {
+		return result, errUnsafe
+	}
+	if e := b.checkLineage(); e != nil {
+		return result, e
+	}
+	if b.hooks.beforeCreate != nil {
+		if e := b.hooks.beforeCreate(role); e != nil {
+			return result, e
+		}
+	}
+	if e := ctx.Err(); e != nil {
+		return result, e
+	}
+	if e := b.checkLineage(); e != nil {
+		return result, e
+	}
+	parent := b.lineage[len(b.lineage)-1]
+	parentName, e := scratchOwnedName(parent.h)
+	if e != nil {
+		return result, e
+	}
+	name, e := windows.NewNTUnicodeString(b.names[role])
+	if e != nil {
+		return result, e
+	}
+	oa := windows.OBJECT_ATTRIBUTES{RootDirectory: parent.h, ObjectName: name}
+	oa.Length = uint32(unsafe.Sizeof(oa))
+	var h windows.Handle
+	var io windows.IO_STATUS_BLOCK
+	// All post-syscall failures except a definite no-handle name collision revoke
+	// this host. Retain any returned handle until explicit final close, even if
+	// identity could not be established. Never remove a pathname or retry close.
+	uncertain := true
+	defer func() {
+		if err != nil && uncertain {
+			b.revoked = true
+			b.terminal = errors.Join(b.terminal, err)
+		}
+	}()
+	err = windows.NtCreateFile(&h,
+		windows.FILE_READ_DATA|windows.FILE_WRITE_DATA|windows.FILE_READ_ATTRIBUTES|windows.SYNCHRONIZE,
+		&oa, &io, nil, windows.FILE_ATTRIBUTE_NORMAL,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, windows.FILE_CREATE,
+		windows.FILE_NON_DIRECTORY_FILE|windows.FILE_OPEN_REPARSE_POINT|windows.FILE_OPEN_NO_RECALL|windows.FILE_SYNCHRONOUS_IO_NONALERT, 0, 0)
+	if h != 0 && h != windows.InvalidHandle {
+		b.residual = persistentObject{h: h}
+	}
+	if err != nil {
+		// A collision does not publish the existing third-party object. This broker
+		// remains pending because the missing role has no owned registered identity.
+		if errors.Is(err, windows.NTStatus(0xc0000035)) && b.residual.h == 0 {
+			uncertain = false
+		}
+		return result, err
+	}
+	if h == 0 || h == windows.InvalidHandle || io.Status != 0 || io.Information != 2 /* FILE_CREATED */ {
+		return result, errUnsafe
+	}
+	result.Created = true
+	if b.hooks.afterCreate != nil {
+		if e := b.hooks.afterCreate(role); e != nil {
+			return result, e
+		}
+	}
+	if e := ctx.Err(); e != nil {
+		return result, e
+	}
+	if e := b.checkLineage(); e != nil {
+		return result, e
+	}
+	actualName, e := scratchOwnedName(h)
+	if e != nil {
+		return result, e
+	}
+	if actualName != strings.TrimRight(parentName, `\`)+`\`+b.names[role] {
+		return result, errUnsafe
+	}
+	current, e := inspect(h)
+	if e != nil {
+		return result, e
+	}
+	if current.Standard.Directory != 0 || current.Standard.Size != 0 || current.ID.Volume != parent.id.Volume {
+		return result, errUnsafe
+	}
+	if e := exactName(h, b.names[role]); e != nil {
+		return result, e
+	}
+	// All identity qualification precedes publication. The native handle is moved,
+	// never duplicated into an externally visible lease or a fake stock winFile.
+	b.objects[role] = persistentObject{h: h, id: current.ID}
+	b.residual = persistentObject{}
+	result.Registered = true
+	if b.hooks.afterRegistered != nil {
+		if e := b.hooks.afterRegistered(role); e != nil {
+			return result, e
+		}
+	}
+	if e := ctx.Err(); e != nil {
+		return result, e
+	}
+	return result, nil
 }

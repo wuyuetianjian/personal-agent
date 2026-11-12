@@ -115,3 +115,19 @@ Still unresolved: actual active-reader drain during a live role replacement,
 external SQLite readers creating SHM, lock/mapping lifecycle and share-delete
 requirements, crash recovery, durable creation/parent flush and a complete VFS.
 No optional-role-ready shortcut or production import is introduced.
+
+### Creation implementation awaiting native qualification
+
+At `196c88a` (run `43210192766`), the prior 24 nodes passed three times and
+all 11 newly required creation nodes failed three times at missing behavior;
+there were no skipped or build-failed nodes. The implementation now uses only
+FILE_CREATE with role-bound names. A definite no-handle name collision leaves
+the missing role unregistered and reads pending. Other post-syscall failures
+revoke admission and retain any returned handle: before registration it remains
+in the unpublished residual slot, and after registration it remains in its role
+slot. Final close consumes either slot once and preserves errors; no pathname
+is deleted.
+Qualification requires the current pinned lineage, expected full landing name,
+regular single-link NTFS object, same volume and empty size before registration.
+No SQLite reader/writer, real WAL lifecycle, active-reader drain, or production
+capability is qualified by this slice. The exact-head native result is pending.
