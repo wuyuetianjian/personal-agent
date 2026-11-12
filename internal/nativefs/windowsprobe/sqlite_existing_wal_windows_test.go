@@ -317,10 +317,16 @@ func existingWALOpen(t *testing.T, v uintptr, name string, flags int32, required
 	}
 	f := &existingWALFile{tls: tls, file: file, name: n}
 	t.Cleanup(func() { f.dispose(t) })
-	out := int32(-1)
+	outCell := libc.Xcalloc(tls, 1, 4)
+	if outCell == 0 {
+		t.Fatal("open output allocation")
+	}
+	defer libc.Xfree(tls, outCell)
+	*(*int32)(unsafe.Pointer(outCell)) = -1
 	before := sqlite3.ExperimentalExistingWALPendingHits(v)
 	fn := *(*func(*libc.TLS, uintptr, uintptr, uintptr, int32, uintptr) int32)(unsafe.Pointer(&vf.FxOpen))
-	rc := fn(tls, v, n, file, flags, uintptr(unsafe.Pointer(&out)))
+	rc := fn(tls, v, n, file, flags, outCell)
+	out := *(*int32)(unsafe.Pointer(outCell))
 	if required && (rc != sqlite3.SQLITE_OK || out != sqlite3.SQLITE_OPEN_READONLY) {
 		if sqlite3.ExperimentalExistingWALPendingHits(v) == before+1 && rc == sqlite3.SQLITE_CANTOPEN {
 			t.Fatalf("real private FxOpen WAL rejected qualified fixture input=%#x rc=%d", flags, rc)
@@ -410,9 +416,15 @@ func TestExistingWALPrivateHeaderAndSize(t *testing.T) {
 	if m.FxFileSize == 0 {
 		t.Fatal("missing file size method")
 	}
-	var size int64
+	sizeCell := libc.Xcalloc(f.tls, 1, 8)
+	if sizeCell == 0 {
+		t.Fatal("size output allocation")
+	}
+	defer libc.Xfree(f.tls, sizeCell)
 	fn := *(*func(*libc.TLS, uintptr, uintptr) int32)(unsafe.Pointer(&m.FxFileSize))
-	if rc := fn(f.tls, f.file, uintptr(unsafe.Pointer(&size))); rc != sqlite3.SQLITE_OK || size != int64(len(expected)) {
+	rc := fn(f.tls, f.file, sizeCell)
+	size := *(*int64)(unsafe.Pointer(sizeCell))
+	if rc != sqlite3.SQLITE_OK || size != int64(len(expected)) {
 		t.Fatalf("size %d/%d", size, rc)
 	}
 	got := f.read(t, size-4, 12, sqlite3.SQLITE_IOERR_SHORT_READ)

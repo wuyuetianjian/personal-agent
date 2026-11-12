@@ -25,11 +25,16 @@ func accessCall(t *testing.T, v uintptr, name string, flag int32) (int32, int32)
 		t.Fatal(e)
 	}
 	defer libc.Xfree(tls, n)
-	out := int32(-1)
+	outCell := libc.Xcalloc(tls, 1, 4)
+	if outCell == 0 {
+		t.Fatal("access output allocation")
+	}
+	defer libc.Xfree(tls, outCell)
+	*(*int32)(unsafe.Pointer(outCell)) = -1
 	p := (*sqlite3.Tsqlite3_vfs)(unsafe.Pointer(v))
 	fn := *(*func(*libc.TLS, uintptr, uintptr, int32, uintptr) int32)(unsafe.Pointer(&p.FxAccess))
-	rc := fn(tls, v, n, flag, uintptr(unsafe.Pointer(&out)))
-	return rc, out
+	rc := fn(tls, v, n, flag, outCell)
+	return rc, *(*int32)(unsafe.Pointer(outCell))
 }
 func accessFixture(t *testing.T, realWAL bool) (string, *persistentAccessProbe, uintptr, uintptr) {
 	t.Helper()
@@ -449,9 +454,15 @@ func accessOpenRefused(t *testing.T, v uintptr, name string) {
 		}
 		libc.Xfree(tls, file)
 	}()
-	out := int32(-1)
+	outCell := libc.Xcalloc(tls, 1, 4)
+	if outCell == 0 {
+		t.Fatal("access output allocation")
+	}
+	defer libc.Xfree(tls, outCell)
+	*(*int32)(unsafe.Pointer(outCell)) = -1
 	fn := *(*func(*libc.TLS, uintptr, uintptr, uintptr, int32, uintptr) int32)(unsafe.Pointer(&p.FxOpen))
-	rc := fn(tls, v, n, file, sqlite3.SQLITE_OPEN_READONLY|sqlite3.SQLITE_OPEN_MAIN_JOURNAL, uintptr(unsafe.Pointer(&out)))
+	rc := fn(tls, v, n, file, sqlite3.SQLITE_OPEN_READONLY|sqlite3.SQLITE_OPEN_MAIN_JOURNAL, outCell)
+	out := *(*int32)(unsafe.Pointer(outCell))
 	if rc != sqlite3.SQLITE_CANTOPEN || out != 0 || (*sqlite3.Tsqlite3_file)(unsafe.Pointer(file)).FpMethods != 0 {
 		t.Fatalf("observation granted content open %d/%d", rc, out)
 	}

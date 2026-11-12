@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -198,10 +199,14 @@ func shmResourceMap(t *testing.T, f *existingWALFile, r int32) (uintptr, int32) 
 	if m == nil || m.FxShmMap == 0 {
 		t.Fatal("missing real xShmMap")
 	}
-	var p uintptr
+	cell := libc.Xcalloc(f.tls, 1, uint64(unsafe.Sizeof(uintptr(0))))
+	if cell == 0 {
+		t.Fatal("SHM output allocation")
+	}
+	defer libc.Xfree(f.tls, cell)
 	fn := *(*func(*libc.TLS, uintptr, int32, int32, int32, uintptr) int32)(unsafe.Pointer(&m.FxShmMap))
-	rc := fn(f.tls, f.file, r, 32768, 0, uintptr(unsafe.Pointer(&p)))
-	return p, rc
+	rc := fn(f.tls, f.file, r, 32768, 0, cell)
+	return *(*uintptr)(unsafe.Pointer(cell)), rc
 }
 func (f *shmResourceFixture) requireMap(t *testing.T, file *existingWALFile, r int32) uintptr {
 	t.Helper()
@@ -228,6 +233,7 @@ func shmResourceLiveKey(t *testing.T, f *shmResourceFixture, a *existingWALFile)
 	return sqlite3.ExperimentalSHMResourceKey{}
 }
 func TestPrivateSHMReadonlyTwoRegionMapping(t *testing.T) {
+	shmResourceStableOutputControl(t)
 	f := newSHMResourceFixture(t)
 	a := f.open(t)
 	p := f.requireMap(t, a, 0)
@@ -416,9 +422,14 @@ func TestPrivateSHMForeignAndRetiredAttachment(t *testing.T) {
 	}
 	slot := a.methods().FxShmMap
 	a.close(t)
-	var p uintptr
+	cell := libc.Xcalloc(a.tls, 1, uint64(unsafe.Sizeof(uintptr(0))))
+	if cell == 0 {
+		t.Fatal("retired SHM output allocation")
+	}
+	defer libc.Xfree(a.tls, cell)
 	fn := *(*func(*libc.TLS, uintptr, int32, int32, int32, uintptr) int32)(unsafe.Pointer(&slot))
-	rc := fn(a.tls, a.file, 0, 32768, 0, uintptr(unsafe.Pointer(&p)))
+	rc := fn(a.tls, a.file, 0, 32768, 0, cell)
+	p := *(*uintptr)(unsafe.Pointer(cell))
 	if p != 0 || rc == sqlite3.SQLITE_READONLY {
 		t.Fatal("retired callback revived")
 	}
@@ -813,4 +824,64 @@ func shmRetainedChild(t *testing.T) bool {
 	fmt.Println("SHM_RETAINED_NORMAL_EXIT " + kind)
 	os.Exit(0)
 	return true
+}
+
+//go:noinline
+func shmResourceGrowStack(cell uintptr, depth int) {
+	var pad [4096]byte
+	pad[0] = byte(depth)
+	if depth > 0 {
+		shmResourceGrowStack(cell, depth-1)
+	} else {
+		*(*int32)(unsafe.Pointer(cell)) = 1
+		*(*int64)(unsafe.Pointer(cell + 8)) = 0x123456789
+		*(*uintptr)(unsafe.Pointer(cell + 16)) = 0x12345
+	}
+	runtime.KeepAlive(&pad)
+}
+
+//go:noinline
+func shmResourceStableOutputCallback(cell uintptr) bool {
+	var anchor int32
+	before := uintptr(unsafe.Pointer(&anchor))
+	*(*int32)(unsafe.Pointer(cell)) = 0
+	shmResourceGrowStack(cell, 64)
+	after := uintptr(unsafe.Pointer(&anchor))
+	runtime.KeepAlive(&anchor)
+	return before != after
+}
+
+//go:noinline
+func shmResourceInvokeOutput(fn func(uintptr) bool, cell uintptr) bool { return fn(cell) }
+func shmResourceStableOutputControl(t *testing.T) {
+	t.Helper()
+	tls := libc.NewTLS()
+	complete := false
+	var cell uintptr
+	defer func() {
+		if complete {
+			libc.Xfree(tls, cell)
+			tls.Close()
+		}
+	}()
+	cell = libc.Xcalloc(tls, 1, 24)
+	if cell == 0 {
+		complete = true
+		t.Fatal("stable output control allocation")
+	}
+	done := make(chan bool, 1)
+	go func() { done <- shmResourceInvokeOutput(shmResourceStableOutputCallback, cell) }()
+	select {
+	case moved := <-done:
+		complete = true
+		if !moved {
+			t.Fatal("control failed to exercise actual stack relocation")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("stable output control timeout")
+	}
+	if *(*int32)(unsafe.Pointer(cell)) != 1 || *(*int64)(unsafe.Pointer(cell + 8)) != 0x123456789 || *(*uintptr)(unsafe.Pointer(cell + 16)) != 0x12345 {
+		t.Fatal("native output lost across callback stack growth")
+	}
+	t.Log("SHM_NATIVE_OUTPUT_STACK_RELOCATION_CONFIRMED")
 }

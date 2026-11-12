@@ -147,6 +147,21 @@ tries shared WRITE lock and returns READONLY_RECOVERY=264 on success (or lock
 failure). Use a documented IOERR-family refusal for unimplemented branches;
 verify no SQL success, no heap fallback and no bytes changed.
 
+There is a distinct core-generated CANTINIT path: W:120259-120266 returns it
+when `_walTryBeginRead` has no suitable existing readmark (`mxI==0`, unless rc
+is BUSY, which becomes WAL_RETRY). This does not pass back through
+`_walIndexReadHdr`'s map-result handler. The Windows amd64/arm64 implementation
+of `_walBeginReadTransaction` is in `lib/sqlite_g_000000000003fea8.go:2517-2594`:
+it retries only -1, then returns rc. C:38076 and `_pagerBeginReadTransaction` in
+`lib/sqlite_g_0000000000063fff.go:25-46` propagate the failure (pager resets its
+cache), without setting `bShmUnreliable` or heap mode there. These additional
+shared generated files matter when following the full core call chain.
+
+This distinction is not a blanket no-heap proof: W:107658-107663 can independently
+initialize heap mode from `bNoShm`. Stage-D positive evidence must establish real
+shared-index use; a no-suitable-readmark negative must fail SQL, not silently
+pass by an alternate heap route. Do not modify core to manufacture that evidence.
+
 Full WAL support must implement the first-opener truncate/rebuild route,
 growth, writable maps, locks and retirement under qualified leases. Omitting
 these routes is acceptable only as a labelled development stage.
@@ -201,8 +216,13 @@ otherwise roll back precisely the acquired resources.
 The minimum useful held-stock SQL stage consists of: safe existing SHM opens,
 DMS busy-to-shared transition, readonly region mapping, the full eight-slot
 shared/exclusive/unlock protocol needed by readonly SQLite, private barrier,
-and last-connection unmap/close. An SQLite readonly connection may still need
-exclusive reader-slot locks; 'readonly' does not mean shared locks only.
+and last-connection unmap/close. Do not conflate main/WAL readonly with SHM
+readonly: W:107665-107668 sets `WAL_RDONLY=1` from WAL open outflags, while
+W:119256-119261 sets `WAL_SHM_RDONLY=2` from a readonly map. The reader-slot EX
+update branch at W:120233-120253 runs only when `WAL_SHM_RDONLY` is **clear**.
+A main-readonly connection with writable SHM can use it; the actual readonly-map
+path cannot. Full EX-slot support is a separate protocol qualification goal,
+not a required event for held-readmark readonly SQL.
 Refuse first-opener initialization/growth/recovery/deletion explicitly until
 implemented. Do not replace mapping with a byte slice, snapshot, alternate DB,
 or journal-mode change. Preserve real external lock offsets and shared bytes.

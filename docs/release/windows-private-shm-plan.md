@@ -123,12 +123,32 @@ successful lock/unlock. Preserve BUSY on real contention; unexpected errors
 and failed unlocks enter the failure ledger. No process-local mutex substitutes
 for these cross-process locks. UNC/network paths are explicitly unsupported.
 
-Readonly SQLite still needs **exclusive reader-slot locks**. Do not categorically
-reject exclusive SHM locks or map the file writable to update readmarks. Existing
-readmark availability determines whether readonly core can progress. Make a
-stock holder establish a snapshot/readmark appropriate to the synthetic committed
-WAL and keep it alive. A readmark contention test must accept explicit BUSY or
-readonly failure, never modification of the readonly mapping.
+Main-database readonly, WAL-file readonly and SHM readonly are different
+properties. In pinned `lib/sqlite_windows.go:107665-107668`, WAL open outflags
+READONLY sets `WAL_RDONLY=1`; successful readonly xShmMap sets the separate
+`WAL_SHM_RDONLY=2` bit at 119256-119261. In `_walTryBeginRead` at 120233-120253,
+exclusive reader-slot acquisition to update a readmark is explicitly gated on
+`(FreadOnly & WAL_SHM_RDONLY) == 0`. Thus a main-readonly connection with writable
+SHM can take this path, but our genuinely readonly SHM path skips it. Full
+exclusive-slot protocol qualification remains an independent stage-C API goal,
+**not a necessary observed step of held-readmark readonly SQL**. Never make a
+readonly map writable merely to satisfy that goal.
+
+The stock fixture must establish an appropriate existing readmark. If `mxI==0`,
+`_walTryBeginRead` at 120259-120266 returns WAL_RETRY when rc is BUSY, otherwise
+READONLY_CANTINIT. This is a core-generated failure, not permission for our VFS
+to return CANTINIT as a refusal. The Windows64 `_walBeginReadTransaction` in
+`lib/sqlite_g_000000000003fea8.go:2517-2594` retries only rc==-1 and otherwise
+propagates this result; `lib/sqlite.go:38076` and the pager wrapper in
+`lib/sqlite_g_0000000000063fff.go:25-46` propagate it without switching to heap.
+By contrast, `_walIndexReadHdr` in `lib/sqlite_g_0000000000060000.go:113018-113026`
+turns CANTINIT **from index-page mapping** into `bShmUnreliable`/heap-index mode.
+`_sqlite3WalOpen` also has a separate `bNoShm` heap-mode route at
+`lib/sqlite_windows.go:107658-107663`. Merely never returning CANTINIT from the
+private VFS therefore does not independently prove every possible SQL path is
+free of heap substitution. Stage D must demonstrate real shared-index use on
+success, and SQL failure rather than accidental heap success when no suitable
+readmark exists. No core hook or behavior change is proposed here.
 
 Barrier uses a real owner-private synchronization primitive, with the same
 cross-callback ordering intent as stock's mutex barrier. It must validate main
