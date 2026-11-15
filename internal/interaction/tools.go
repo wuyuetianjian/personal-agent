@@ -33,12 +33,15 @@ const (
 // WorkspacePolicy is trusted application input, never model-generated authority.
 // Changes require a NEW session. Constraint originals are stored without compaction.
 type WorkspacePolicy struct {
-	MCP               []MCPServerSnapshot // Immutable host-discovered capability snapshot.
-	Root              string
-	NonSandboxExec    bool // Immutable trusted session opt-in; never a model permission.
-	Mode              PermissionMode
-	SystemConstraints []string
-	UserConstraints   []string
+	trustedHostGranted bool
+	TrustedWorkspace   bool                `json:",omitempty"`
+	ProtectedPaths     []string            `json:",omitempty"`
+	MCP                []MCPServerSnapshot // Immutable host-discovered capability snapshot.
+	Root               string
+	NonSandboxExec     bool // Immutable trusted session opt-in; never a model permission.
+	Mode               PermissionMode
+	SystemConstraints  []string
+	UserConstraints    []string
 }
 type WorkspaceBinding struct {
 	SessionID    string
@@ -83,6 +86,9 @@ func (s *Store) PrepareWorkspace(ctx context.Context, session string, p Workspac
 	if session == "" || p.Root == "" || (p.Mode != ModeDefault && p.Mode != ModePlan && p.Mode != ModeAcceptEdits) {
 		return WorkspaceBinding{}, ErrInvalid
 	}
+	if p.TrustedWorkspace && !s.trustedWorkspace {
+		return WorkspaceBinding{}, ErrCapabilityUnavailable
+	}
 	root, err := filepath.Abs(p.Root)
 	if err != nil {
 		return WorkspaceBinding{}, err
@@ -92,10 +98,16 @@ func (s *Store) PrepareWorkspace(ctx context.Context, session string, p Workspac
 		return WorkspaceBinding{}, err
 	}
 	p.Root = root
-	identity, err := workspaceIdentity(root)
+	s.grantTrustedWorkspace(&p)
+	if p.TrustedWorkspace && !p.trustedHostGranted {
+		return WorkspaceBinding{}, ErrCapabilityUnavailable
+	}
+	identity, err := workspaceIdentityForPolicy(p)
 	if err != nil {
 		return WorkspaceBinding{}, err
 	}
+	// Derive protected names from this store, never from caller supplied policy.
+	p.ProtectedPaths = nil
 	// The live DB and sidecars must never be tool-readable, even if oddly named.
 	rows, err := s.db.QueryContext(ctx, "PRAGMA database_list")
 	if err != nil {
@@ -109,14 +121,24 @@ func (s *Store) PrepareWorkspace(ctx context.Context, session string, p Workspac
 			return WorkspaceBinding{}, err
 		}
 		if path != "" {
-			if rel, e := filepath.Rel(root, path); e == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			path, err = filepath.Abs(path)
+			if err == nil {
+				path, err = filepath.EvalSymlinks(path)
+			}
+			if err != nil {
+				rows.Close()
+				return WorkspaceBinding{}, err
+			}
+			for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+				p.ProtectedPaths = append(p.ProtectedPaths, path+suffix)
+			}
+			if workspaceContainsPath(root, path) {
 				rows.Close()
 				return WorkspaceBinding{}, fmt.Errorf("workspace contains the agent database; choose a separate project root")
 			}
 		}
 	}
-	err = rows.Err()
-	rows.Close()
+	err = errors.Join(rows.Err(), rows.Close())
 	if err != nil {
 		return WorkspaceBinding{}, err
 	}
@@ -178,6 +200,7 @@ func (s *Store) Workspace(ctx context.Context, session string) (WorkspaceBinding
 	err := s.db.QueryRowContext(ctx, "SELECT scope_id,policy,root_identity FROM interaction_workspaces WHERE session_id=?", session).Scan(&w.ScopeID, &raw, &w.RootIdentity)
 	if err == nil {
 		err = json.Unmarshal([]byte(raw), &w.Policy)
+		s.grantTrustedWorkspace(&w.Policy)
 	}
 	return w, err
 }
@@ -266,7 +289,7 @@ func (b *WorkspaceBroker) Propose(ctx context.Context, runID string, call ToolCa
 	if err != nil {
 		return ToolProposal{}, err
 	}
-	support := currentNativeSupport()
+	support := workspaceNativeSupport(w.Policy)
 	if call.Name == "exec" && (!b.nonSandboxExec || !w.Policy.NonSandboxExec || w.Policy.Mode == ModePlan || !support.Exec.Enabled) {
 		return ToolProposal{}, fmt.Errorf("%w: exec requires host and session NON-SANDBOXED opt-in, supported platform, and non-plan mode", ErrCapabilityUnavailable)
 	}
@@ -276,7 +299,7 @@ func (b *WorkspaceBroker) Propose(ctx context.Context, runID string, call ToolCa
 	if r.State != RunRunning {
 		return ToolProposal{}, ErrConflict
 	}
-	identity, err := workspaceIdentity(w.Policy.Root)
+	identity, err := workspaceIdentityForPolicy(w.Policy)
 	if err != nil {
 		return ToolProposal{}, err
 	}
@@ -312,7 +335,7 @@ func (b *WorkspaceBroker) Propose(ctx context.Context, runID string, call ToolCa
 		}
 		scope = a.Scope
 		if b.skillRunID != "" {
-			err = safeWorkspacePath(a.Path)
+			err = workspacePathForPolicy(w.Policy, a.Path)
 		} else {
 			_, err = readWorkspaceFile(ctx, w, a.Path)
 		}
@@ -327,7 +350,7 @@ func (b *WorkspaceBroker) Propose(ctx context.Context, runID string, call ToolCa
 			break
 		}
 		for _, path := range a.Paths {
-			if err = safeWorkspacePath(path); err != nil {
+			if err = workspacePathForPolicy(w.Policy, path); err != nil {
 				break
 			}
 		}
@@ -511,7 +534,7 @@ func (b *WorkspaceBroker) Execute(ctx context.Context, id string) (result ToolRe
 	if p.MCPReview != nil {
 		return b.executeMCP(ctx, w, p)
 	}
-	support := currentNativeSupport()
+	support := workspaceNativeSupport(w.Policy)
 	var content string
 	switch p.Proposal.Call.Name {
 	case "exec":

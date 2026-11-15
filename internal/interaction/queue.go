@@ -196,7 +196,8 @@ func (s *Store) AdmitQueue(ctx context.Context, id string) (Run, error) {
 		if json.Unmarshal([]byte(rootPolicy), &p) != nil {
 			return Run{}, ErrQueueRevoked
 		}
-		identity, err := workspaceIdentity(p.Root)
+		s.grantTrustedWorkspace(&p)
+		identity, err := workspaceIdentityForPolicy(p)
 		if err != nil || identity != rootID {
 			return Run{}, ErrQueueRevoked
 		}

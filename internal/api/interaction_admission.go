@@ -17,12 +17,13 @@ import (
 )
 
 type SessionAdmissionView struct {
-	MCPOptIn     *bool                     `json:"mcp_opt_in,omitempty"`
-	RequestID    string                    `json:"request_id"`
-	SessionID    string                    `json:"session_id"`
-	State        string                    `json:"state"`
-	Reason       string                    `json:"reason"`
-	ProjectLabel *interaction.ProjectLabel `json:"project_label,omitempty"`
+	TrustedWorkspace *bool                     `json:"trusted_workspace,omitempty"`
+	MCPOptIn         *bool                     `json:"mcp_opt_in,omitempty"`
+	RequestID        string                    `json:"request_id"`
+	SessionID        string                    `json:"session_id"`
+	State            string                    `json:"state"`
+	Reason           string                    `json:"reason"`
+	ProjectLabel     *interaction.ProjectLabel `json:"project_label,omitempty"`
 }
 
 type mcpAdmission struct {
@@ -41,6 +42,15 @@ func (s *InteractionService) admission(ctx context.Context, request string) (mcp
 	a.Reason = "Admission is single-use; inspection never launches. For unresolved/revoked admission, inspect the session if bound or create a new request explicitly. Startup effects may already have occurred."
 	if e == nil && a.State == "complete" {
 		a.ProjectLabel, e = s.store.ProjectLabel(ctx, a.SessionID)
+		if e == nil {
+			w, we := s.store.Workspace(ctx, a.SessionID)
+			if we == nil {
+				trusted := w.Policy.TrustedWorkspace
+				a.TrustedWorkspace = &trusted
+			} else if !errors.Is(we, sql.ErrNoRows) {
+				e = we
+			}
+		}
 	}
 	return a, e
 }
@@ -99,7 +109,7 @@ func (s *InteractionService) createAdmittedSession(w http.ResponseWriter, r *htt
 	}
 	var workspace interaction.WorkspaceBinding
 	if in.Mode != "chat_only" {
-		policy := interaction.WorkspacePolicy{Root: s.options.Workspace, Mode: interaction.PermissionMode(in.Mode), NonSandboxExec: s.options.NonSandboxExec}
+		policy := interaction.WorkspacePolicy{Root: s.options.Workspace, Mode: interaction.PermissionMode(in.Mode), NonSandboxExec: s.options.NonSandboxExec && !in.TrustedWorkspace, TrustedWorkspace: in.TrustedWorkspace}
 		// Validate the workspace (including DB exclusion) before process startup.
 		workspace, e = s.store.PrepareWorkspace(admissionCtx, id, policy)
 		if e != nil {
@@ -120,6 +130,10 @@ func (s *InteractionService) createAdmittedSession(w http.ResponseWriter, r *htt
 	// The response is staged from the exact resolved binding, not a second
 	// provider resolution or a read of an incomplete public session.
 	body := SessionView{ID: id, ModelID: modelID, Mode: in.Mode, Files: in.Mode != "chat_only", Tools: sel.ToolsSupported && in.Mode != "chat_only", ToolCapability: sel.toolCapability()}
+	if in.TrustedWorkspace {
+		body.TrustedWorkspace = true
+		body.TrustedWorkspaceWarning = interaction.TrustedWorkspaceWarning
+	}
 	mcpStatus := s.broker.StagedMCPStatus(id, workspace.Policy.MCP)
 	body.MCP = &mcpStatus
 	if in.Mode == "chat_only" {
@@ -223,8 +237,9 @@ func exactJSONStringUnicode(raw []byte) bool { return utf8.Valid(raw) && knowled
 
 func (s *InteractionService) validateSessionReplay(ctx context.Context, in writeInput, raw json.RawMessage) error {
 	var body struct {
-		ID           string          `json:"id"`
-		ProjectLabel json.RawMessage `json:"project_label"`
+		TrustedWorkspace bool            `json:"trusted_workspace,omitempty"`
+		ID               string          `json:"id"`
+		ProjectLabel     json.RawMessage `json:"project_label"`
 	}
 	if e := json.Unmarshal(raw, &body); e != nil {
 		return e
@@ -233,7 +248,14 @@ func (s *InteractionService) validateSessionReplay(ctx context.Context, in write
 	if e := s.runtime.DB.SQL.QueryRowContext(ctx, "SELECT session_id FROM interaction_api_sessions WHERE request_id=?", in.RequestID).Scan(&id); e != nil {
 		return e
 	}
-	if id != body.ID {
+	if id != body.ID || body.TrustedWorkspace != in.TrustedWorkspace {
+		return interaction.ErrInvalid
+	}
+	w, we := s.store.Workspace(ctx, id)
+	if we != nil && !errors.Is(we, sql.ErrNoRows) {
+		return we
+	}
+	if (we == nil && w.Policy.TrustedWorkspace != in.TrustedWorkspace) || (errors.Is(we, sql.ErrNoRows) && in.TrustedWorkspace) {
 		return interaction.ErrInvalid
 	}
 	var label *interaction.ProjectLabel

@@ -135,7 +135,8 @@ func (s *Store) BranchSession(ctx context.Context, id string, in SessionOperatio
 		if e = json.Unmarshal([]byte(policy), &p); e != nil {
 			return out, e
 		}
-		identity, e := workspaceIdentity(p.Root)
+		s.grantTrustedWorkspace(&p)
+		identity, e := workspaceIdentityForPolicy(p)
 		if e != nil {
 			return out, e
 		}

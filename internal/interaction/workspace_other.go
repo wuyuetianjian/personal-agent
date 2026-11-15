@@ -12,6 +12,12 @@ func workspaceIdentity(root string) (string, error) {
 	return (unavailableNativeAdapter{target: runtime.GOOS}).workspaceIdentity(root)
 }
 func readWorkspaceFile(ctx context.Context, w WorkspaceBinding, name string) ([]byte, error) {
+	if w.Policy.TrustedWorkspace {
+		if !w.Policy.trustedHostGranted {
+			return nil, ErrCapabilityUnavailable
+		}
+		return readTrustedWorkspaceFile(ctx, w, name)
+	}
 	return (unavailableNativeAdapter{target: runtime.GOOS}).readWorkspaceFile(ctx, w, name)
 }
 func replaceWorkspaceFile(ctx context.Context, w WorkspaceBinding, args PatchArguments) error {

@@ -12,18 +12,20 @@ const InteractionSchemaVersion = 1
 const snapshotRunLimit = 50
 
 type SessionView struct {
-	ProjectLabel   *interaction.ProjectLabel      `json:"project_label,omitempty"`
-	Provenance     *interaction.SessionProvenance `json:"provenance,omitempty"`
-	MCP            *interaction.MCPStatus         `json:"mcp,omitempty"`
-	ToolCapability string                         `json:"tool_capability,omitempty"`
-	NonSandboxExec bool                           `json:"non_sandbox_exec,omitempty"`
-	ExecWarning    string                         `json:"exec_warning,omitempty"`
-	ID             string                         `json:"id"`
-	ModelID        string                         `json:"model_id"`
-	Mode           string                         `json:"mode"`
-	Files          bool                           `json:"files"`
-	Tools          bool                           `json:"tools"`
-	Reason         string                         `json:"reason"`
+	TrustedWorkspace        bool                           `json:"trusted_workspace,omitempty"`
+	TrustedWorkspaceWarning string                         `json:"trusted_workspace_warning,omitempty"`
+	ProjectLabel            *interaction.ProjectLabel      `json:"project_label,omitempty"`
+	Provenance              *interaction.SessionProvenance `json:"provenance,omitempty"`
+	MCP                     *interaction.MCPStatus         `json:"mcp,omitempty"`
+	ToolCapability          string                         `json:"tool_capability,omitempty"`
+	NonSandboxExec          bool                           `json:"non_sandbox_exec,omitempty"`
+	ExecWarning             string                         `json:"exec_warning,omitempty"`
+	ID                      string                         `json:"id"`
+	ModelID                 string                         `json:"model_id"`
+	Mode                    string                         `json:"mode"`
+	Files                   bool                           `json:"files"`
+	Tools                   bool                           `json:"tools"`
+	Reason                  string                         `json:"reason"`
 }
 type ApprovalView struct {
 	ID        string `json:"id"`
@@ -108,6 +110,16 @@ func (s *InteractionService) session(ctx context.Context, id string) (SessionVie
 		v.Reason = "Explicit chat-only: no workspace authorization, file tools or scoped retrieval."
 	} else if !b.Tools && v.Reason == "" {
 		v.Reason = "Model tool support is not verified; tools are not advertised."
+	}
+	if err == nil && mode != "chat_only" {
+		w, we := s.store.Workspace(ctx, id)
+		if we != nil {
+			return v, b, we
+		}
+		v.TrustedWorkspace = w.Policy.TrustedWorkspace
+		if v.TrustedWorkspace {
+			v.TrustedWorkspaceWarning = interaction.TrustedWorkspaceWarning
+		}
 	}
 	if err == nil && mode != "chat_only" && mode != "plan" && v.Tools && s.broker.Capabilities().Exec.Enabled {
 		w, e := s.store.Workspace(ctx, id)

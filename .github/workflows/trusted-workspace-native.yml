@@ -1,0 +1,79 @@
+name: Explicit trusted workspace native read contracts
+on:
+  push:
+    branches: [test/rebuild-20261110]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: trusted-workspace-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  native:
+    if: ${{ github.ref == 'refs/heads/test/rebuild-20261110' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: darwin
+            pattern: '^TestTrustedDarwin'
+          - os: windows-2025
+            target: windows
+            pattern: '^TestTrustedWindows'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Record explicit trusted scope
+        run: |
+          git rev-parse HEAD
+          go version
+          go env GOOS GOARCH
+          echo 'Explicit trusted workspace only. No hostile namespace isolation or identification of all historical database copies. No release claim.'
+      - name: Record actual Windows token
+        if: ${{ matrix.target == 'windows' }}
+        shell: pwsh
+        run: |
+          $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $p = [Security.Principal.WindowsPrincipal]::new($id)
+          "ElevatedAdministratorToken: $($p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"
+          'This job does not qualify ordinary non-administrator Windows use.'
+      - name: Validate strict result gate
+        run: node --test scripts/trusted-workspace-gate.test.mjs
+      - name: Native adapter contracts
+        id: native
+        run: |
+          set -o pipefail
+          go test -json -mod=readonly -count=3 -timeout=5m -run '${{ matrix.pattern }}' ./internal/interaction | tee trusted-native.json
+      - name: Require every native test without skips
+        if: ${{ !cancelled() && steps.native.outcome != 'skipped' }}
+        run: node scripts/trusted-workspace-gate.mjs trusted-native.json '${{ matrix.target }}'
+      - name: API host opt-in guards
+        if: ${{ !cancelled() }}
+        run: go test -mod=readonly -count=3 -run '^TestTrustedWorkspace' ./internal/api
+      - name: Preserve native evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: trusted-workspace-${{ matrix.target }}
+          path: trusted-native.json
+          if-no-files-found: error
+      - name: Verify unchanged modules
+        if: ${{ !cancelled() }}
+        run: |
+          go mod verify
+          git diff --exit-code -- go.mod go.sum

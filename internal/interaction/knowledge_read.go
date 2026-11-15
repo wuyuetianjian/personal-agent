@@ -41,7 +41,7 @@ func (s *Store) ListKnowledge(ctx context.Context, session, after string, limit 
 		return nil, e
 	}
 	defer tx.Rollback()
-	w, _, e := knowledgeAuthorityMode(ctx, tx, session, true)
+	w, _, e := knowledgeAuthorityMode(ctx, tx, session, true, s)
 	if e != nil {
 		return nil, e
 	}
@@ -76,7 +76,7 @@ func (s *Store) SearchKnowledge(ctx context.Context, session, query string, limi
 		return nil, e
 	}
 	defer tx.Rollback()
-	w, _, e := knowledgeAuthorityMode(ctx, tx, session, true)
+	w, _, e := knowledgeAuthorityMode(ctx, tx, session, true, s)
 	if e != nil {
 		return nil, e
 	}

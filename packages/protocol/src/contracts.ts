@@ -432,6 +432,7 @@ export interface SkillVersionPage {
   next_cursor: string;
 }
 export interface SessionAdmissionView {
+  trusted_workspace?: boolean;
   mcp_opt_in?: boolean;
   request_id: string;
   session_id: string;
@@ -716,6 +717,8 @@ export interface ChatToolFunction {
   arguments: string;
 }
 export interface SessionView {
+  trusted_workspace?: boolean;
+  trusted_workspace_warning?: string;
   project_label?: ProjectLabel;
   provenance?: SessionProvenance;
   mcp?: MCPStatus;

@@ -246,7 +246,7 @@ func (s *Store) CreateJob(ctx context.Context, origin, request, content, originR
 	j.PolicyDigest = jobPolicyDigest(policy, executionPolicy)
 	return j, tx.Commit()
 }
-func validateJobTx(ctx context.Context, tx *sql.Tx, id string) error {
+func validateJobTx(ctx context.Context, tx *sql.Tx, id string, stores ...*Store) error {
 	var origin, policy, executionPolicy, blocked string
 	var effects bool
 	e := tx.QueryRowContext(ctx, "SELECT origin_session_id,policy,execution_policy,effects,blocked_reason FROM interaction_jobs WHERE id=?", id).Scan(&origin, &policy, &executionPolicy, &effects, &blocked)
@@ -272,7 +272,8 @@ func validateJobTx(ctx context.Context, tx *sql.Tx, id string) error {
 		if json.Unmarshal([]byte(parts[2]), &p) != nil {
 			return ErrJobRevoked
 		}
-		identity, e := workspaceIdentity(p.Root)
+		grantTrustedFromStore(&p, stores...)
+		identity, e := workspaceIdentityForPolicy(p)
 		if e != nil || identity != parts[4] {
 			return ErrJobRevoked
 		}
@@ -285,7 +286,7 @@ func (s *Store) ValidateJob(ctx context.Context, id string) error {
 		return e
 	}
 	defer tx.Rollback()
-	return validateJobTx(ctx, tx, id)
+	return validateJobTx(ctx, tx, id, s)
 }
 func (s *Store) BlockJob(ctx context.Context, id, reason string) error {
 	_, e := s.db.ExecContext(ctx, "UPDATE interaction_jobs SET blocked_reason=? WHERE id=? AND blocked_reason=''", reason, id)
@@ -301,7 +302,7 @@ func (s *Store) AdmitJob(ctx context.Context, id string) (Run, error) {
 	if e = changed(res, e); e != nil {
 		return Run{}, e
 	}
-	if e = validateJobTx(ctx, tx, id); e != nil {
+	if e = validateJobTx(ctx, tx, id, s); e != nil {
 		return Run{}, e
 	}
 	var r Run
@@ -419,7 +420,7 @@ func (s *Store) mutateJob(ctx context.Context, origin, id, request, kind, payloa
 		if decision != "approved" && decision != "denied" {
 			return false, ErrInvalid
 		}
-		if e = validateJobTx(ctx, tx, id); e != nil {
+		if e = validateJobTx(ctx, tx, id, s); e != nil {
 			return false, e
 		}
 		res, err := tx.ExecContext(ctx, `UPDATE interaction_approvals SET decision=? WHERE id=? AND run_id=? AND action_digest=? AND decision='pending' AND expires_at>? AND EXISTS(SELECT 1 FROM interaction_runs WHERE id=run_id AND state='running') AND EXISTS(SELECT 1 FROM interaction_engine WHERE run_id=interaction_approvals.run_id AND phase='waiting_approval' AND cancel_requested=0) AND EXISTS(SELECT 1 FROM interaction_jobs WHERE id=? AND stop_requested=0)`, decision, approval, run, digest, time.Now().UnixNano(), id)

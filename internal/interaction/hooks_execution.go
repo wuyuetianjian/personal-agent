@@ -570,7 +570,7 @@ func (e *Engine) startSkillNode(ctx context.Context, r Run, owner string, cp *Ch
 	if time.Now().UnixMilli() >= pin.DeadlineMS || cp.Steps >= pin.Budgets.MaxAttempts || cp.Events >= cp.Budgets.MaxEvents {
 		return ErrBudget
 	}
-	w, policy, err := skillRunWorkspace(ctx, tx, r.SessionID)
+	w, policy, err := skillRunWorkspace(ctx, tx, r.SessionID, e.store)
 	if err != nil {
 		return err
 	}

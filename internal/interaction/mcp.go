@@ -230,14 +230,14 @@ func (b *WorkspaceBroker) PrepareMCPPolicy(ctx context.Context, session string, 
 	if e := ctx.Err(); e != nil {
 		return p, e
 	}
-	if !nativeMCPCapability(currentNativeSupport()).Enabled {
+	if !nativeMCPCapability(workspaceNativeSupport(p)).Enabled {
 		return p, ErrCapabilityUnavailable
 	}
 	h := b.mcp
 	if h == nil {
 		return p, ErrCapabilityUnavailable
 	}
-	if _, e := workspaceIdentity(p.Root); e != nil {
+	if _, e := workspaceIdentityForPolicy(p); e != nil {
 		return p, e
 	}
 	h.mu.Lock()

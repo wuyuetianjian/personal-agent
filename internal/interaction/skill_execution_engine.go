@@ -228,7 +228,7 @@ func (b *SkillRunBroker) Propose(ctx context.Context, id string, call ToolCall) 
 	w, err := b.store.Workspace(ctx, pin.SessionID)
 	valid := err == nil && w.ScopeID == pin.ScopeID && w.RootIdentity == pin.RootIdentity
 	if valid {
-		identity, e := workspaceIdentity(w.Policy.Root)
+		identity, e := workspaceIdentityForPolicy(w.Policy)
 		valid = e == nil && identity == pin.RootIdentity
 	}
 	tx, e := b.store.queueWrite(ctx, pin.SessionID)
@@ -308,7 +308,7 @@ func (b *WorkspaceBroker) skillDispatchClaim(ctx context.Context, p preparedTool
 	if time.Now().UnixMilli() >= pin.DeadlineMS {
 		return ErrBudget
 	}
-	w, policy, err := skillRunWorkspace(ctx, tx, p.SessionID)
+	w, policy, err := skillRunWorkspace(ctx, tx, p.SessionID, b.store)
 	if err != nil {
 		return ErrConflict
 	}

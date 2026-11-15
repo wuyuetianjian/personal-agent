@@ -49,6 +49,7 @@ func serveAgent(ctx context.Context, args []string, out io.Writer) error {
 	addr := f.String("addr", "127.0.0.1:7319", "loopback bind")
 	parent := f.String("runtime-parent", "", "explicit separate runtime parent")
 	workspace := f.String("workspace", "", "explicit workspace; omit for chat-only sessions")
+	trustedWorkspace := f.Bool("trusted-workspace", false, "explicit trusted workspace read/search only; no protection against malicious external file replacement or all historical database copies; session opt-in also required")
 	mcpPath := f.String("mcp-config", "", "explicit private trusted stdio MCP JSON; NON-SANDBOXED current-user code, disabled unless configured and session opts in")
 	nonSandboxExec := f.Bool("non-sandbox-exec", false, "NON-SANDBOXED exec with current OS-user access; cwd is not confinement; fresh exact approval per call")
 	auth := f.String("auth-file", "", "private bearer token file")
@@ -59,6 +60,9 @@ func serveAgent(ctx context.Context, args []string, out io.Writer) error {
 	}
 	if f.NArg() != 0 {
 		return fmt.Errorf("unexpected arguments")
+	}
+	if *trustedWorkspace && *workspace == "" {
+		return fmt.Errorf("--trusted-workspace requires explicit --workspace")
 	}
 	if *nonSandboxExec && *workspace == "" {
 		return fmt.Errorf("NON-SANDBOXED exec requires explicit --workspace; current-user access is not confined by cwd")
@@ -108,7 +112,7 @@ func serveAgent(ctx context.Context, args []string, out io.Writer) error {
 		selected, resolveErr := resolver(ctx, m.ID)
 		inventory = append(inventory, api.OperatorModelSnapshot(m.ID, selected, resolveErr))
 	}
-	service, e := api.NewInteractionService(rt, api.InteractionOptions{OperatorModels: inventory, Token: token, Host: listener.Addr().String(), Workspace: *workspace, DefaultModel: *modelID, Resolve: resolver, NonSandboxExec: *nonSandboxExec, MCP: mcpConfig, WebAssets: webui.Assets()})
+	service, e := api.NewInteractionService(rt, api.InteractionOptions{OperatorModels: inventory, Token: token, Host: listener.Addr().String(), Workspace: *workspace, TrustedWorkspace: *trustedWorkspace, DefaultModel: *modelID, Resolve: resolver, NonSandboxExec: *nonSandboxExec, MCP: mcpConfig, WebAssets: webui.Assets()})
 	if e != nil {
 		return e
 	}

@@ -61,10 +61,10 @@ func knowledgeDocumentAt(ctx context.Context, tx *sql.Tx, scope, id string) (d k
 	return
 }
 func knowledgeDigest(p KnowledgeOperation) string { p.Digest = ""; return operatorHash(p) }
-func knowledgeAuthority(ctx context.Context, tx *sql.Tx, session string) (w WorkspaceBinding, digest string, e error) {
-	return knowledgeAuthorityMode(ctx, tx, session, false)
+func knowledgeAuthority(ctx context.Context, tx *sql.Tx, session string, stores ...*Store) (w WorkspaceBinding, digest string, e error) {
+	return knowledgeAuthorityMode(ctx, tx, session, false, stores...)
 }
-func knowledgeAuthorityMode(ctx context.Context, tx *sql.Tx, session string, readOnly bool) (w WorkspaceBinding, digest string, e error) {
+func knowledgeAuthorityMode(ctx context.Context, tx *sql.Tx, session string, readOnly bool, stores ...*Store) (w WorkspaceBinding, digest string, e error) {
 	w.SessionID = session
 	var raw, mode string
 	e = tx.QueryRowContext(ctx, `SELECT w.scope_id,w.policy,w.root_identity,a.mode FROM interaction_workspaces w JOIN interaction_api_sessions a ON a.session_id=w.session_id WHERE w.session_id=?`, session).Scan(&w.ScopeID, &raw, &w.RootIdentity, &mode)
@@ -77,11 +77,12 @@ func knowledgeAuthorityMode(ctx context.Context, tx *sql.Tx, session string, rea
 	if e = json.Unmarshal([]byte(raw), &w.Policy); e != nil {
 		return
 	}
+	grantTrustedFromStore(&w.Policy, stores...)
 	if (w.Policy.Mode != ModeDefault && w.Policy.Mode != ModeAcceptEdits && !(readOnly && w.Policy.Mode == ModePlan)) || mode != string(w.Policy.Mode) || w.ScopeID == "" {
 		return w, "", ErrKnowledgePolicy
 	}
 	var identity string
-	identity, e = workspaceIdentity(w.Policy.Root)
+	identity, e = workspaceIdentityForPolicy(w.Policy)
 	if e != nil {
 		return
 	}
@@ -152,7 +153,7 @@ func (s *Store) PrepareKnowledge(ctx context.Context, session string, in Knowled
 	if old, found, err := knowledgeReplay(ctx, tx, session, in.RequestID, fp); err != nil || found {
 		return old, err
 	}
-	w, policy, e := knowledgeAuthority(ctx, tx, session)
+	w, policy, e := knowledgeAuthority(ctx, tx, session, s)
 	if e != nil {
 		return out, e
 	}
@@ -168,7 +169,7 @@ func (s *Store) PrepareKnowledge(ctx context.Context, session string, in Knowled
 	}
 	if kind == "file" && in.Kind != "deactivate" {
 		var b []byte
-		if !currentNativeSupport().Read.Enabled {
+		if !workspaceNativeSupport(w.Policy).Read.Enabled {
 			e = ErrCapabilityUnavailable
 		} else {
 			b, e = readWorkspaceFile(ctx, w, source)
@@ -271,7 +272,7 @@ func (s *Store) DecideKnowledge(ctx context.Context, session string, in Operator
 	out.Decision = in.Decision
 	out.DecisionRequestID = in.RequestID
 	reject := func(reason string) { out.State = "rejected"; out.IndexState = "not_applied"; out.Reason = reason }
-	w, policy, authorityErr := knowledgeAuthority(ctx, tx, session)
+	w, policy, authorityErr := knowledgeAuthority(ctx, tx, session, s)
 	switch {
 	case time.Now().UnixMilli() >= out.ExpiresAtMS:
 		out.State = "expired"
@@ -300,7 +301,7 @@ func (s *Store) DecideKnowledge(ctx context.Context, session string, in Operator
 		if out.SourceKind == "file" && out.Kind != "deactivate" {
 			var b []byte
 			var err error
-			if !currentNativeSupport().Read.Enabled {
+			if !workspaceNativeSupport(w.Policy).Read.Enabled {
 				err = ErrCapabilityUnavailable
 			} else {
 				b, err = readWorkspaceFile(ctx, w, out.Source)

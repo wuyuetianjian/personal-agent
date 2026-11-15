@@ -109,3 +109,15 @@ test('unknown or stale enabled workspace status leaves server refusal and read-o
  }
  assert.equal(writes,3);assert.equal(lookups,3);
 }));
+
+test('trusted workspace is an unchecked explicit read-only opt-in, preserves mode and never sends MCP or edits',{timeout:70000},async()=>fixture([],async(page)=>{
+ let writes=0;let body:Record<string,unknown>|undefined;
+ await page.route('**/api/v1/status',async route=>{const response=await route.fetch();const value=await response.json();value.workspace={Files:{Enabled:false,Reason:'full bundle unavailable'}};value.trusted_workspace={Enabled:true,Reason:'explicit trusted root'};value.mcp={...value.mcp,enabled:true};await route.fulfill({response,json:value})});
+ // Transport-level admission assertions, not evidence that the fake host provides native IO.
+ await page.route('**/api/v1/sessions',async route=>{if(route.request().method()!=='POST'){await route.continue();return}writes++;body=route.request().postDataJSON();await route.fulfill({status:409,json:{error:{code:'trusted_workspace_refused'}}})});
+ await page.reload();await page.getByLabel('服务令牌').fill('acceptance-local');await page.getByRole('button',{name:'连接',exact:true}).click();
+ const option=page.getByLabel('受信工作区只读（显式选择）');const mode=page.getByLabel('新会话权限');await expect(option).not.toBeChecked();await mode.selectOption('plan');await page.getByRole('button',{name:'＋ 新建会话'}).click();assert.equal(writes,0);await expect(mode).toHaveValue('plan');
+ await option.check();await mode.selectOption('acceptEdits');await page.getByRole('button',{name:'＋ 新建会话'}).evaluate((b:HTMLButtonElement)=>{b.click();b.click()});assert.equal(writes,0);await expect(mode).toHaveValue('acceptEdits');await expect(option).toBeChecked();await expect(page.getByRole('status')).toContainText('Read/Search');
+ await mode.selectOption('chat_only');await page.getByRole('button',{name:'＋ 新建会话'}).click();assert.equal(writes,0);await expect(mode).toHaveValue('chat_only');
+ await mode.selectOption('plan');const mcp=page.getByLabel('启动已配置 MCP（非沙箱）');await mcp.check();await page.getByRole('button',{name:'＋ 新建会话'}).click();assert.equal(writes,0);await expect(mcp).toBeChecked();await expect(page.getByRole('status')).toContainText('不支持 MCP');await mcp.uncheck();await page.getByRole('button',{name:'＋ 新建会话'}).evaluate((b:HTMLButtonElement)=>{b.click();b.click()});await expect(page.locator('.admission-operation')).toContainText('unknown:');assert.equal(writes,1);assert.equal(body?.trusted_workspace,true);assert.equal(body?.mode,'plan');assert.notEqual(body?.mcp,true);await expect(option).toBeChecked();await expect(option).toBeDisabled();await expect(mode).toHaveValue('plan');
+}));

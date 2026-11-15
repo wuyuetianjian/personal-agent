@@ -537,14 +537,14 @@ func (e *Engine) finish(ctx context.Context, r Run, owner string, cp *Checkpoint
 		if _, err = persistedSkillCheckpoint(ctx, tx, r.ID); err != nil {
 			return err
 		}
-		pin, _, revoked, e := skillRunData(ctx, tx, r.ID)
-		if e != nil {
-			return e
+		pin, _, revoked, pinErr := skillRunData(ctx, tx, r.ID)
+		if pinErr != nil {
+			return pinErr
 		}
-		w, policy, authorityErr := skillRunWorkspace(ctx, tx, r.SessionID)
+		w, policy, authorityErr := skillRunWorkspace(ctx, tx, r.SessionID, e.store)
 		authorityValid := authorityErr == nil && w.ScopeID == pin.ScopeID && w.RootIdentity == pin.RootIdentity && policy == pin.PolicyDigest
 		if authorityValid {
-			identity, e := workspaceIdentity(w.Policy.Root)
+			identity, e := workspaceIdentityForPolicy(w.Policy)
 			authorityValid = e == nil && identity == pin.RootIdentity
 		}
 		if !authorityValid && !revoked {

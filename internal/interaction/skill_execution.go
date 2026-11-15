@@ -106,7 +106,7 @@ func skillRunReplayData(ctx context.Context, tx *sql.Tx, session, request, fp st
 	out, err = decodeSkillOperation([]byte(raw))
 	return out, true, err
 }
-func skillRunWorkspace(ctx context.Context, tx *sql.Tx, session string) (w WorkspaceBinding, policy string, err error) {
+func skillRunWorkspace(ctx context.Context, tx *sql.Tx, session string, stores ...*Store) (w WorkspaceBinding, policy string, err error) {
 	var raw, mode string
 	w.SessionID = session
 	err = tx.QueryRowContext(ctx, `SELECT w.scope_id,w.root_identity,w.policy,a.mode FROM interaction_workspaces w JOIN interaction_api_sessions a ON a.session_id=w.session_id WHERE w.session_id=?`, session).Scan(&w.ScopeID, &w.RootIdentity, &raw, &mode)
@@ -116,7 +116,8 @@ func skillRunWorkspace(ctx context.Context, tx *sql.Tx, session string) (w Works
 	if err = json.Unmarshal([]byte(raw), &w.Policy); err != nil {
 		return
 	}
-	support := currentNativeSupport()
+	grantTrustedFromStore(&w.Policy, stores...)
+	support := workspaceNativeSupport(w.Policy)
 	if mode == "chat_only" || !skillEnum(string(w.Policy.Mode), "plan", "default", "acceptEdits") || !support.Read.Enabled || !support.Search.Enabled {
 		err = ErrCapabilityUnavailable
 		return
@@ -162,7 +163,7 @@ func (s *Store) prepareSkillRun(ctx context.Context, session string, in SkillRun
 	if err != nil {
 		return
 	}
-	w, policy, workspaceErr := skillRunWorkspace(ctx, tx, session)
+	w, policy, workspaceErr := skillRunWorkspace(ctx, tx, session, s)
 	if workspaceErr != nil && !errors.Is(workspaceErr, sql.ErrNoRows) && !errors.Is(workspaceErr, ErrCapabilityUnavailable) {
 		return out, workspaceErr
 	}
@@ -259,7 +260,7 @@ func (s *Store) decideSkillRun(ctx context.Context, session string, in OperatorD
 	}
 	out.Decision, out.DecisionRequestID = in.Decision, in.RequestID
 	out.State, out.Reason = "stale", "preview_changed"
-	w, policy, authorityErr := skillRunWorkspace(ctx, tx, session)
+	w, policy, authorityErr := skillRunWorkspace(ctx, tx, session, s)
 	cat, catErr := skillCatalogAt(ctx, tx, out.CatalogID)
 	switch {
 	case in.Decision == "cancel":

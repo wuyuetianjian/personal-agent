@@ -34,6 +34,7 @@ type InteractionOptions struct {
 	Token, Host, Workspace, DefaultModel string
 	OperatorModels                       []OperatorRecord          // Sanitized startup-only model inventory.
 	MCP                                  interaction.MCPHostConfig // Separate default-off trusted stdio configuration.
+	TrustedWorkspace                     bool                      // Host enables explicit session opt-in to trusted read/search only.
 	NonSandboxExec                       bool                      // Explicit trusted host opt-in; not an HTTP setting.
 	WebAssets                            fs.FS                     // Optional prebuilt trusted assets; no runtime filesystem access.
 	Resolve                              ProviderResolver
@@ -68,8 +69,12 @@ func NewInteractionService(rt *InteractionRuntime, o InteractionOptions) (*Inter
 		return nil, fmt.Errorf("locked runtime, loopback host, auth and resolver required")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s := &InteractionService{runtime: rt, options: o, store: interaction.NewStore(rt.DB.SQL), ctx: ctx, cancel: cancel, workers: map[string]*execution{}, closeDone: make(chan struct{}), streams: make(chan struct{}, 16)}
+	s := &InteractionService{runtime: rt, options: o, store: interaction.NewStoreWithOptions(rt.DB.SQL, interaction.StoreOptions{TrustedWorkspace: o.TrustedWorkspace, TrustedWorkspaceRoot: o.Workspace}), ctx: ctx, cancel: cancel, workers: map[string]*execution{}, closeDone: make(chan struct{}), streams: make(chan struct{}, 16)}
 	s.broker = interaction.NewWorkspaceBrokerWithOptions(s.store, interaction.WorkspaceBrokerOptions{NonSandboxExec: o.NonSandboxExec, MCP: o.MCP})
+	if o.TrustedWorkspace && (o.Workspace == "" || !interaction.TrustedWorkspaceCapability().Enabled) {
+		cancel()
+		return nil, fmt.Errorf("trusted workspace requires explicit root and a qualified read adapter: %s", interaction.TrustedWorkspaceCapability().Reason)
+	}
 	if o.NonSandboxExec && (o.Workspace == "" || !s.broker.Capabilities().Exec.Enabled) {
 		cancel()
 		return nil, fmt.Errorf("NON-SANDBOXED exec requires an explicit workspace and a supported native platform: %s", s.broker.Capabilities().Exec.Reason)
@@ -343,7 +348,7 @@ func (s *InteractionService) read(w http.ResponseWriter, r *http.Request, p []st
 			}
 		}
 
-		wireJSON(w, 200, map[string]any{"schema_version": 1, "preview": "rebuilt preview", "protocol": InteractionProtocolFlavor, "chat_only": true, "tool_capability": capability, "tool_capability_reason": reason, "workspace": s.broker.Capabilities(), "mcp": s.broker.MCPStatus(ctx, ""), "commands": []string{"manage", "help", "model", "status", "context", "cost", "permissions", "history", "resume", "cancel", "mcp", "branch", "clear", "rewind", "compact", "queue", "jobs"}})
+		wireJSON(w, 200, map[string]any{"schema_version": 1, "preview": "rebuilt preview", "protocol": InteractionProtocolFlavor, "chat_only": true, "tool_capability": capability, "tool_capability_reason": reason, "workspace": s.broker.Capabilities(), "trusted_workspace": s.trustedWorkspaceCapability(), "mcp": s.broker.MCPStatus(ctx, ""), "commands": []string{"manage", "help", "model", "status", "context", "cost", "permissions", "history", "resume", "cancel", "mcp", "branch", "clear", "rewind", "compact", "queue", "jobs"}})
 		return
 	}
 	if len(p) == 1 && p[0] == "sessions" {
@@ -475,6 +480,7 @@ func (s *InteractionService) read(w http.ResponseWriter, r *http.Request, p []st
 }
 
 type writeInput struct {
+	TrustedWorkspace bool   `json:"trusted_workspace,omitempty"`
 	CatalogProjectID string `json:"catalog_project_id,omitempty"`
 	Effects          bool   `json:"effects,omitempty"`
 	OriginRunID      string `json:"origin_run_id,omitempty"`
@@ -519,6 +525,7 @@ func (s *InteractionService) write(w http.ResponseWriter, r *http.Request, p []s
 		allowed["model_id"] = true
 		allowed["catalog_project_id"] = true
 		allowed["mcp"] = true
+		allowed["trusted_workspace"] = true
 	case len(p) == 3 && p[0] == "sessions" && (p[2] == "branch" || p[2] == "clear" || p[2] == "rewind" || p[2] == "compact" || p[2] == "file-undo"):
 		allowed["expected_cursor"] = true
 		if p[2] == "file-undo" {
@@ -564,7 +571,7 @@ func (s *InteractionService) write(w http.ResponseWriter, r *http.Request, p []s
 			}
 			continue
 		}
-		if key == "mcp" || key == "effects" {
+		if key == "mcp" || key == "effects" || key == "trusted_workspace" {
 			var value json.RawMessage
 			if d.Decode(&value) != nil || (string(value) != "true" && string(value) != "false") {
 				wireError(w, 400, "invalid_request")
@@ -779,6 +786,16 @@ func (s *InteractionService) write(w http.ResponseWriter, r *http.Request, p []s
 		if in.Mode != "chat_only" && in.Mode != "default" && in.Mode != "plan" && in.Mode != "acceptEdits" {
 			wireError(w, 400, "explicit_mode_required")
 			return
+		}
+		if in.TrustedWorkspace {
+			if (in.Mode != "default" && in.Mode != "plan") || in.MCP {
+				wireError(w, 400, "trusted_workspace_read_only_required")
+				return
+			}
+			if !s.trustedWorkspaceCapability().Enabled {
+				wireError(w, 409, "trusted_workspace_unavailable")
+				return
+			}
 		}
 		if _, err := interaction.ActiveProjectLabel(ctx, s.runtime.DB.SQL, in.CatalogProjectID); err != nil {
 			wireError(w, 409, "project_label_unavailable")
@@ -1203,4 +1220,11 @@ func sessionOperationError(w http.ResponseWriter, e error) {
 	} else {
 		wireError(w, 409, "context_operation_unconfirmed")
 	}
+}
+
+func (s *InteractionService) trustedWorkspaceCapability() interaction.Capability {
+	if !s.options.TrustedWorkspace {
+		return interaction.Capability{Reason: "Trusted read/search is disabled by default; host --trusted-workspace and explicit session opt-in required."}
+	}
+	return interaction.TrustedWorkspaceCapability()
 }

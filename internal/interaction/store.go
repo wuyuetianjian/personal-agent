@@ -6,10 +6,55 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"time"
 )
 
-type Store struct{ db *sql.DB }
+type Store struct {
+	db                   *sql.DB
+	trustedWorkspace     bool
+	trustedWorkspaceRoot string
+}
+type StoreOptions struct {
+	TrustedWorkspace     bool
+	TrustedWorkspaceRoot string
+}
+
+// Host authority is runtime-only and never loaded from session JSON.
+func NewStoreWithOptions(db *sql.DB, o StoreOptions) *Store {
+	s := &Store{db: db}
+	if o.TrustedWorkspace {
+		root, e := filepath.Abs(o.TrustedWorkspaceRoot)
+		if o.TrustedWorkspaceRoot != "" && e == nil {
+			root, e = filepath.EvalSymlinks(root)
+			if e == nil {
+				s.trustedWorkspace = true
+				s.trustedWorkspaceRoot = root
+			}
+		}
+	}
+	return s
+}
+func (s *Store) grantTrustedWorkspace(p *WorkspacePolicy) {
+	p.trustedHostGranted = false
+	if s == nil || !s.trustedWorkspace || !p.TrustedWorkspace || !filepath.IsAbs(p.Root) {
+		return
+	}
+	// Preparation stores canonical paths. Never infer a new root from old JSON.
+	same := filepath.Clean(p.Root) == s.trustedWorkspaceRoot
+	if runtime.GOOS == "windows" {
+		same = strings.EqualFold(filepath.Clean(p.Root), s.trustedWorkspaceRoot)
+	}
+	p.trustedHostGranted = same
+}
+func grantTrustedFromStore(p *WorkspacePolicy, stores ...*Store) {
+	p.trustedHostGranted = false
+	if len(stores) == 1 {
+		stores[0].grantTrustedWorkspace(p)
+	}
+}
 
 func NewStore(db *sql.DB) *Store { return &Store{db: db} }
 func (s *Store) CreateSession(ctx context.Context, id string) error {

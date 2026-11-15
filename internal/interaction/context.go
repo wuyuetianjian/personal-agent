@@ -120,12 +120,12 @@ func (a *ContextAssembler) Build(ctx context.Context, sessionID string, budget T
 	}
 	out.Estimator = "conservative serialized-byte estimate"
 	out.ReservedOutput = budget.Output
-	out.Tools = NativeToolDefinitions()
-	if !chatOnly {
+	out.Tools = nativeToolDefinitionsForSupport(workspaceNativeSupport(w.Policy))
+	if !chatOnly && !w.Policy.TrustedWorkspace {
 		out.Tools = append(out.Tools, mcpDefinitions(w.Policy)...)
 	}
 	execDescription := "Exec is unavailable."
-	if !chatOnly && w.Policy.NonSandboxExec && w.Policy.Mode != ModePlan && currentNativeSupport().Exec.Enabled {
+	if !chatOnly && w.Policy.NonSandboxExec && w.Policy.Mode != ModePlan && workspaceNativeSupport(w.Policy).Exec.Enabled {
 		out.Tools = append(out.Tools, execToolDefinition())
 		execDescription = NonSandboxExecWarning + " Fresh exact approval is required for every invocation. Workspace directory (cwd default is not implied): " + w.Policy.Root
 	}

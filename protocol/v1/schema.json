@@ -1840,6 +1840,9 @@
         },
         "state": {
           "type": "string"
+        },
+        "trusted_workspace": {
+          "type": "boolean"
         }
       },
       "required": [
@@ -2013,6 +2016,12 @@
         },
         "tools": {
           "type": "boolean"
+        },
+        "trusted_workspace": {
+          "type": "boolean"
+        },
+        "trusted_workspace_warning": {
+          "type": "string"
         }
       },
       "required": [
