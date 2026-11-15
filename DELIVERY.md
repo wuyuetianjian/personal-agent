@@ -1,6 +1,6 @@
 # personal-agent 重建源码预览 / Source preview
 
-2026-11-10。Go 核心 + TypeScript CLI/Web。基于恢复的 `c61f3f7`，保留完整源码和 Git 历史；不推送、不发布、不迁移旧活动数据库。
+2026-11-15 更新。Go 核心 + TypeScript CLI/Web。基于恢复的 `c61f3f7`，保留完整源码和 Git 历史；后续预览已推送公开测试分支 `test/rebuild-20261110`，没有合并 main、正式 Release 或迁移旧活动数据库。
 
 ## 当前能用什么
 
@@ -33,6 +33,8 @@ go build -tags webui \
 ## 不接模型也能先体验双端
 
 以下只启动本机确定性测试服务，不是真实模型。临时工作区/数据库退出即清理，服务最长运行五分钟。不要把用户数据放入此演示工作区。
+
+本节 `default` 文件修改审批演示适用于已通过完整 Files 能力的 Linux。Mac/Windows 可改用 `--chat-only-fixture` 启动此测试服务，并以 `chat_only` 新建会话体验流式回复/停止；不要执行文件审批演示或把该 fixture 当作受信读搜验收。下文的显式受信入口使用真正的 `serve-agent`。
 
 ```sh
 export PA_AGENT_TOKEN="$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))")"
@@ -74,15 +76,50 @@ pnpm --filter @personal-agent/terminal start --url http://127.0.0.1:7319 \
 
 - 任意命令 exec 默认关闭。Linux 的 `--non-sandbox-exec` 是明确选择的**非沙箱**能力，拥有当前 OS 用户权限；cwd 不限制它的访问范围。取消不保证后代进程终止。不要把它当作安全沙箱。
 - MCP 启动同样是非沙箱的本地代码执行，只应用于可信、明确配置的服务器。发现工具不证明调用过工具。
-- Windows/macOS 原生文件与 exec 能力未验收且保持禁用；交叉编译不等于这些系统的运行验证。Firefox/WebKit 和系统 IME 也未验收。
+- Windows/macOS 完整 Files（含修改/撤销）、exec、MCP 能力保持禁用。另有下文显式受信工作区 Read/Search 预览；不可把这一窄范围验收视为完整平台支持。Windows 普通非管理员用户、Firefox/WebKit 和系统 IME 仍未验收。
 - 真实模型服务兼容性、真实推理质量、费用/usage 完整性均未验收。本地 fixture 只证明协议和流程，不证明模型质量。
 - 未知写入/审批结果必须按原请求 ID 只读核对，不自动重放。停止、超时或连接断开不代表副作用没有发生。
 - 新服务使用独立 `runtime-rebuild-v1` 命名空间，拒绝未知 schema；旧 preview 数据迁移未验收，不要用旧二进制写新库。
-- 本次是源码交付，不含生产部署、自动更新、平台签名或公开发布。
+- 当前是测试分支源码预览，不含生产部署、自动更新、平台签名或正式 Release；后续测试归档不改变这些限制。
 
-Native readiness is tracked internally for Read, Search, Replace, Undo, Exec and MCP stdio; the public Files/Exec shape and Linux permissions are unchanged. Files still requires all four file operations. MCP adds its own native-readiness requirement to the existing Files, workspace, configuration and explicit session opt-in gates, independently of Exec. macOS, Windows and other non-Linux targets remain disabled. Compile-only evidence is not native execution or support acceptance. Later activation requires real per-target filesystem/identity, reparse/symlink, ACL/DACL, locking/recovery, replacement/undo, exec and separate MCP qualification.
+Native readiness is tracked internally for Read, Search, Replace, Undo, Exec and MCP stdio; the public Files/Exec shape and Linux permissions are unchanged. Files still requires all four file operations. MCP adds its own native-readiness requirement to the existing Files, workspace, configuration and explicit session opt-in gates, independently of Exec. The original full Files/Exec gates on macOS, Windows and other non-Linux targets remain disabled; the separate explicit trusted Read/Search preview below is not that full bundle. Compile-only evidence is not native execution or support acceptance. Later activation requires real per-target filesystem/identity, reparse/symlink, ACL/DACL, locking/recovery, replacement/undo, exec and separate MCP qualification.
 
-原生实现就绪状态在内部区分 Read、Search、Replace、Undo、Exec 与 MCP stdio；公开 Files/Exec 结构及 Linux 权限保持不变，Files 仍要求全部四种文件操作。MCP 在现有 Files、工作区、主机配置及会话明确启用条件上增加独立原生就绪门槛，不依赖 Exec。macOS、Windows 及其他非 Linux 目标保持禁用；仅交叉编译不能证明原生执行或支持验收。后续启用必须完成各真实目标的文件系统/身份、reparse/symlink、ACL/DACL、锁定与恢复、替换/撤销、exec 及独立 MCP 验收。
+原生实现就绪状态在内部区分 Read、Search、Replace、Undo、Exec 与 MCP stdio；公开 Files/Exec 结构及 Linux 权限保持不变，Files 仍要求全部四种文件操作。MCP 在现有 Files、工作区、主机配置及会话明确启用条件上增加独立原生就绪门槛，不依赖 Exec。macOS、Windows 及其他非 Linux 目标原有完整 Files/Exec 门槛保持禁用；下文独立显式受信 Read/Search 预览不属于完整 Files。仅交叉编译不能证明原生执行或支持验收。后续启用必须完成各真实目标的文件系统/身份、reparse/symlink、ACL/DACL、锁定与恢复、替换/撤销、exec 及独立 MCP 验收。
+
+## macOS / Windows 显式受信读搜预览
+
+这是对用户明确选择的受信目录进行 Read/Search，不是恶意并发程序隔离沙箱。
+不保证识别所有历史数据库副本，不开放 Apply、Undo、Exec 或 MCP。
+默认不开启，也不会给历史会话自动升级权限；运行数据目录与工作区仍须分开。
+
+在上述 `serve-agent` 命令中同时明确指定 `--workspace` 和 `--trusted-workspace`。
+然后在 Web 新会话中选择 `plan` 或 `default`，明确勾选受信工作区选项；默认未勾选。
+终端交互入口为 `/new create confirm plan trusted-workspace`。
+机器模式新会话使用 `--new-session --format json --mode plan --trusted-workspace`，并显式指定服务 URL。
+不允许与 `chat_only`、`acceptEdits`、MCP 或恢复既有会话混用来升级权限。
+主机取消该选项或换工作区后，历史仍可读，但原会话不再有实时文件读取权限。
+
+真实原生 CI 已验证 Mac/Windows 的适配器、明确会话准入、读取、撤权、换根及恢复。
+Windows 验证使用管理员 runner，不能替代普通用户验收；`f107329` 的[过滤 token 原生诊断](https://github.com/wuyuetianjian/personal-agent/actions/runs/43668953680)证实派生候选仍为 High integrity，在启动子进程前被 exactly Medium 门槛拒绝；未降低安全断言。
+详见[资格证据与剩余限制](docs/release/trusted-workspace-qualification.md)及[客户端说明](docs/release/trusted-workspace-clients.md)。
+现有完整平台回归仍有失败，不能称 CI 全绿、正式 v1.0 或 Claude Code 全功能替代。
+
+## 独立测试包构建（不是 v1.0 Release）
+
+不要使用旧 `scripts/build-release.sh` 生成这一预览。新构建入口为：
+
+```sh
+node scripts/build-preview.mjs darwin-arm64 /absolute/new-preview-output
+```
+
+目标可选 `darwin-arm64`、`darwin-amd64`、`windows-amd64`、`windows-arm64`；输出目录必须尚不存在。
+先安装上文锁定工具链和依赖。版本强制 `0.0.0-preview.<commit>`，包内含嵌入 Web 的服务、编译后的 TS 终端及其 JS 生产依赖、配置样例、中文启动说明、原始第三方许可和逐文件 SHA256 清单。
+TS 终端仍需另外安装 Node 24，不是免运行时的单文件可执行程序，也不是安装器。
+
+`Artifact-only preview packages` 工作流仅向 Actions Artifacts 保存通过本轮解压验证的候选，不创建 tag 或 GitHub Release。
+请阅读 artifact 名称与日志：`native` 表示在匹配目标上运行对应 smoke；`verify-only` 只验证归档与编译，不能当作原生运行通过。
+Windows ARM64 目前仅列为交叉构建候选；Windows ConPTY、普通非管理员环境、签名/notarization 和真实模型兼容性仍未验收。
+测试包成功也不消除上文完整平台回归与安全边界。详见[打包范围](docs/release/preview-packages-design.md)和[包内启动说明](docs/release/preview-start.zh-CN.md)。
 
 ## 复验
 
@@ -108,7 +145,7 @@ This is a bounded, reproducible **source preview**, not a complete Claude Code r
 
 Use the build commands above and `serve-agent`, not the legacy release/install path. The local `agent-fixture` provides deterministic, disposable five-minute demos; it is not a real model. Real usage requires your own configured model, private token, separate runtime directory and explicit workspace. A synthetic provider-tool probe is a separate intentional outbound request, never automatic.
 
-Skill catalog metadata is available in Web, Ink and machine CLI through the strict shared controller. Separate deterministic read-only Skill-run endpoints and actual Web/Ink/machine clients are now available. Enabled remains only an exact metadata selection; every run needs its own preview and confirmation. Bounded session-owned declarative deny/audit Hooks are available for read-only Skill runs. Executable/general Hooks, MCP HTTP/Tasks and some management mutations remain unavailable. Linux exec and MCP startup are explicitly non-sandboxed and opt-in. Native Windows/macOS file/exec behavior, real providers, Firefox/WebKit and system IME remain unqualified. Project labels grant neither permissions nor knowledge isolation. Unknown effects require read-only reconciliation, never blind retries.
+Skill catalog metadata is available in Web, Ink and machine CLI through the strict shared controller. Separate deterministic read-only Skill-run endpoints and actual Web/Ink/machine clients are now available. Enabled remains only an exact metadata selection; every run needs its own preview and confirmation. Bounded session-owned declarative deny/audit Hooks are available for read-only Skill runs. Executable/general Hooks, MCP HTTP/Tasks and some management mutations remain unavailable. Linux exec and MCP startup are explicitly non-sandboxed and opt-in. The separate explicit trusted Read/Search preview has native evidence; complete Windows/macOS Files/Exec, ordinary non-administrator Windows, real providers, Firefox/WebKit and system IME remain unqualified. Project labels grant neither permissions nor knowledge isolation. Unknown effects require read-only reconciliation, never blind retries.
 
 
 ### Read-only Skill runs / 只读 Skill 运行

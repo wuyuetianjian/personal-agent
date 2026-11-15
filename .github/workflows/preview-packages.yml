@@ -1,0 +1,97 @@
+name: Artifact-only preview packages (not a Release)
+on:
+  push:
+    branches: [test/rebuild-20261110]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: preview-packages-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+jobs:
+  preview:
+    if: ${{ github.ref == 'refs/heads/test/rebuild-20261110' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: darwin-arm64
+            host: darwin-arm64
+            smoke: native
+          - os: macos-15-intel
+            target: darwin-amd64
+            host: darwin-x64
+            smoke: native
+          - os: windows-2025
+            target: windows-amd64
+            host: win32-x64
+            smoke: native
+          - os: windows-2025
+            target: windows-arm64
+            host: win32-x64
+            smoke: verify-only
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Record actual host and install locked official dependencies
+        run: |
+          node -e "require('node:assert/strict').equal(process.platform+'-'+process.arch,'${{ matrix.host }}')"
+          git rev-parse HEAD
+          go version
+          go env GOOS GOARCH
+          node --version
+          npm install --global pnpm@11.25.0
+          printf 'PNPM_CLI=%s/pnpm/bin/pnpm.mjs\n' "$(npm root -g)" >> "$GITHUB_ENV"
+          pnpm install --frozen-lockfile
+      - name: Verify packaging contracts and source types
+        run: |
+          node --test scripts/build-preview.test.mjs
+          pnpm typecheck
+      - name: Build explicit preview payload
+        run: |
+          set -o pipefail
+          node scripts/build-preview.mjs '${{ matrix.target }}' "$RUNNER_TEMP/preview-output" 2>&1 | tee preview-build.log
+      - name: Build separate synthetic test fixture, never ship it as service
+        run: go build -mod=readonly -tags=webui -o "$RUNNER_TEMP/agent-fixture.exe" ./cmd/agent-fixture
+      - name: Verify extracted payload and run only matching native target
+        run: |
+          set -o pipefail
+          archive=$(find "$RUNNER_TEMP/preview-output" -maxdepth 1 -name '*.tar.gz' -print)
+          test -n "$archive"
+          node scripts/preview-smoke.mjs "$archive" "$RUNNER_TEMP/agent-fixture.exe" '${{ matrix.smoke }}' 2>&1 | tee preview-smoke.log
+          go mod verify
+          git diff --exit-code -- go.mod go.sum pnpm-lock.yaml internal/webui/dist/placeholder.txt
+      - name: Upload verified preview archive, not a formal Release
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: preview-${{ matrix.target }}-${{ matrix.smoke }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/preview-output/*.tar.gz
+            ${{ runner.temp }}/preview-output/*.sha256
+          if-no-files-found: error
+      - name: Preserve evidence on failure or success
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: preview-evidence-${{ matrix.target }}-${{ github.sha }}
+          path: |
+            preview-build.log
+            preview-smoke.log
+            production-native-deps.json
+            production-native-env.json
+          if-no-files-found: warn
