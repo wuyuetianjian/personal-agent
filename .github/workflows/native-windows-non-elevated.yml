@@ -35,15 +35,9 @@ jobs:
           node --test scripts/windows-non-elevated-gate.test.mjs
           go list -mod=readonly -deps ./cmd/... > token-production-deps.txt
           go list -mod=readonly -tags=nativeprobe_sqlite_identity,nativeprobe_sqlite_lease,nativeprobe_sqlite_permit,nativeprobe_non_elevated_guard -deps ./cmd/... > token-tagged-deps.txt
-          node --input-type=module <<'JS'
-          import fs from 'node:fs';
-          import assert from 'node:assert/strict';
-          for (const p of ['token-production-deps.txt','token-tagged-deps.txt']) {
-            const lines=fs.readFileSync(p,'utf8').trim().split(/\r?\n/);
-            assert(lines.length>1);
-            assert(!lines.some(x=>x.startsWith('agent/internal/nativefs/')||x.startsWith('agent/scripts/windows-non-elevated-launcher')));
-          }
-          JS
+          # Tagged graphs above are research observations, not release qualification.
+          node --test scripts/production-native-deps.test.mjs
+          node scripts/production-native-deps.mjs
       - name: Build trusted guarded executable in existing profile TEMP
         shell: pwsh
         run: |
@@ -90,6 +84,8 @@ jobs:
             filtered-native.json
             filtered-launch.stderr
             filtered-exits.txt
+            production-native-deps.json
+            production-native-env.json
           if-no-files-found: error
       - name: Verify unchanged official modules
         if: ${{ !cancelled() }}

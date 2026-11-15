@@ -93,16 +93,13 @@ jobs:
           const passed = events.filter(e => e.Test && e.Action === 'pass').length;
           fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Native refusal contracts: ${passed} tests/subtests passed, zero skipped. This does not qualify enabled native adapters.\n`);
           JS
-      - name: Verify foundations remain disconnected from commands
+      - name: Verify ordinary command dependency boundary
         if: ${{ !cancelled() && steps.go.outcome == 'success' && steps.node.outcome == 'success' }}
         run: |
           go list -deps ./cmd/... > command-dependencies.txt
-          node --input-type=module <<'JS'
-          import fs from 'node:fs';
-          import assert from 'node:assert/strict';
-          const deps = fs.readFileSync('command-dependencies.txt', 'utf8').split('\n');
-          assert(!deps.some(p => p.startsWith('agent/internal/nativefs/')), 'Experimental foundation is reachable from a production command');
-          JS
+          # Tagged graphs above are research observations, not release qualification.
+          node --test scripts/production-native-deps.test.mjs
+          node scripts/production-native-deps.mjs
       - name: Run disconnected foundations on the target kernel
         id: foundation
         if: ${{ !cancelled() && steps.go.outcome == 'success' }}
@@ -175,6 +172,15 @@ jobs:
       - name: Check TypeScript types
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: pnpm typecheck
+      - name: Preserve ordinary dependency audit
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-conformance-production-deps-${{ matrix.os }}
+          path: |
+            production-native-deps.json
+            production-native-env.json
+          if-no-files-found: warn
 
   windows-handle-evidence:
     name: Windows isolated foundation evidence

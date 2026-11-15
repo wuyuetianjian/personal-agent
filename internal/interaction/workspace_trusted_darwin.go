@@ -17,7 +17,7 @@ import (
 var errTrustedDarwinUnimplemented = errors.New("trusted Darwin workspace explicit RED")
 
 func trustedWorkspacePlatformCapability() Capability {
-	return Capability{Reason: "Trusted APFS read/search adapter awaits native qualification; no hostile namespace isolation"}
+	return Capability{Enabled: true, Reason: "Explicit trusted APFS Read/Search available; host and session opt-in required; no hostile external replacement isolation or historical database-copy detection"}
 }
 
 func trustedDarwinOpenRoot(root string) (*os.File, error) {

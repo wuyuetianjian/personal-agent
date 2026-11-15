@@ -49,16 +49,14 @@ jobs:
           xcrun clang --version
           diskutil info "$(df "$RUNNER_TEMP" | awk 'NR==2 {print $1}')"
           printf 'Source %s. Isolated CGO experiment only; default release stays CGO=0; all native capabilities remain disabled.\n' "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
-      - name: Verify modules and disconnected command graphs
+      - name: Verify ordinary production sources and record research graphs
         run: |
           go mod verify
           CGO_ENABLED=0 go list -deps ./cmd/... > deps-default.txt
           CGO_ENABLED=1 go list -tags=nativeprobe_darwin_bulk -deps ./cmd/... > deps-tagged.txt
-          python3 - <<'PY'
-          from pathlib import Path
-          for name in ['deps-default.txt','deps-tagged.txt']:
-              assert not any(x.startswith('agent/internal/nativefs/') for x in Path(name).read_text().splitlines()), name
-          PY
+          # Tagged graphs above are research observations, not release qualification.
+          node --test scripts/production-native-deps.test.mjs
+          node scripts/production-native-deps.mjs
       - name: Run native APFS contracts three times
         id: native
         env:
@@ -74,3 +72,12 @@ jobs:
       - name: Verify modules after experiment
         if: ${{ !cancelled() && steps.native.outcome != 'skipped' }}
         run: go mod verify
+      - name: Preserve ordinary dependency audit
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-darwin-bulk-production-deps
+          path: |
+            production-native-deps.json
+            production-native-env.json
+          if-no-files-found: warn

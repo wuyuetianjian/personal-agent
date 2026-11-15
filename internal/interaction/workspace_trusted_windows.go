@@ -15,7 +15,7 @@ import (
 )
 
 func trustedWorkspacePlatformCapability() Capability {
-	return Capability{Enabled: false, Reason: "Windows trusted workspace native qualification and ordinary-user validation pending; no hostile external replacement guarantee"}
+	return Capability{Enabled: true, Reason: "Explicit trusted NTFS Read/Search preview available; host and session opt-in required; Windows non-administrator acceptance unverified; no hostile external replacement guarantee"}
 }
 
 // This metadata identity is checked around each operation, not a promise of

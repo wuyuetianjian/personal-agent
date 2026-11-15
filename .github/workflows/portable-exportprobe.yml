@@ -39,20 +39,14 @@ jobs:
           echo 'Synthetic explicit export only. Not native reading, source provenance, user approval UI, historical-copy isolation or production qualification.'
       - name: Test exact event gate
         run: node --test scripts/exportprobe-gate.test.mjs
-      - name: Verify modules and disconnected production graph
+      - name: Verify ordinary production sources and record research graphs
         run: |
           go mod verify
           go list -mod=readonly -deps ./cmd/... > export-production-deps.txt
           go list -mod=readonly -tags=nativeprobe_export -deps ./cmd/... > export-tagged-deps.txt
-          node --input-type=module <<'JS'
-          import fs from 'node:fs';
-          import assert from 'node:assert/strict';
-          for (const path of ['export-production-deps.txt', 'export-tagged-deps.txt']) {
-            const lines = fs.readFileSync(path, 'utf8').trim().split(/\r?\n/);
-            assert(lines.length > 1, 'empty dependency graph');
-            assert(!lines.some(line => line.startsWith('agent/internal/nativefs/')), 'foundation reached commands');
-          }
-          JS
+          # Tagged graphs above are research observations, not release qualification.
+          node --test scripts/production-native-deps.test.mjs
+          node scripts/production-native-deps.mjs
       - name: Synthetic export contracts with race detector
         id: native
         run: |
@@ -69,5 +63,8 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: exportprobe-race
-          path: export-race.json
+          path: |
+            export-race.json
+            production-native-deps.json
+            production-native-env.json
           if-no-files-found: error

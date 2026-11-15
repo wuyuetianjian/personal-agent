@@ -52,6 +52,10 @@ jobs:
           $p = [Security.Principal.WindowsPrincipal]::new($id)
           "ElevatedAdministratorToken: $($p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))"
           'This job does not qualify ordinary non-administrator Windows use.'
+      - name: Verify ordinary command dependency boundary
+        run: |
+          node --test scripts/production-native-deps.test.mjs
+          node scripts/production-native-deps.mjs
       - name: Validate strict result gate
         run: node --test scripts/trusted-workspace-gate.test.mjs
       - name: Native adapter contracts
@@ -70,7 +74,10 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: trusted-workspace-${{ matrix.target }}
-          path: trusted-native.json
+          path: |
+            trusted-native.json
+            production-native-deps.json
+            production-native-env.json
           if-no-files-found: error
       - name: Verify unchanged modules
         if: ${{ !cancelled() }}
