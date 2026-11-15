@@ -53,6 +53,11 @@ func TestTrustedDarwinWorkspaceRead(t *testing.T) {
 	if trustedWorkspacePlatformCapability().Reason == "" {
 		t.Fatal("trusted adapter capability must explain its readiness/scope")
 	}
+	noHost := w
+	noHost.Policy.trustedHostGranted = false
+	if b, e := readTrustedWorkspaceFile(context.Background(), noHost, "note.txt"); !errors.Is(e, ErrCapabilityUnavailable) || b != nil {
+		t.Fatal("missing host grant accepted", e)
+	}
 	w.Policy.TrustedWorkspace = false
 	b, e := readTrustedWorkspaceFile(context.Background(), w, "note.txt")
 	if !errors.Is(e, ErrCapabilityUnavailable) || b != nil {
@@ -156,5 +161,17 @@ func TestTrustedDarwinWorkspaceCloseErrors(t *testing.T) {
 	})
 	if !errors.Is(e, fault) || b != nil || calls != 2 {
 		t.Fatalf("cleanup data=%q err=%v calls=%d", b, e, calls)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	calls = 0
+	b, e = readTrustedDarwinWithClose(ctx, w, "note.txt", func(f *os.File) error {
+		calls++
+		e := f.Close()
+		cancel()
+		return e
+	})
+	if !errors.Is(e, context.Canceled) || b != nil || calls != 2 {
+		t.Fatalf("post-read cancellation leaked data=%q err=%v calls=%d", b, e, calls)
 	}
 }

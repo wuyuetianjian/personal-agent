@@ -66,6 +66,11 @@ func trustedWindowsPositive(t *testing.T, w WorkspaceBinding) {
 func TestTrustedWindowsReadOptIn(t *testing.T) {
 	w, _ := trustedWindowsFixture(t)
 	trustedWindowsPositive(t, w)
+	noHost := w
+	noHost.Policy.trustedHostGranted = false
+	if b, e := readTrustedWorkspaceFile(context.Background(), noHost, "note.txt"); !errors.Is(e, ErrCapabilityUnavailable) || b != nil {
+		t.Fatalf("missing host grant %q %v", b, e)
+	}
 	w.Policy.TrustedWorkspace = false
 	b, e := readTrustedWorkspaceFile(context.Background(), w, "note.txt")
 	if !errors.Is(e, ErrCapabilityUnavailable) || b != nil {
@@ -75,7 +80,7 @@ func TestTrustedWindowsReadOptIn(t *testing.T) {
 func TestTrustedWindowsPaths(t *testing.T) {
 	w, root := trustedWindowsFixture(t)
 	trustedWindowsPositive(t, w)
-	for _, name := range []string{"../note.txt", "C:/Windows/win.ini", "note.txt/../note.txt", "a\\b", "a\x00b", ".git/config", "data/x", "Data/x", "node_modules/x", "note.txt:ads", "note.txt.", "note.txt ", "CON", "NUL"} {
+	for _, name := range []string{"../note.txt", "C:/Windows/win.ini", "note.txt/../note.txt", "a\\b", "a\x00b", ".git/config", "data/x", "Data/x", "node_modules/x", "note.txt:ads", "note.txt.", "note.txt ", "CON", "NUL", "COM1.txt", "LPT¹.txt", "CONIN$"} {
 		b, e := readTrustedWorkspaceFile(context.Background(), w, name)
 		if e == nil || b != nil {
 			t.Fatalf("unsafe path accepted %q %v", name, e)
@@ -128,9 +133,35 @@ func TestTrustedWindowsBudgetAndCancellation(t *testing.T) {
 			t.Fatalf("boundary %d %v", n, e)
 		}
 	}
+
+	// Close faults are injected only after the actual foundation has released its
+	// handles. Neither errors nor cancellation may return already-read bytes.
+	closeFault := errors.New("injected trusted root close fault")
+	closes := 0
+	var realCloseErr error
+	b, e := readTrustedWindowsWithClose(context.Background(), w, "note.txt", func(r *windowsprobe.Root) error {
+		closes++
+		realCloseErr = r.Close()
+		return errors.Join(realCloseErr, closeFault)
+	})
+	if b != nil || !errors.Is(e, closeFault) || closes != 1 || realCloseErr != nil {
+		t.Fatalf("close fault returned content or retried: %q %v %d real close: %v", b, e, closes, realCloseErr)
+	}
+	closingCtx, cancelAtClose := context.WithCancel(context.Background())
+	defer cancelAtClose()
+	closes = 0
+	b, e = readTrustedWindowsWithClose(closingCtx, w, "note.txt", func(r *windowsprobe.Root) error {
+		closes++
+		realCloseErr = r.Close()
+		cancelAtClose()
+		return realCloseErr
+	})
+	if b != nil || !errors.Is(e, context.Canceled) || closes != 1 || realCloseErr != nil {
+		t.Fatalf("close-time cancellation returned content or retried: %q %v %d real close: %v", b, e, closes, realCloseErr)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	b, e := readTrustedWorkspaceFile(ctx, w, "note.txt")
+	b, e = readTrustedWorkspaceFile(ctx, w, "note.txt")
 	if !errors.Is(e, context.Canceled) || b != nil {
 		t.Fatalf("cancel lost %v", e)
 	}
