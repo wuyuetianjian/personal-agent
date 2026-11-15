@@ -73,6 +73,7 @@ func TestTrustedWorkspaceNativeSessionAndHostRevocation(t *testing.T) {
 	if _, e = s.store.PrepareKnowledge(ctx, session.ID, interaction.KnowledgeIntent{RequestID: "baseline-ingest", Kind: "ingest", SourceKind: "file", Source: "note.txt"}); e != nil {
 		t.Fatalf("baseline knowledge read: %v", e)
 	}
+	completeTrustedFixtureRun(t, ctx, s.store, run)
 	s.Close()
 	for _, change := range []string{"host-off", "root-changed"} {
 		changed := opts
@@ -102,6 +103,7 @@ func TestTrustedWorkspaceNativeSessionAndHostRevocation(t *testing.T) {
 		if _, e = s.store.PrepareKnowledge(ctx, session.ID, interaction.KnowledgeIntent{RequestID: change, Kind: "ingest", SourceKind: "file", Source: "note.txt"}); !errors.Is(e, interaction.ErrCapabilityUnavailable) {
 			t.Fatalf("%s did not specifically refuse host knowledge read: %v", change, e)
 		}
+		completeTrustedFixtureRun(t, ctx, s.store, fresh)
 		s.Close()
 	}
 	s, e = NewInteractionService(rt, opts)
@@ -118,5 +120,5 @@ func TestTrustedWorkspaceNativeSessionAndHostRevocation(t *testing.T) {
 	if _, e = s.store.PrepareKnowledge(ctx, session.ID, interaction.KnowledgeIntent{RequestID: "host-restored-knowledge", Kind: "ingest", SourceKind: "file", Source: "note.txt"}); e != nil {
 		t.Fatalf("restored knowledge positive control: %v", e)
 	}
-
+	completeTrustedFixtureRun(t, ctx, s.store, restored)
 }
