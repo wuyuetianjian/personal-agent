@@ -5,8 +5,11 @@ import path from 'node:path';
 import os from 'node:os';
 import http from 'node:http';
 import {randomBytes,createHash} from 'node:crypto';
-import {ROOT,run,verifyManifest,startPreviewChild,stopPreviewChild,cleanupPreview,fetchPreview} from './build-preview.mjs';
-const [archiveArg,fixtureArg,mode='native']=process.argv.slice(2);assert(archiveArg&&fixtureArg,'archive and separately built fixture required');
+import {ROOT,run,verifyManifest,startPreviewChild,stopPreviewChild,cleanupPreview,fetchPreview,validatePreviewSource,runTar,parsePreviewArchiveList} from './build-preview.mjs';
+const [archiveArg,fixtureArg,mode='native',localFlag,...extra]=process.argv.slice(2);
+assert(['native','verify-only'].includes(mode),'unknown smoke mode');
+assert(extra.length===0&&(localFlag===undefined||localFlag==='--allow-dirty-local'),'unknown smoke option');
+const localOnly=localFlag==='--allow-dirty-local';assert(archiveArg&&fixtureArg,'archive and separately built fixture required');
 const archive=path.resolve(archiveArg),fixture=path.resolve(fixtureArg);
 const digest=createHash('sha256').update(await fs.readFile(archive)).digest('hex');
 assert.equal((await fs.readFile(`${archive}.sha256`,'utf8')).trim(),`${digest}  ${path.basename(archive)}`);
@@ -16,12 +19,11 @@ const guard=http.createServer((req,res)=>{attempted++;res.writeHead(500);res.end
 function launch(exe,args,env){const child=startPreviewChild(exe,args,{cwd:temp,env});children.push(child);return child;}
 
 try{
- const listed=run('tar',['-tzf',archive],{capture:true}).split('\n');
- const root=listed[0].replace(/\/$/,'');assert(root&&!root.includes('/')&&!root.includes('\\'));
- for(const name of listed)assert(name.startsWith(root+'/')&&!name.split(/[\\/]/).includes('..')&&!path.isAbsolute(name),'unsafe archive entry');
- run('tar',['-xzf',archive,'-C',temp]);const unpacked=path.join(temp,root);const m=await verifyManifest(unpacked);
+ const root=parsePreviewArchiveList(runTar(['-tzf',archive],{capture:true,raw:true}));
+ runTar(['-xzf',archive,'-C',temp]);const unpacked=path.join(temp,root);const m=await verifyManifest(unpacked);
+ validatePreviewSource(m,{allowDirtyLocal:localOnly,ci:!!(process.env.GITHUB_ACTIONS||process.env.CI)});
  const host=`${process.platform==='win32'?'windows':process.platform}-${process.arch==='x64'?'amd64':process.arch}`;
- if(mode==='verify-only'){assert.notEqual(m.target,host,'native target must run, not bypass smoke');console.log(JSON.stringify({target:m.target,result:'archive-verified-only',nativeExecution:false}));}
+ if(mode==='verify-only'){assert.notEqual(m.target,host,'native target must run, not bypass smoke');console.log(JSON.stringify({target:m.target,sourceDirty:m.sourceDirty,localOnly,result:'archive-verified-only',nativeExecution:false}));}
  else{
   assert.equal(m.target,host,'cannot call a cross-build native verification');
   const exe=path.join(unpacked,process.platform==='win32'?'pachat.exe':'pachat');
@@ -38,7 +40,7 @@ try{
   const exit=await Promise.race([cli.done,new Promise((_,rej)=>setTimeout(()=>rej(Error('CLI timeout')),30000).unref())]);assert.equal(exit.code,0,cli.output());
   const lines=cli.output().trim().split('\n').map(s=>JSON.parse(s));assert(lines.length>1&&lines.some(e=>e.type==='model.text_delta'),'no actual streaming deltas');assert.equal(lines.at(-1).status,'completed','stream did not finish');assert(cli.output().includes('真实流式测试完成'),'missing synthetic streamed answer');
   if(process.platform!=='win32')run('python3',[path.join(ROOT,'scripts/preview-pty.py'),path.join(unpacked,'terminal/cli.mjs'),fixtureInfo.url],{cwd:temp,env});
-  assert.equal(attempted,0,'service startup invoked provider');console.log(JSON.stringify({target:m.target,result:'native-unpacked-service-web-status-cli-SSE',pty:process.platform!=='win32',provider:'synthetic-only',windowsConPTY:'not-tested'}));
+  assert.equal(attempted,0,'service startup invoked provider');console.log(JSON.stringify({target:m.target,sourceDirty:m.sourceDirty,localOnly,result:'native-unpacked-service-web-status-cli-SSE',pty:process.platform!=='win32',provider:'synthetic-only',windowsConPTY:'not-tested'}));
  }
 }finally{
  await cleanupPreview([...children.map(child=>()=>stopPreviewChild(child)),async()=>{guard.closeAllConnections();await new Promise(r=>guard.close(r));},()=>fs.rm(temp,{recursive:true,force:true})]);

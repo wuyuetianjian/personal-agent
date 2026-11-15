@@ -62,10 +62,13 @@ jobs:
         run: |
           node --test scripts/build-preview.test.mjs
           pnpm typecheck
+      - name: POSIX Ink interactive environment regression
+        if: ${{ runner.os != 'Windows' }}
+        run: python3 scripts/preview-pty.test.py
       - name: Build explicit preview payload
         run: |
           set -o pipefail
-          node scripts/build-preview.mjs '${{ matrix.target }}' "$RUNNER_TEMP/preview-output" 2>&1 | tee preview-build.log
+          node scripts/build-preview.mjs '${{ matrix.target }}' "$RUNNER_TEMP/preview-output" 2>&1 | tee "$RUNNER_TEMP/preview-build.log"
       - name: Build separate synthetic test fixture, never ship it as service
         run: go build -mod=readonly -tags=webui -o "$RUNNER_TEMP/agent-fixture.exe" ./cmd/agent-fixture
       - name: Verify extracted payload and run only matching native target
@@ -73,7 +76,7 @@ jobs:
           set -o pipefail
           archive=$(find "$RUNNER_TEMP/preview-output" -maxdepth 1 -name '*.tar.gz' -print)
           test -n "$archive"
-          node scripts/preview-smoke.mjs "$archive" "$RUNNER_TEMP/agent-fixture.exe" '${{ matrix.smoke }}' 2>&1 | tee preview-smoke.log
+          node scripts/preview-smoke.mjs "$archive" "$RUNNER_TEMP/agent-fixture.exe" '${{ matrix.smoke }}' 2>&1 | tee "$RUNNER_TEMP/preview-smoke.log"
           go mod verify
           git diff --exit-code -- go.mod go.sum pnpm-lock.yaml internal/webui/dist/placeholder.txt
       - name: Upload verified preview archive, not a formal Release
@@ -90,8 +93,8 @@ jobs:
         with:
           name: preview-evidence-${{ matrix.target }}-${{ github.sha }}
           path: |
-            preview-build.log
-            preview-smoke.log
+            ${{ runner.temp }}/preview-build.log
+            ${{ runner.temp }}/preview-smoke.log
             production-native-deps.json
             production-native-env.json
           if-no-files-found: warn

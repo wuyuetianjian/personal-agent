@@ -10,6 +10,25 @@ import {parseGoList} from './production-native-deps.mjs';
 export const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 export function validateTarget(target){assert(['darwin-arm64','darwin-amd64','windows-amd64','windows-arm64'].includes(target),'unsupported preview target');return target;}
 export function validateVersion(version){assert(/^0\.0\.0-preview\.[a-f0-9]{7,40}$/.test(version),'preview version required');return version;}
+export function validatePreviewSource(manifest,{allowDirtyLocal=false,ci=false}={}){
+ assert.equal(typeof manifest.sourceDirty,'boolean','sourceDirty must be explicit');
+ assert(!(allowDirtyLocal&&ci),'dirty-local override is forbidden in CI');
+ assert(manifest.sourceDirty===false||allowDirtyLocal,'candidate source must be clean');
+}
+export function tarExecutable(platform=process.platform,env=process.env){
+ if(platform!=='win32')return 'tar';
+ const root=env.SystemRoot??env.SYSTEMROOT??'';
+ assert(/^[a-z]:[\\/]/i.test(root),'Windows SystemRoot must be an absolute local drive path');
+ return path.win32.join(root,'System32','tar.exe');
+}
+export function parsePreviewArchiveList(text){
+ const listed=text.split(/\r?\n/);if(listed.at(-1)==='')listed.pop();
+ const root=(listed[0]??'').replace(/\/$/,'');
+ assert(root&&!root.includes('/')&&!root.includes('\\'),'invalid archive root');
+ for(const name of listed)assert(name.startsWith(root+'/')&&!name.split(/[\\/]/).includes('..')&&!path.isAbsolute(name),'unsafe archive entry');
+ return root;
+}
+export function runTar(args,options){return run(tarExecutable(),args,options);}
 export async function reserveOutput(out){await fs.mkdir(out,{recursive:false});}
 const hash=b=>createHash('sha256').update(b).digest('hex');
 export async function inventory(root,rel=''){
@@ -29,10 +48,10 @@ export async function verifyManifest(root){
  const m=JSON.parse(await fs.readFile(path.join(root,'MANIFEST.json'),'utf8'));
  assert.deepEqual(await inventory(root),m.files,'extracted payload differs from manifest');return m;
 }
-export function run(command,args,{cwd=ROOT,env=process.env,capture=false}={}){
+export function run(command,args,{cwd=ROOT,env=process.env,capture=false,raw=false}={}){
  if(command==='pnpm'&&process.platform==='win32'){assert(process.env.PNPM_CLI&&path.isAbsolute(process.env.PNPM_CLI),'PNPM_CLI must identify installed official pnpm entry');args=[process.env.PNPM_CLI,...args];command=process.execPath;}
  const r=spawnSync(command,args,{cwd,env,encoding:'utf8',stdio:capture?'pipe':'inherit',maxBuffer:32*1024*1024,timeout:15*60*1000,shell:false});
- assert(!r.error&&!r.signal&&r.status===0,`${command} failed (${r.status}): ${r.error??r.stderr??''}`);return r.stdout?.trim();
+ assert(!r.error&&!r.signal&&r.status===0,`${command} failed (${r.status}): ${r.error??r.stderr??''}`);return raw?r.stdout:r.stdout?.trim();
 }
 export function startPreviewChild(exe,args,{cwd,env}={}){
  const p=spawn(exe,args,{cwd,env,stdio:['ignore','pipe','pipe']});let text='',error=null,closed=false;
@@ -134,7 +153,7 @@ export async function buildPreview({target,out,storeDir,localSmoke=false}){
   await fs.copyFile(path.join(ROOT,'docs/release/preview-start.zh-CN.md'),path.join(stage,'START-HERE.zh-CN.md'));
   await fs.writeFile(path.join(stage,'MANIFEST.json'),JSON.stringify({kind:'artifact-only-preview',version,commit,sourceDirty,target,node:'24',buildHost:`${process.platform}-${process.arch}`,nativeExecution:'not asserted by builder',permissions:'unchanged; explicit trusted Read/Search only on Mac/Windows',lockSHA256:hash(await fs.readFile(path.join(ROOT,'pnpm-lock.yaml'))),files:await inventory(stage)},null,2)+'\n');
   await verifyManifest(stage);
-  const archive=path.join(out,`${name}.tar.gz`);run('tar',['-czf',archive,'-C',out,name]);
+  const archive=path.join(out,`${name}.tar.gz`);runTar(['-czf',archive,'-C',out,name]);
   await fs.writeFile(`${archive}.sha256`,`${hash(await fs.readFile(archive))}  ${path.basename(archive)}\n`);
   return {stage,archive,version,target};
  }catch(e){await fs.writeFile(path.join(out,'BUILD-FAILED.txt'),String(e));throw e;}

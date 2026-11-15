@@ -38,6 +38,8 @@ test('preview CI is artifact-only with four targets and explicit native versus c
  const {readFile}=await import('node:fs/promises');const s=await readFile(new URL('../.github/workflows/preview-packages.yml',import.meta.url),'utf8');
  for(const target of ['darwin-arm64','darwin-amd64','windows-amd64','windows-arm64'])assert(s.includes(`target: ${target}`));
  for(const required of ['contents: read','macos-15-intel','macos-15','windows-2025','verify-only','scripts/preview-smoke.mjs','scripts/build-preview.test.mjs','--frozen-lockfile','PNPM_CLI','actions/upload-artifact@'])assert(s.includes(required),required);
+ assert(s.includes('python3 scripts/preview-pty.test.py'),'PTY environment regression must run in CI');
+ assert(s.includes("if: ${{ runner.os != 'Windows' }}"),'POSIX PTY regression must not be claimed on Windows');
  assert(!/contents: write|gh release|action-gh-release|git tag/.test(s));
 });
 test('missing child executable fails immediately and cleanup awaits bounded close, not absent exit',async t=>{
@@ -53,4 +55,32 @@ test('preview HTTP requests abort even when a connected server never responds',a
  const {fetchPreview}=await import('./build-preview.mjs');const {createServer}=await import('node:http');const server=createServer(()=>{});
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
  try{await assert.rejects(fetchPreview(`http://127.0.0.1:${server.address().port}`,{},100),/timeout|abort/i);}finally{server.closeAllConnections();await new Promise(r=>server.close(r));}
+});
+test('workflow logs are outside checkout before source status is captured',async()=>{
+ const {readFile}=await import('node:fs/promises');const s=await readFile(new URL('../.github/workflows/preview-packages.yml',import.meta.url),'utf8');
+ for(const name of ['preview-build.log','preview-smoke.log']){
+  assert(s.includes(`tee "$RUNNER_TEMP/${name}"`),`tee must not dirty checkout: ${name}`);
+  assert(s.includes('${{ runner.temp }}/'+name),`artifact must preserve external log: ${name}`);
+ }
+ assert(!s.includes('--allow-dirty-local'),'CI must not allow dirty source');
+});
+test('candidate source must be explicitly clean; dirty local override cannot run in CI',async()=>{
+ const {validatePreviewSource}=await import('./build-preview.mjs');
+ assert.doesNotThrow(()=>validatePreviewSource({sourceDirty:false}));
+ for(const sourceDirty of [true,undefined,'false',null])assert.throws(()=>validatePreviewSource({sourceDirty}));
+ assert.doesNotThrow(()=>validatePreviewSource({sourceDirty:true},{allowDirtyLocal:true}));
+ for(const ci of [true])assert.throws(()=>validatePreviewSource({sourceDirty:true},{allowDirtyLocal:true,ci}));
+ assert.throws(()=>validatePreviewSource({sourceDirty:false},{allowDirtyLocal:true,ci:true}));
+});
+test('Windows tar is the explicit system executable, never Git Bash PATH tar',async()=>{
+ const {tarExecutable}=await import('./build-preview.mjs');
+ assert.equal(tarExecutable('win32',{SystemRoot:'D:\\Windows Root',PATH:'untrusted-git-bash'}),'D:\\Windows Root\\System32\\tar.exe');
+ assert.equal(tarExecutable('win32',{SYSTEMROOT:'C:\\Windows'}),'C:\\Windows\\System32\\tar.exe');
+ assert.equal(tarExecutable('darwin',{}),'tar');
+ for(const root of ['', 'relative', '\\\\server\\Windows'])assert.throws(()=>tarExecutable('win32',{SystemRoot:root}));
+});
+test('archive listing accepts LF and CRLF without trimming filename boundaries',async()=>{
+ const {parsePreviewArchiveList}=await import('./build-preview.mjs');
+ for(const newline of ['\n','\r\n'])assert.equal(parsePreviewArchiveList(['preview/','preview/file with spaces.txt','preview/ terminal.txt',''].join(newline)),'preview');
+ for(const listing of ['preview/\nother/file\n','preview/\npreview/../secret\n','/absolute/\n','preview/\npreview\\..\\secret\n','preview/\n preview/file\n'])assert.throws(()=>parsePreviewArchiveList(listing));
 });
