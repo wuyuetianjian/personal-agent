@@ -55,6 +55,10 @@ node terminal/cli.mjs --url http://127.0.0.1:7319 --new-session --format json --
 真实 TTY 才支持交互 Ink。机器输出/SSE smoke 不等于 Windows ConPTY、所有输入法
 或所有终端兼容验证。使用 `/help` 查看已实现命令，不承诺完整 Claude Code 兼容。
 
+输入验收采用完整草稿回显后单独按 Enter。终端将文字与回车合并为同一输入块、
+多行粘贴等输入边界尚未完成资格验证；粘贴后先核对草稿，再单独按 Enter。
+本轮没有为了自动提交这些歧义输入而改变审批、粘贴或命令确认语义。
+
 ## 第三方材料
 
 Node 依赖保留各自原始许可；Go 实际依赖模块与工具链许可见 THIRD-PARTY。

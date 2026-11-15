@@ -11,6 +11,14 @@ def interactive_environment(source):
     return {**source, 'CI': 'false', 'CONTINUOUS_INTEGRATION': 'false'}
 
 
+def submit_rendered_draft(text, write, wait_for):
+    # A fixed delay does not prevent stdin from coalescing text and Return.
+    # Observe the complete application draft (including its cursor) first.
+    write(text.encode())
+    wait_for(text + '▏')
+    write(b'\r')
+
+
 def main():
     cli, url = sys.argv[1:]
     master, slave = pty.openpty()
@@ -31,9 +39,9 @@ def main():
         raise AssertionError(f'missing {text!r}: {output[-4000:]!r}')
     try:
         wait_for('chat_only')
-        os.write(master, '你好'.encode()); time.sleep(.2); os.write(master, b'\r')
+        submit_rendered_draft('你好', lambda b: os.write(master, b), wait_for)
         wait_for('真实流式测试完成。')
-        os.write(master, b'/exit'); time.sleep(.2); os.write(master, b'\r')
+        submit_rendered_draft('/exit', lambda b: os.write(master, b), wait_for)
         deadline = time.monotonic() + 10
         while proc.poll() is None and time.monotonic() < deadline:
             if select.select([master], [], [], .1)[0]:

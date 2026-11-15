@@ -18,6 +18,22 @@ class PreviewPTYEnvironmentTests(unittest.TestCase):
         for key in ('GITHUB_ACTIONS', 'TERM', 'PA_AGENT_TOKEN'):
             self.assertEqual(child[key], source[key])
 
+    def test_enter_waits_for_complete_draft_render(self):
+        module = runpy.run_path(str(pathlib.Path(__file__).with_name('preview-pty.py')))
+        events = []
+        module['submit_rendered_draft']('你好', lambda b: events.append(('write', b)),
+                                          lambda s: events.append(('render', s)))
+        self.assertEqual(events, [('write', '你好'.encode()), ('render', '你好▏'), ('write', b'\r')])
+
+    def test_missing_echo_never_sends_enter(self):
+        module = runpy.run_path(str(pathlib.Path(__file__).with_name('preview-pty.py')))
+        writes = []
+        def missing(_):
+            raise AssertionError('draft did not render')
+        with self.assertRaises(AssertionError):
+            module['submit_rendered_draft']('/exit', writes.append, missing)
+        self.assertEqual(writes, [b'/exit'])
+
 
 if __name__ == '__main__':
     unittest.main()
