@@ -19,25 +19,26 @@ import (
 
 var restricted = windows.NewLazySystemDLL("advapi32.dll").NewProc("CreateRestrictedToken")
 
-func qualify(t windows.Token) error {
+func qualify(t windows.Token, stage string) error {
 	s, e := tokencheck.Inspect(t)
-	if e != nil {
-		return e
-	}
-	return tokencheck.Validate(s)
+	return tokencheck.DiagnoseCandidate(os.Stderr, stage, s, e)
 }
 func selectToken() (windows.Token, string, error) {
 	current, e := tokencheck.Current()
 	if e != nil {
 		return 0, "", e
 	}
-	if e = qualify(current); e == nil {
+	if e = qualify(current, "current"); e == nil {
 		return current, "current-qualified", nil
 	}
 	linked, le := current.GetLinkedToken()
+	if le != nil {
+		_ = tokencheck.DiagnoseCandidate(os.Stderr, "linked", tokencheck.Snapshot{}, le)
+	}
 	if le == nil {
 		s, se := tokencheck.Inspect(linked)
-		if se == nil && s.ElevationType == 3 && tokencheck.Validate(s) == nil {
+		de := tokencheck.DiagnoseCandidate(os.Stderr, "linked", s, se)
+		if de == nil && s.ElevationType == 3 {
 			if ce := current.Close(); ce != nil {
 				_ = linked.Close()
 				return 0, "", ce
@@ -68,7 +69,7 @@ func selectToken() (windows.Token, string, error) {
 		_ = out.Close()
 		return 0, "", ce
 	}
-	if e = qualify(out); e != nil {
+	if e = qualify(out, "restricted"); e != nil {
 		return 0, "", errors.Join(e, out.Close())
 	}
 	return out, "restricted-filtered", nil

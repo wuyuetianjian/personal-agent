@@ -28,3 +28,28 @@ knowledge-file requests, exact denial causes and restored-host positive controls
 
 The native workflow verifies current integration results; adapter passes alone
 are not a claim that API tests or all historical cross-platform regressions pass.
+
+## Completed preview integration evidence
+
+Commit 3f3c76e enabled only the separate explicit trusted capability after the
+adapter controls passed. Its native API fixture exposed an unrelated lifecycle
+error: manually created runs remained active across service recreation, so the
+next CreateRun correctly returned interaction conflict. Commit 99d45e4 fixes the
+fixture using the existing version-checked completion transition; no production
+permission check or API denial assertion was removed. A portable four-stage
+store-recreation test reproduced the incomplete-run failure before the fix.
+
+On 99d45e4, native run 43668246293 succeeded on both macOS 15 and Windows 2025.
+Jobs 132672333610 (Darwin) and 132672333475 (Windows) each passed all six adapter
+contracts three times, with zero failures/skips, the ordinary production
+dependency audit, and all TestTrustedWorkspace API tests three times. This now
+covers initial read and knowledge-file positive controls, host-off and changed-
+root exact authority refusal, and matching-host restoration positive controls.
+
+This is a trusted Read/Search preview qualification, not an all-CI-green or
+release declaration. The Windows token was elevated. The separate filtered-token
+experiment remains blocked before starting its child because its candidate does
+not satisfy exactly Medium integrity. It must not lower the assertion or change
+machine security settings to claim ordinary-user acceptance. Existing full-Files
+platform regressions and the deliberately incomplete persistent SQL VFS spike
+remain outside this preview's qualified capability set.
